@@ -1,0 +1,34 @@
+﻿{
+  "status": "UNVERIFIED",
+  "discoveredModels": [
+    {
+      "name": "gemma4:12b",
+      "family": "gemma4",
+      "parameter_size": "11.9B",
+      "context_length": 262144,
+      "capabilities": ["completion", "vision", "audio", "tools", "thinking"],
+      "verified": false
+    },
+    {
+      "name": "qwen3:14b",
+      "family": "qwen3",
+      "parameter_size": "14.8B",
+      "context_length": 40960,
+      "capabilities": ["completion", "tools", "thinking"],
+      "verified": false
+    }
+  ],
+  "tests": {
+    "simple_generation": "UNVERIFIED",
+    "structured_json": "UNVERIFIED",
+    "long_context": "UNVERIFIED",
+    "tool_calling": "UNVERIFIED",
+    "malformed_tool_schema": "UNVERIFIED",
+    "timeout": "UNVERIFIED",
+    "provider_unavailable": "UNVERIFIED",
+    "concurrent_requests": "UNVERIFIED",
+    "cancellation": "UNVERIFIED",
+    "oversized_context": "UNVERIFIED"
+  },
+  "summary": "Model capability verification is partial only: inventory discovery was confirmed, but the full contract test matrix was not completed in the current environment."
+}

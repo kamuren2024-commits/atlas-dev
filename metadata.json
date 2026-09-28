@@ -1,0 +1,6 @@
+{
+  "name": "Salience Atlas",
+  "description": "Salience Atlas - KETRACO National Grid Command Center, Predictive Operations Digital Twin, Probabilistic Forecast Engine, and What-If Contingency Simulator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

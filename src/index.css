@@ -1,0 +1,855 @@
+@import "tailwindcss";
+@import "./components/ketraco/finance/tokens/tailwind.css";
+
+/* Atlas glassmorphism primitives: composable surfaces and spacing tokens */
+:root {
+  --atlas-glass-blur: 10px;
+  --atlas-glass-border-opacity: 0.08;
+  --atlas-glass-shadow: 0 6px 18px rgba(3,8,20,0.35);
+
+  --atlas-glass-navigation: rgba(9,12,20,0.72);
+  --atlas-glass-workspace: rgba(8,12,20,0.56);
+  --atlas-glass-data: rgba(12,16,26,0.66);
+  --atlas-glass-command: rgba(6,10,18,0.6);
+  --atlas-glass-modal: rgba(5,7,12,0.9);
+
+  --atlas-glass-border: rgba(255,255,255,var(--atlas-glass-border-opacity));
+
+  /* spacing primitives */
+  --atlas-spacing-xs: 4px;
+  --atlas-spacing-sm: 8px;
+  --atlas-spacing-md: 12px;
+  --atlas-spacing-lg: 20px;
+  --atlas-spacing-xl: 28px;
+}
+
+.atlas-glass {
+  background: var(--atlas-glass-workspace);
+  -webkit-backdrop-filter: saturate(140%) blur(var(--atlas-glass-blur));
+  backdrop-filter: saturate(140%) blur(var(--atlas-glass-blur));
+  border: 1px solid var(--atlas-glass-border);
+  border-radius: 10px;
+  box-shadow: var(--atlas-glass-shadow);
+  color: var(--color-text, #e7eef8);
+  transition: background 240ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+.atlas-glass--navigation { background: var(--atlas-glass-navigation); }
+.atlas-glass--workspace { background: var(--atlas-glass-workspace); }
+.atlas-glass--data { background: var(--atlas-glass-data); }
+.atlas-glass--command { background: var(--atlas-glass-command); }
+.atlas-glass--modal { background: var(--atlas-glass-modal); }
+
+.atlas-glass--dense { border-radius: 6px; --atlas-glass-blur: 6px; }
+.atlas-glass--normal { border-radius: 10px; --atlas-glass-blur: 10px; }
+.atlas-glass--sparse { border-radius: 14px; --atlas-glass-blur: 16px; }
+
+/* Common utility classes for immediate adoption */
+.atlas-glass-card { padding: var(--atlas-spacing-md); }
+.atlas-glass-panel { padding: var(--atlas-spacing-lg); }
+.atlas-glass-toolbar { padding: var(--atlas-spacing-sm); display: flex; gap: var(--atlas-spacing-sm); align-items: center; }
+.atlas-glass-modal { padding: var(--atlas-spacing-lg); max-width: 920px; margin: 0 auto; }
+
+/* Accessibility: reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  .atlas-glass { transition: none; }
+}
+
+
+
+.tender-intelligence-shell {
+  background:
+    radial-gradient(circle at top left, rgba(0, 217, 255, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(5, 10, 18, 0.96), rgba(9, 15, 24, 0.88));
+}
+
+.tender-glass-panel,
+.tender-glass-header,
+.tender-glass-sidebar,
+.tender-glass-mini-panel,
+.tender-ai-action-hub {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.28), inset 0 1px 0 rgba(255,255,255,0.04);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.tender-glass-header {
+  border-bottom-color: rgba(148, 163, 184, 0.12);
+}
+
+.tender-glass-sidebar {
+  border-right-color: rgba(148, 163, 184, 0.12);
+}
+
+.tender-glass-panel::before,
+.tender-glass-header::before,
+.tender-glass-sidebar::before,
+.tender-glass-mini-panel::before,
+.tender-ai-action-hub::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.07), transparent 30%, transparent 70%, rgba(255,255,255,0.02));
+  pointer-events: none;
+}
+
+.tender-glass-panel,
+.tender-glass-header,
+.tender-glass-sidebar,
+.tender-glass-mini-panel,
+.tender-ai-action-hub {
+  position: relative;
+  overflow: hidden;
+}
+
+.tender-glass-sidebar button,
+.tender-glass-header button,
+.tender-glass-panel button,
+.tender-ai-action-hub button {
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.tender-glass-sidebar button:hover,
+.tender-glass-header button:hover,
+.tender-glass-panel button:hover,
+.tender-ai-action-hub button:hover {
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   ATLAS UNIFIED DESIGN SYSTEM — TAILWIND THEME v1.0
+   Spec source: ATLAS-DESIGN-SYSTEM.md
+   ========================================================================== */
+
+@theme {
+  /* --- Font Trinity --- */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  /* --- Foundation: Deep Navy → Graphite --- */
+  --color-atlas-bg-deep: #05070D;
+  --color-atlas-bg-surface: #0B1220;
+  --color-atlas-bg-panel: #101827;
+  --color-atlas-bg-elevated: #162038;
+  --color-atlas-bg-sunken: #070B16;
+
+  /* --- Neutral Scale — Slate (Continuous) --- */
+  --color-slate-950: #0E1424;
+  --color-slate-900: #192239;
+  --color-slate-850: #232F4E;
+  --color-slate-800: #2D3B5D;
+  --color-slate-700: #41527A;
+  --color-slate-650: #556994;
+  --color-slate-600: #687CA3;
+  --color-slate-500: #8BA2C9;
+  --color-slate-400: #B5C6E0;
+  --color-slate-300: #DCE4F0;
+  --color-slate-200: #F1F5F9;
+  --color-slate-100: #F8FAFC;
+
+  /* --- Primary Accent — Electric Cyan --- */
+  --color-cyan-700: #0369A1;
+  --color-cyan-600: #0284C7;
+  --color-cyan-500: #0EA5E9;
+  --color-cyan-400: #00D9FF;
+  --color-cyan-300: #57ECFF;
+  --color-cyan-glow: rgba(0, 217, 255, 0.15);
+  --color-cyan-glow-strong: rgba(0, 217, 255, 0.25);
+  --color-cyan-950: #0D2133;
+  --color-cyan-900: #122E47;
+
+  /* --- Secondary Accent — Violet --- */
+  --color-violet-700: #6D28D9;
+  --color-violet-600: #7C3AED;
+  --color-violet-500: #8B5CF6;
+  --color-violet-400: #A78BFA;
+  --color-violet-glow: rgba(139, 92, 246, 0.12);
+
+  /* --- Feedback / Semantic Colors --- */
+  --color-success-600: #059669;
+  --color-success-500: #10B981;
+  --color-success-400: #34D399;
+  --color-success-glow: rgba(16, 185, 129, 0.15);
+  --color-emerald-950: #06281D;
+  --color-emerald-440: #10B981;
+  --color-emerald-450: #34D399;
+
+  --color-warning-600: #D97706;
+  --color-warning-500: #F59E0B;
+  --color-warning-400: #FBBF24;
+  --color-warning-glow: rgba(245, 158, 11, 0.15);
+  --color-yellow-450: #FBBF24;
+
+  --color-danger-600: #DC2626;
+  --color-danger-500: #EF4444;
+  --color-danger-400: #F87171;
+  --color-danger-glow: rgba(239, 68, 68, 0.15);
+  --color-rose-950: #2D1015;
+  --color-rose-500: #F43F5E;
+  --color-rose-450: #F87171;
+
+  --color-info-600: #2563EB;
+  --color-info-500: #3B82F6;
+  --color-info-400: #60A5FA;
+
+  /* --- Semantic Signal Colors — every color communicates system meaning --- */
+  --color-signal-live: #00D9FF;
+  --color-signal-ai: #8B5CF6;
+  --color-signal-agent: #7C3AED;
+  --color-signal-healthy: #10B981;
+  --color-signal-risk: #F59E0B;
+  --color-signal-critical: #EF4444;
+  --color-signal-unknown: #64748B;
+
+  /* --- Finance Extension Colors --- */
+  --color-finance-capex: #0EA5E9;
+  --color-finance-opex: #8B5CF6;
+  --color-finance-budget-active: #10B981;
+  --color-finance-budget-draft: #F59E0B;
+  --color-finance-cash-in: #10B981;
+  --color-finance-cash-out: #EF4444;
+
+  /* --- Legacy Token Backwards-Compat (preserve existing module classes) --- */
+  --color-cosmic-purple-400: #0ea5e9;
+  --color-cosmic-purple-500: #38bdf8;
+  --color-cosmic-purple-600: #0284c7;
+  --color-midnight-dark: #0c1122;
+  --color-midnight-card: #1b2438;
+  --color-electric-cyan: #00E1FF;
+  --color-cyan-405: #00E1FF;
+  --color-cyan-505: #00E1FF;
+  --color-slate-505: #8295b3;
+  --color-slate-405: #9daec6;
+  --color-slate-305: #cbd5e1;
+  --color-slate-205: #f1f5f9;
+  --color-slate-202: #f8fafc;
+  --color-green-450: #34D399;
+  --color-slate-650: #556994;
+}
+
+/* ==========================================================================
+   THEME DEFINITIONS: Atlas Dark (default) vs Enterprise White (Light)
+   ========================================================================== */
+
+:root,
+[data-theme="atlas-dark"] {
+  /* Semantic foundation: components should prefer these over raw palette values. */
+  --atlas-bg-canvas: #0B0F17;
+  --atlas-bg-surface: #111827;
+  --atlas-bg-elevated: #162038;
+  --atlas-glass: rgba(17, 24, 39, 0.70);
+  --atlas-border: #1F2937;
+  --atlas-accent: #3B82F6;
+  --atlas-success: #10B981;
+  --atlas-warning: #F59E0B;
+  --atlas-danger: #EF4444;
+  --atlas-info: #3B82F6;
+  --atlas-radius-control: 8px;
+  --atlas-radius-panel: 12px;
+  --atlas-radius-floating: 16px;
+  --atlas-motion-micro: 140ms;
+  --atlas-motion-standard: 220ms;
+  --color-atlas-bg-deep: #05070D;
+  --color-atlas-bg-surface: #0B1220;
+  --color-atlas-bg-panel: #101827;
+  --color-atlas-bg-elevated: #162038;
+  --color-atlas-bg-sunken: #070B16;
+
+  --color-slate-950: #0E1424;
+  --color-slate-900: #192239;
+  --color-slate-850: #232F4E;
+  --color-slate-800: #2D3B5D;
+  --color-slate-700: #41527A;
+  --color-slate-650: #556994;
+  --color-slate-600: #687CA3;
+  --color-slate-500: #8BA2C9;
+  --color-slate-400: #B5C6E0;
+  --color-slate-300: #DCE4F0;
+  --color-slate-200: #F1F5F9;
+  --color-slate-100: #F8FAFC;
+
+  --atlas-text-primary: #F8FAFC;
+  --atlas-text-secondary: #CBD5E1;
+  --atlas-text-muted: #94A3B8;
+  --atlas-border-subtle: rgba(0, 217, 255, 0.12);
+  --atlas-border-standard: rgba(51, 65, 85, 0.6);
+  --atlas-border-strong: rgba(0, 217, 255, 0.35);
+
+  --atlas-shell-header-bg: rgba(8, 11, 20, 0.88);
+  --atlas-shell-sidebar-bg: rgba(9, 12, 22, 0.92);
+  --atlas-shell-surface-bg: rgba(8, 11, 20, 0.82);
+  --atlas-shell-border: rgba(45, 59, 93, 0.45);
+  --atlas-shell-header-border: rgba(0, 217, 255, 0.16);
+
+  --atlas-panel-bg: #101827;
+  --atlas-panel-border: rgba(0, 217, 255, 0.12);
+  --atlas-panel-hover-border: rgba(0, 217, 255, 0.3);
+  --atlas-panel-hover-shadow: 0 0 24px rgba(0, 217, 255, 0.08);
+
+  --atlas-table-header-bg: #070B16;
+  --atlas-table-row-hover: rgba(0, 217, 255, 0.05);
+  --atlas-table-row-selected: rgba(0, 217, 255, 0.08);
+  --atlas-table-border: rgba(51, 65, 85, 0.45);
+
+  --atlas-card-bg: rgba(24, 34, 54, 0.75);
+  --atlas-card-border: rgba(0, 225, 255, 0.16);
+}
+
+[data-theme="enterprise-white"] {
+  --atlas-bg-canvas: #F1F5F9;
+  --atlas-bg-surface: #FFFFFF;
+  --atlas-bg-elevated: #FFFFFF;
+  --atlas-glass: rgba(255, 255, 255, 0.78);
+  --atlas-border: #CBD5E1;
+  --atlas-accent: #0284C7;
+  --atlas-success: #059669;
+  --atlas-warning: #B45309;
+  --atlas-danger: #DC2626;
+  --atlas-info: #2563EB;
+  --color-atlas-bg-deep: #F1F5F9;
+  --color-atlas-bg-surface: #F8FAFC;
+  --color-atlas-bg-panel: #FFFFFF;
+  --color-atlas-bg-elevated: #FFFFFF;
+  --color-atlas-bg-sunken: #E2E8F0;
+
+  /* Inverted slate scale for crisp contrast on white surfaces */
+  --color-slate-950: #F8FAFC;
+  --color-slate-900: #F1F5F9;
+  --color-slate-850: #E2E8F0;
+  --color-slate-800: #CBD5E1;
+  --color-slate-700: #94A3B8;
+  --color-slate-650: #64748B;
+  --color-slate-600: #475569;
+  --color-slate-500: #334155;
+  --color-slate-400: #1E293B;
+  --color-slate-300: #0F172A;
+  --color-slate-200: #0F172A;
+  --color-slate-100: #020617;
+
+  --atlas-text-primary: #0F172A;
+  --atlas-text-secondary: #334155;
+  --atlas-text-muted: #64748B;
+  --atlas-border-subtle: rgba(14, 165, 233, 0.2);
+  --atlas-border-standard: #CBD5E1;
+  --atlas-border-strong: rgba(2, 132, 199, 0.4);
+
+  --atlas-shell-header-bg: rgba(255, 255, 255, 0.94);
+  --atlas-shell-sidebar-bg: rgba(248, 250, 252, 0.96);
+  --atlas-shell-surface-bg: rgba(255, 255, 255, 0.9);
+  --atlas-shell-border: #E2E8F0;
+  --atlas-shell-header-border: rgba(14, 165, 233, 0.25);
+
+  --atlas-panel-bg: #FFFFFF;
+  --atlas-panel-border: #E2E8F0;
+  --atlas-panel-hover-border: rgba(2, 132, 199, 0.35);
+  --atlas-panel-hover-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+
+  --atlas-table-header-bg: #F8FAFC;
+  --atlas-table-row-hover: rgba(14, 165, 233, 0.05);
+  --atlas-table-row-selected: rgba(14, 165, 233, 0.1);
+  --atlas-table-border: #E2E8F0;
+
+  --atlas-card-bg: #FFFFFF;
+  --atlas-card-border: #E2E8F0;
+}
+
+/* Purposeful dark variants for operations that need a distinct environmental mode. */
+[data-theme="enterprise-steel"] {
+  --color-atlas-bg-deep: #111318; --color-atlas-bg-surface: #181B22; --color-atlas-bg-panel: #181B22; --color-atlas-bg-elevated: #222632; --color-atlas-bg-sunken: #0C0E12;
+  --atlas-bg-canvas: #111318; --atlas-bg-surface: #181B22; --atlas-bg-elevated: #222632; --atlas-glass: rgba(24, 27, 34, .70); --atlas-border: #2A2E39; --atlas-accent: #6366F1;
+  --atlas-text-primary: #F8FAFC; --atlas-text-secondary: #CBD5E1; --atlas-text-muted: #94A3B8; --atlas-border-subtle: rgba(99,102,241,.16); --atlas-border-standard: #2A2E39; --atlas-border-strong: rgba(99,102,241,.5);
+  --atlas-shell-header-bg: rgba(17,19,24,.88); --atlas-shell-sidebar-bg: rgba(24,27,34,.82); --atlas-shell-surface-bg: rgba(17,19,24,.78); --atlas-shell-border: #2A2E39; --atlas-shell-header-border: rgba(99,102,241,.24);
+  --atlas-panel-bg: #181B22; --atlas-panel-border: #2A2E39; --atlas-panel-hover-border: rgba(129,140,248,.55); --atlas-panel-hover-shadow: 0 10px 28px rgba(0,0,0,.18);
+  --atlas-table-header-bg: #111318; --atlas-table-row-hover: rgba(99,102,241,.08); --atlas-table-row-selected: rgba(99,102,241,.14); --atlas-table-border: #2A2E39; --atlas-card-bg: #181B22; --atlas-card-border: #2A2E39;
+}
+
+[data-theme="midnight-emerald"] {
+  --color-atlas-bg-deep: #080D0E; --color-atlas-bg-surface: #0E1517; --color-atlas-bg-panel: #0E1517; --color-atlas-bg-elevated: #172225; --color-atlas-bg-sunken: #050809;
+  --atlas-bg-canvas: #080D0E; --atlas-bg-surface: #0E1517; --atlas-bg-elevated: #172225; --atlas-glass: rgba(14,21,23,.70); --atlas-border: #1B2A2D; --atlas-accent: #10B981;
+  --atlas-text-primary: #F0FDF4; --atlas-text-secondary: #D1FAE5; --atlas-text-muted: #86EFAC; --atlas-border-subtle: rgba(16,185,129,.14); --atlas-border-standard: #1B2A2D; --atlas-border-strong: rgba(16,185,129,.5);
+  --atlas-shell-header-bg: rgba(8,13,14,.88); --atlas-shell-sidebar-bg: rgba(14,21,23,.84); --atlas-shell-surface-bg: rgba(8,13,14,.76); --atlas-shell-border: #1B2A2D; --atlas-shell-header-border: rgba(16,185,129,.22);
+  --atlas-panel-bg: #0E1517; --atlas-panel-border: #1B2A2D; --atlas-panel-hover-border: rgba(52,211,153,.48); --atlas-panel-hover-shadow: 0 10px 28px rgba(0,0,0,.2);
+  --atlas-table-header-bg: #080D0E; --atlas-table-row-hover: rgba(16,185,129,.07); --atlas-table-row-selected: rgba(16,185,129,.13); --atlas-table-border: #1B2A2D; --atlas-card-bg: #0E1517; --atlas-card-border: #1B2A2D;
+}
+
+/* ==========================================================================
+   BASE — Global Body, Reset, Scrollbars
+   ========================================================================== */
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(0, 217, 255, 0.08), transparent 26%),
+    radial-gradient(circle at top right, rgba(139, 92, 246, 0.08), transparent 28%),
+    linear-gradient(180deg, #05070d 0%, var(--atlas-bg-canvas, #0b0f17) 35%, #070d17 100%);
+  color: var(--atlas-text-primary, #f8fafc);
+  font-family: var(--font-sans);
+  font-optical-sizing: auto;
+  overflow-x: hidden;
+  font-feature-settings: "ss01", "cv11";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
+}
+
+::selection {
+  background: rgba(0, 217, 255, 0.22);
+  color: #f8fafc;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* --- Custom Scrollbars (Enterprise — subtle, cyan accent) --- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(12, 17, 34, 0.4);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 217, 255, 0.22);
+  border-radius: 999px;
+  border: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 217, 255, 0.42);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Scrollbar utility for thin inline scrollbars inside panels */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { scrollbar-width: none; }
+
+/* ==========================================================================
+   ATLAS GLOBAL SHELL — scoped shell surface layer
+   ========================================================================== */
+
+.glass-panel {
+  background: rgba(24, 34, 54, 0.75);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(0, 225, 255, 0.16);
+}
+
+.glass-panel-hover {
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glass-panel-hover:hover {
+  border-color: rgba(0, 225, 255, 0.4);
+  box-shadow: 0 0 35px rgba(0, 225, 255, 0.14);
+}
+
+.glowing-text {
+  text-shadow: 0 0 12px rgba(0, 225, 255, 0.55), 0 0 2px rgba(0, 225, 255, 0.3);
+}
+
+.cyan-glow {
+  box-shadow: 0 0 20px rgba(0, 225, 255, 0.3);
+}
+
+.purple-glow {
+  box-shadow: 0 0 25px rgba(14, 165, 233, 0.35);
+}
+
+@keyframes energyStream {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-energy-stream {
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.8), rgba(0, 217, 255, 0.8), rgba(2, 132, 199, 0.8), rgba(16, 24, 39, 0.8));
+  background-size: 300% 300%;
+  animation: energyStream 8s ease infinite;
+}
+
+/* --- Shell concrete surfaces --- */
+.atlas-shell-surface {
+  background: var(--atlas-shell-surface-bg);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+/* Density changes geometry, not legibility. Existing module markup inherits this safely. */
+[data-density="compact"] { --atlas-density-space: .875; --atlas-density-row: 30px; }
+[data-density="standard"] { --atlas-density-space: 1; --atlas-density-row: 36px; }
+[data-density="focus"] { --atlas-density-space: 1.18; --atlas-density-row: 42px; }
+[data-density="compact"] .atlas-panel { border-radius: 8px; }
+[data-density="focus"] .atlas-panel { border-radius: 14px; }
+[data-density="compact"] .atlas-table-row > td, [data-density="compact"] .atlas-table-row > th { padding-top: 6px; padding-bottom: 6px; }
+[data-density="focus"] .atlas-table-row > td, [data-density="focus"] .atlas-table-row > th { padding-top: 12px; padding-bottom: 12px; }
+/* Focus mode favors the mission canvas while retaining all information in-place. */
+[data-density="focus"] .atlas-secondary-detail { display: none; }
+
+.atlas-shell-header {
+  background:
+    linear-gradient(180deg, rgba(8, 11, 20, 0.92), rgba(8, 11, 20, 0.76));
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  border-bottom: 1px solid rgba(0, 217, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 8px 28px rgba(2,6,23,0.16);
+}
+
+/* Command is a control-layer anchor: distinct from both navigation and content. */
+.atlas-command-trigger {
+  background: linear-gradient(180deg, rgba(17,24,39,0.64), rgba(11,17,28,0.78));
+  border: 1px solid rgba(148,163,184,0.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 22px rgba(2,6,23,0.14);
+}
+.atlas-command-trigger:hover {
+  border-color: rgba(0, 217, 255, 0.38);
+  background: linear-gradient(180deg, rgba(17,24,39,0.8), rgba(11,17,28,0.9));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 0 1px rgba(0,217,255,0.12), 0 10px 28px rgba(0,217,255,0.08);
+}
+
+.atlas-shell-sidebar {
+  background: linear-gradient(180deg, rgba(10,14,24,0.92), rgba(9,13,22,0.82));
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border-right: 1px solid rgba(148,163,184,0.14);
+  box-shadow: inset -1px 0 0 rgba(255,255,255,0.03), 12px 0 28px rgba(2,6,23,0.08);
+}
+
+/* Desktop navigation is deliberately detached from the work canvas. */
+.atlas-shell-sidebar--floating {
+  margin: 12px 0 12px 12px;
+  border: 1px solid rgba(148,163,184,0.16);
+  border-radius: var(--atlas-radius-floating, 16px);
+  background: linear-gradient(180deg, rgba(17,24,39,0.78), rgba(9,13,22,0.72));
+  box-shadow: 0 12px 32px rgba(2,6,23,0.18), inset 0 1px 0 rgba(255,255,255,0.06), 0 0 0 1px rgba(0,217,255,0.03);
+}
+.atlas-shell-sidebar--floating:hover {
+  border-color: rgba(0, 217, 255, 0.34);
+}
+
+.project-navigation-panel {
+  --project-nav-glass-opacity: 0.18;
+  --project-nav-glass-border: rgba(203, 213, 225, 0.2);
+  --project-nav-glass-blur: 20px;
+  background: rgba(7, 11, 18, var(--project-nav-glass-opacity));
+  border: 1px solid var(--project-nav-glass-border);
+  box-shadow: 10px 0 30px rgba(2, 6, 23, 0.2), inset -1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(var(--project-nav-glass-blur)) saturate(135%);
+  -webkit-backdrop-filter: blur(var(--project-nav-glass-blur)) saturate(135%);
+}
+
+.project-navigation-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 32%, transparent 76%, rgba(255, 255, 255, 0.025));
+}
+
+.atlas-shell-footer {
+  background: transparent;
+  border-top: 1px solid var(--atlas-shell-border);
+}
+
+/* Scoped focus ring for shell chrome — keyboard accessible */
+.atlas-shell-focus:focus-visible {
+  outline: 2px solid rgba(0, 217, 255, 0.55);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Scoped active nav treatment: subtle elevation, no oversized glow pills */
+.atlas-shell-nav-active {
+  background: linear-gradient(90deg, rgba(0, 217, 255, 0.10), rgba(0, 217, 255, 0.02));
+  border-left: 2px solid rgba(0, 217, 255, 0.85);
+}
+
+/* Respect user reduced-motion preference for shell transitions */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .atlas-shell-surface,
+  .atlas-shell-header,
+  .atlas-shell-sidebar,
+  .atlas-shell-footer {
+    transition: none !important;
+  }
+}
+
+/* ==========================================================================
+   ATLAS TYPOGRAPHY UTILITIES — Aligned with design system §3
+   ========================================================================== */
+
+/* Display */
+.text-atlas-display-lg {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 64px;
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+}
+.text-atlas-display-md {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 48px;
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+}
+.text-atlas-display-sm {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 36px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+/* Headings */
+.text-atlas-h1 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.text-atlas-h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 24px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.text-atlas-h3 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 1.3;
+}
+.text-atlas-h4 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+/* Body */
+.text-atlas-body {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.text-atlas-body-sm {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.text-atlas-meta {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-slate-500);
+}
+.text-atlas-label {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1.0;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Numeric presentation helpers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+.numeric {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.numeric-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   ATLAS COMPONENT UTILITIES (used by Atlas* primitives)
+   ========================================================================== */
+
+/* Panel base */
+.atlas-panel {
+  background-color: var(--atlas-panel-bg);
+  border: 1px solid var(--atlas-panel-border);
+  border-radius: var(--atlas-radius-panel, 12px);
+  position: relative;
+  overflow: hidden;
+  transition:
+    border-color 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.atlas-panel:hover {
+  border-color: var(--atlas-panel-hover-border);
+  box-shadow: var(--atlas-panel-hover-shadow);
+}
+.atlas-panel-selected {
+  border-color: var(--atlas-border-strong);
+  box-shadow: 0 0 30px rgba(0, 217, 255, 0.10);
+}
+
+/* Status dot */
+.atlas-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.15);
+}
+.atlas-dot-pulse {
+  position: relative;
+}
+.atlas-dot-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.2;
+  animation: atlasPulse 1.6s ease-out infinite;
+}
+@keyframes atlasPulse {
+  0% { transform: scale(1); opacity: 0.25; }
+  70% { transform: scale(2.5); opacity: 0; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* Module hero background topology pattern (subtle SVG-ish via gradients) */
+.atlas-hero-bg {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(1200px 600px at 90% -10%, rgba(0,217,255,0.10), transparent 60%),
+    radial-gradient(800px 400px at -5% 110%, rgba(139,92,246,0.08), transparent 60%),
+    linear-gradient(180deg, var(--color-atlas-bg-panel) 0%, var(--color-atlas-bg-deep) 100%);
+}
+.atlas-hero-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,217,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,217,255,0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+  pointer-events: none;
+}
+
+/* Table utilities */
+.atlas-table-header {
+  background-color: var(--atlas-table-header-bg);
+}
+.atlas-table-row:hover {
+  background-color: var(--atlas-table-row-hover);
+  box-shadow: inset 2px 0 0 rgba(0, 217, 255, 0.35);
+}
+.atlas-table-row-selected {
+  background-color: var(--atlas-table-row-selected);
+  box-shadow: inset 2px 0 0 var(--color-cyan-400);
+}
+
+/* Button reset / base */
+.atlas-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.08s ease;
+}
+.atlas-btn:active { transform: translateY(1px); }
+.atlas-btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+/* Skeleton shimmer */
+.atlas-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(45, 59, 93, 0.35) 0%,
+    rgba(45, 59, 93, 0.55) 50%,
+    rgba(45, 59, 93, 0.35) 100%
+  );
+  background-size: 200% 100%;
+  animation: atlasSkeleton 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+@keyframes atlasSkeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Drawer backdrop */
+.atlas-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 6, 14, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 40;
+}
+
+/* KPI sparkline container */
+.atlas-sparkline {
+  width: 100%;
+  height: 36px;
+}
+
+/* Focus ring universal */
+.atlas-focus:focus-visible {
+  outline: 2px solid var(--color-cyan-400);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* WCAG: Screen-reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+   RADIAL GRADIENT UTILITY (preserve index.css originals)
+   ========================================================================== */
+
+.bg-radial-at-c {
+  background: radial-gradient(circle at center, var(--tw-gradient-stops));
+}

@@ -1,0 +1,37 @@
+{
+  "graph": {
+    "nodes": [
+      "USER",
+      "IDENTITY",
+      "TENANT",
+      "MISSION",
+      "AGENT",
+      "PLAN",
+      "POLICY",
+      "MODEL",
+      "TOOL",
+      "DATA",
+      "WORKFLOW",
+      "EVENT",
+      "EVIDENCE",
+      "AUDIT"
+    ],
+    "requiredEdges": {
+      "USER": ["IDENTITY"],
+      "IDENTITY": ["TENANT"],
+      "TENANT": ["MISSION"],
+      "MISSION": ["AGENT", "POLICY", "WORKFLOW"],
+      "AGENT": ["PLAN", "MODEL", "TOOL"],
+      "PLAN": ["WORKFLOW"],
+      "POLICY": ["MODEL", "TOOL", "EVIDENCE"],
+      "MODEL": ["EVIDENCE"],
+      "TOOL": ["DATA", "EVIDENCE"],
+      "DATA": ["EVIDENCE"],
+      "WORKFLOW": ["EVENT", "EVIDENCE"],
+      "EVENT": ["AUDIT"],
+      "EVIDENCE": ["AUDIT"]
+    },
+    "status": "PARTIALLY_IMPLEMENTED",
+    "summary": "The runtime graph exists conceptually but does not yet show all required security/persistence/evidence edges under runtime proof."
+  }
+}

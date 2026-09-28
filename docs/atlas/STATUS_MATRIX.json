@@ -1,0 +1,33 @@
+{
+  "phase": 0,
+  "asOf": "2026-09-02",
+  "completionPolicy": "No module is complete without validated backend, UI, error handling, build, and regression evidence.",
+  "modules": [
+    {"id": 1, "name": "Executive Mission Control", "status": "partial", "evidence": ["src/components/ketraco/command-center", "src/components/logistics/CommandCenter.tsx"], "next": "Integrate canonical graph and event contracts without redesigning the protected Command Center."},
+    {"id": 2, "name": "National Grid Intelligence", "status": "partial", "evidence": ["src/components/ketraco/command-center", "packages/domain", "services/graph", "services/risk"], "next": "Define canonical grid asset and digital-twin contracts."},
+    {"id": 3, "name": "Capital Projects Intelligence", "status": "partial", "evidence": ["src/components/ketraco/ScmModules.tsx", "backend/agents"], "next": "Add canonical project health and dependency relationships."},
+    {"id": 4, "name": "Procurement Intelligence", "status": "implemented-subset", "evidence": ["backend/domains/procurement", "backend/database/migration-006-national-procurement.ts", "server.ts", "docs/atlas/modules/05-national-procurement"], "next": "Connect canonical requisition, tender, bid, award, contract, market and governed workflow sources."},
+    {"id": 5, "name": "Supplier & Market Intelligence", "status": "implemented-subset", "evidence": ["backend/domains/supplier", "backend/evaluation/knowledge-graph.ts", "src/components/twin/SupplierTwin.tsx", "docs/atlas/modules/03-supplier-intelligence"], "next": "Canonicalize supplier master, compliance, documents, spend and governed analyst tools."},
+    {"id": 6, "name": "Project Supply Nexus", "status": "implemented-subset", "evidence": ["backend/domains/project-supply", "backend/database/migration-005-project-supply-nexus.ts", "src/components/ketraco/ScmModules.tsx", "docs/atlas/modules/04-project-supply-nexus"], "next": "Connect canonical procurement, contracts, milestones, site delivery, cost, events, workflows and governed AI tools."},
+    {"id": 6, "name": "Contract & Commercial Intelligence", "status": "partial", "evidence": ["src/components/ketraco/ScmContractIntelligence.tsx", "backend/evaluation"], "next": "Model obligations, claims, payments, and provenance."},
+    {"id": 7, "name": "Land & Wayleave Intelligence", "status": "planned", "evidence": [], "next": "Define parcel and wayleave ontology and GIS integration."},
+    {"id": 8, "name": "GIS & Spatial Intelligence", "status": "partial", "evidence": ["src/components/graph", "src/components/ketraco/command-center"], "next": "Create horizontal spatial enrichment contracts."},
+    {"id": 9, "name": "Logistics & Supply Chain Intelligence", "status": "implemented-subset", "evidence": ["src/components/logistics", "backend/domains/logistics", "backend/domains/logistics/data-quality.ts", "server.ts", "docs/atlas/modules/02-logistics-import"], "next": "Validate carrier, port, customs and milestone source contracts before enabling import intelligence."},
+    {"id": 10, "name": "Inventory & Critical Spares Intelligence", "status": "implemented-subset", "evidence": ["src/components/ketraco/InventoryHub.tsx", "backend/domains/logistics/inventory-intelligence.ts", "backend/domains/logistics/api-routes.ts", "docs/atlas/modules/01-inventory-spare-parts"], "next": "Persist validated demand, criticality, project allocation, and asset-driven requirements before enabling recommendations."},
+    {"id": 11, "name": "Asset Lifecycle Intelligence", "status": "partial", "evidence": ["services/asset-resolution", "backend/evaluation/digital-twin-service", "src/components/twin"], "next": "Persist identity and lifecycle state history."},
+    {"id": 12, "name": "Predictive Maintenance & Inspection", "status": "partial", "evidence": ["services/vision", "services/ingestion", "src/components/ketraco/DroneIntelligenceModule.tsx"], "next": "Connect inspection evidence to maintenance contracts."},
+    {"id": 13, "name": "Finance & Investment Intelligence", "status": "implemented-subset", "evidence": ["src/components/ketraco/finance", "backend/finance", "backend/tests/finance-phase01.unit.test.ts"], "next": "Link finance decisions to projects and assets."},
+    {"id": 14, "name": "Security, Safety & Resilience", "status": "partial", "evidence": ["backend/security", "src/components/ketraco/command-center"], "next": "Unify incident, HSE, cyber, and resilience entities."},
+    {"id": 15, "name": "Workforce & Capability Intelligence", "status": "planned", "evidence": [], "next": "Define workforce capability model and governed connectors."},
+    {"id": 16, "name": "Community & Stakeholder Intelligence", "status": "planned", "evidence": [], "next": "Define stakeholder, grievance, and compensation relationships."},
+    {"id": 17, "name": "Governance, Risk & Compliance Intelligence", "status": "implemented-subset", "evidence": ["src/components/ketraco/ScmModules.tsx", "backend/security", "backend/evaluation"], "next": "Unify controls, evidence, and remediation across domains."},
+    {"id": 18, "name": "Audit & Assurance Intelligence", "status": "implemented-subset", "evidence": ["services/audit", "backend/evaluation", "prisma/schema.prisma"], "next": "Complete decision provenance and continuous audit coverage."},
+    {"id": 19, "name": "Enterprise Knowledge & AI Intelligence", "status": "implemented-subset", "evidence": ["src/components/AtlasChat.tsx", "src/components/KnowledgeCortex.tsx", "backend/ai-runtime", "backend/ai-federation"], "next": "Guarantee grounded retrieval and provider/source truth."},
+    {"id": 20, "name": "Autonomous Operations & Evolution", "status": "partial", "evidence": ["backend/observability", "services/telemetry", "src/core/loop"], "next": "Implement detection-first feedback and recommendation governance."}
+  ],
+  "p0Blockers": [
+    "Split SQLite/PostgreSQL persistence strategy",
+    "Inconsistent production versus demo/synthetic data boundary",
+    "Incomplete evidence of route-wide tenant authorization"
+  ]
+}

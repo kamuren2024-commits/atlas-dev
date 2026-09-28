@@ -1,0 +1,19 @@
+{
+  "threats": [
+    "fabricated success",
+    "false confidence",
+    "provider outage",
+    "database outage",
+    "authorization bypass",
+    "tenant leakage",
+    "tool misuse",
+    "memory poisoning",
+    "workflow loss",
+    "duplicate execution",
+    "missing evidence",
+    "broken audit chain",
+    "unbounded loop"
+  ],
+  "status": "OPEN",
+  "summary": "The repository has mitigations in some areas but does not yet demonstrate a complete threat model or harness for production or government readiness."
+}

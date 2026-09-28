@@ -1,0 +1,31 @@
+{
+  "status": "NOT_PRODUCTION_READY",
+  "gates": {
+    "local_qwen_execution": "UNVERIFIED",
+    "local_gemma_execution": "UNVERIFIED",
+    "model_capability_verification": "UNVERIFIED",
+    "provider_failover": "UNVERIFIED",
+    "fail_closed_provider_exhaustion": "PARTIALLY_IMPLEMENTED",
+    "explicit_agent_states": "PARTIALLY_IMPLEMENTED",
+    "loop_budgets": "UNVERIFIED",
+    "verification_gate": "PARTIALLY_IMPLEMENTED",
+    "durable_agent_checkpoint": "UNVERIFIED",
+    "crash_recovery": "UNVERIFIED",
+    "idempotency": "UNVERIFIED",
+    "real_identity": "UNVERIFIED",
+    "tenant_isolation": "UNVERIFIED",
+    "resource_authorization": "UNVERIFIED",
+    "durable_audit": "UNVERIFIED",
+    "audit_integrity": "PARTIALLY_IMPLEMENTED",
+    "evidence_provenance": "UNVERIFIED",
+    "tool_authorization": "UNVERIFIED",
+    "approval_enforcement": "UNVERIFIED",
+    "kill_switch": "UNVERIFIED",
+    "workflow_recovery": "UNVERIFIED",
+    "event_recovery": "UNVERIFIED",
+    "opentelemetry_trace": "UNVERIFIED",
+    "tevv": "UNVERIFIED",
+    "adversarial_tests": "UNVERIFIED"
+  },
+  "summary": "The current environment demonstrates partial local-first hardening, but the full production-readiness gate set remains incomplete."
+}

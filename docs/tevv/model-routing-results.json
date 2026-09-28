@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-09-26T11:09:47.966Z",
+  "localModelsAvailable": true,
+  "selectedLocally": true,
+  "attemptedLocalModels": [
+    "qwen3:14b",
+    "gemma4:12b"
+  ],
+  "localFailureFailsClosed": true,
+  "syntheticSuccess": false,
+  "gateway": {
+    "status": "FAIL_CLOSED",
+    "syntheticSuccess": false,
+    "failureReason": "AI inference unavailable. No configured provider succeeded for task \"copilot\". Last error: This operation was aborted"
+  },
+  "status": "PASS"
+}

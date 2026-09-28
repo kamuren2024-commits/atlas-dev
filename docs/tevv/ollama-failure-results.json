@@ -1,0 +1,43 @@
+{
+  "generatedAt": "2026-09-26T11:09:47.966Z",
+  "tests": [
+    {
+      "scenario": "INVALID_ENDPOINT",
+      "status": "PASS",
+      "classification": "PROVIDER_UNAVAILABLE",
+      "syntheticSuccess": false,
+      "error": "Failed to parse URL from http://127.0.0.1:INVALID/api/tags"
+    },
+    {
+      "scenario": "UNAVAILABLE_MODEL",
+      "status": "PASS",
+      "classification": "MODEL_FAILURE",
+      "syntheticSuccess": false,
+      "result": {
+        "status": "MODEL_FAILURE",
+        "latencyMs": 943,
+        "httpStatus": 404,
+        "error": "model '__salience_nonexistent_model__' not found"
+      }
+    },
+    {
+      "scenario": "TIMEOUT",
+      "status": "PASS",
+      "classification": "TIMEOUT",
+      "syntheticSuccess": false,
+      "result": {
+        "status": "TIMEOUT",
+        "latencyMs": 1015,
+        "error": "This operation was aborted"
+      }
+    },
+    {
+      "scenario": "MALFORMED_OUTPUT",
+      "status": "UNVERIFIED",
+      "classification": "MODEL_OUTPUT_INVALID",
+      "syntheticSuccess": false,
+      "reason": "No existing test adapter permits controlled malformed provider output without modifying production behavior."
+    }
+  ],
+  "status": "UNVERIFIED"
+}

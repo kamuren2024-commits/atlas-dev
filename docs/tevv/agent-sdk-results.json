@@ -1,0 +1,39 @@
+{
+  "phase": "V",
+  "overallStatus": "PARTIAL",
+  "productionReady": false,
+  "providers": {
+    "atlas": {
+      "adapter": "UNVERIFIED",
+      "health": "UNVERIFIED",
+      "runtime": "existing AgentRuntime bridge",
+      "evaluation": "focused contract tests only"
+    },
+    "openai": { "adapter": "UNAVAILABLE", "status": "NOT_CONFIGURED" },
+    "anthropic": { "adapter": "UNAVAILABLE", "status": "NOT_CONFIGURED" },
+    "google": { "adapter": "UNAVAILABLE", "status": "NOT_CONFIGURED" },
+    "microsoft": { "adapter": "UNAVAILABLE", "status": "NOT_CONFIGURED" },
+    "ollama": { "adapter": "UNAVAILABLE", "status": "NOT_CONFIGURED" }
+  },
+  "sdkMatrix": {
+    "discovery": "NOT_CONFIGURED",
+    "initialization": "NOT_CONFIGURED",
+    "modelResolution": "NOT_CONFIGURED",
+    "agentCreation": "NOT_CONFIGURED",
+    "toolRegistration": "NOT_CONFIGURED",
+    "skillRegistration": "NOT_CONFIGURED",
+    "execution": "NOT_CONFIGURED",
+    "streaming": "NOT_CONFIGURED",
+    "structuredOutput": "NOT_CONFIGURED",
+    "errorHandling": "NOT_CONFIGURED",
+    "timeout": "NOT_CONFIGURED",
+    "cancellation": "NOT_CONFIGURED",
+    "tracing": "NOT_CONFIGURED",
+    "evaluation": "NOT_CONFIGURED"
+  },
+  "blockers": [
+    "No vendor agent SDK adapters are implemented.",
+    "New agent evaluation profiles and traces are not durably persisted.",
+    "No end-to-end policy, evidence, audit, provider, and workflow conformance run was performed."
+  ]
+}

@@ -1,0 +1,15 @@
+﻿{
+  "status": "UNVERIFIED",
+  "areas": {
+    "identity": "UNVERIFIED",
+    "tenant_isolation": "UNVERIFIED",
+    "authorization": "UNVERIFIED",
+    "tool_security": "UNVERIFIED",
+    "memory_poisoning": "UNVERIFIED",
+    "provider_failover": "UNVERIFIED",
+    "database_fail_closed": "UNVERIFIED",
+    "workflow_recovery": "UNVERIFIED",
+    "audit_integrity": "UNVERIFIED"
+  },
+  "summary": "No end-to-end security harness proves the required protection profile. The current system is improved but not yet validated for production or government use."
+}

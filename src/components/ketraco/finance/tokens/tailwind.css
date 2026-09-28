@@ -1,0 +1,53 @@
+@layer utilities {
+  .finance-panel {
+    @apply bg-[#101827]/75 backdrop-blur-md border border-white/[0.06] rounded-lg;
+  }
+  .finance-panel-elevated {
+    @apply bg-[#141C2E]/80 backdrop-blur-md border border-white/[0.08] rounded-lg;
+  }
+  .finance-glow-cyan {
+    box-shadow: 0 0 20px rgba(0, 217, 255, 0.08);
+  }
+  .finance-glow-purple {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.08);
+  }
+  .finance-glow-green {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.08);
+  }
+  .finance-glow-red {
+    box-shadow: 0 0 20px rgba(244, 63, 94, 0.08);
+  }
+  .finance-text-primary {
+    @apply text-[#F8FAFC] font-display tracking-tight;
+  }
+  .finance-text-secondary {
+    @apply text-[#94A3B8] font-mono text-[11px];
+  }
+  .finance-text-muted {
+    @apply text-[#64748B] font-mono text-[10px];
+  }
+  .finance-label {
+    @apply text-[10px] font-mono text-[#64748B] uppercase tracking-widest font-bold;
+  }
+  .finance-value {
+    @apply text-xl font-display font-medium text-[#F8FAFC] tracking-tight;
+  }
+  .finance-kpi {
+    @apply bg-[#0B1220] border border-white/[0.06] rounded-lg p-3;
+  }
+  .finance-divider {
+    @apply border-t border-white/[0.04];
+  }
+  .finance-badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider;
+  }
+  .finance-badge-live {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20;
+  }
+  .finance-badge-fixture {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20;
+  }
+  .finance-badge-stale {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider bg-orange-500/10 text-orange-400 border border-orange-500/20;
+  }
+}

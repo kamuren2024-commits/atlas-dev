@@ -1,0 +1,19 @@
+{
+  "phase": "V",
+  "overallStatus": "PARTIAL",
+  "checks": {
+    "missingEvaluationBlocked": "TESTED",
+    "failedEvaluationBlocked": "TESTED",
+    "tenantMismatchBlocked": "TESTED",
+    "undeclaredCapabilityBlocked": "TESTED",
+    "matchingPassedEvaluationAllowedByGate": "TESTED",
+    "policyTenantSkillToolApprovalDelegates": "CONTRACT_DEFINED",
+    "durableTracePersistence": "NOT_IMPLEMENTED",
+    "agentRuntimeEndToEndExecution": "NOT_TESTED"
+  },
+  "productionReady": false,
+  "limitations": [
+    "Focused contract tests do not establish production eligibility.",
+    "Runtime governance callbacks and trace persistence must be supplied by application composition."
+  ]
+}

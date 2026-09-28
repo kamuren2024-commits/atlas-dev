@@ -1,0 +1,92 @@
+{
+  "generatedAt": "2026-09-26T11:09:47.966Z",
+  "environment": {
+    "platform": "win32",
+    "node": "v22.20.0",
+    "baseUrl": "http://127.0.0.1:11434",
+    "expectedModels": [
+      "qwen3:14b",
+      "gemma4:12b"
+    ]
+  },
+  "discoveredModels": [
+    "gemma4:12b",
+    "qwen3:14b"
+  ],
+  "discovery": "PASS",
+  "models": [
+    {
+      "model": "qwen3:14b",
+      "discovered": true,
+      "selected": true,
+      "requestSent": true,
+      "generationReceived": false,
+      "outputNonempty": false,
+      "outputValid": false,
+      "latencyMeasured": true,
+      "result": {
+        "status": "TIMEOUT",
+        "latencyMs": 30150,
+        "error": "This operation was aborted"
+      }
+    },
+    {
+      "model": "gemma4:12b",
+      "discovered": true,
+      "selected": true,
+      "requestSent": true,
+      "generationReceived": false,
+      "outputNonempty": false,
+      "outputValid": false,
+      "latencyMeasured": true,
+      "result": {
+        "status": "TIMEOUT",
+        "latencyMs": 30001,
+        "error": "This operation was aborted"
+      }
+    }
+  ],
+  "structuredOutput": {
+    "status": "UNVERIFIED",
+    "reason": "No model returned validated structured output within the bounded execution window."
+  },
+  "toolCalling": {
+    "status": "UNVERIFIED",
+    "reason": "Declared tools capability was observed in /api/tags, but a complete tool-calling round trip was not proven."
+  },
+  "registryConsistency": {
+    "status": "PASS",
+    "refreshes": [
+      [
+        "gemma4:12b",
+        "qwen3:14b"
+      ],
+      [
+        "gemma4:12b",
+        "qwen3:14b"
+      ],
+      [
+        "gemma4:12b",
+        "qwen3:14b"
+      ]
+    ],
+    "counts": {
+      "gemma4:12b": 1,
+      "qwen3:14b": 1
+    }
+  },
+  "gateway": {
+    "status": "FAIL_CLOSED",
+    "syntheticSuccess": false,
+    "failureReason": "AI inference unavailable. No configured provider succeeded for task \"copilot\". Last error: This operation was aborted"
+  },
+  "concurrency": {
+    "status": "UNVERIFIED",
+    "reason": "No successful local responses were available for a bounded concurrency comparison."
+  },
+  "requestIsolation": {
+    "status": "UNVERIFIED",
+    "reason": "No successful local responses were available to prove independent prompt/output attribution."
+  },
+  "status": "UNVERIFIED"
+}

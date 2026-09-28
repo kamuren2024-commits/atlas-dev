@@ -1,0 +1,12 @@
+node_modules/
+.visual-check-edge/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+data/salience_atlas.db
+*.db
+.dev-admin*

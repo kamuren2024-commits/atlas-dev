@@ -1,0 +1,28 @@
+{
+  "phase": "V",
+  "overallStatus": "PARTIAL",
+  "skills": [
+    {
+      "skillId": "document-analysis",
+      "discovery": "IMPLEMENTED",
+      "security": "NOT_EVALUATED",
+      "functional": "NOT_EVALUATED",
+      "activation": "INACTIVE"
+    },
+    {
+      "skillId": "evidence-verification",
+      "discovery": "IMPLEMENTED",
+      "security": "NOT_EVALUATED",
+      "functional": "NOT_EVALUATED",
+      "activation": "INACTIVE"
+    }
+  ],
+  "assertions": {
+    "frontmatterParsing": "TESTED",
+    "hashChangeInvalidation": "TESTED",
+    "tenantAuthorization": "TESTED",
+    "resourcePathTraversal": "TESTED",
+    "scriptExecution": "NOT_IMPLEMENTED"
+  },
+  "productionReady": false
+}

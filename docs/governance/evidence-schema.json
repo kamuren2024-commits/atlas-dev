@@ -1,0 +1,21 @@
+{
+  "schema": "EvidenceObject",
+  "requiredFields": [
+    "evidenceId",
+    "sourceType",
+    "sourceUri",
+    "contentHash",
+    "retrievedAt",
+    "issuer",
+    "classification",
+    "tenant",
+    "validFrom",
+    "validUntil",
+    "provenance",
+    "verificationStatus",
+    "relatedMission",
+    "relatedDecision"
+  ],
+  "status": "PARTIALLY_IMPLEMENTED",
+  "summary": "The repository has some evidence concepts but not a full, canonical, durable evidence object and provenance chain."
+}
