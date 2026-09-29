@@ -113,7 +113,7 @@ export class TechnicalAndFinancialEvaluationService {
   private scoreHistories: Map<string, ScoreVersionHistoryItem[]> = new Map();
 
   private constructor() {
-    this.seedSampleScores();
+    // Score entries are only recorded when they are created for a real tender and evaluator.
   }
 
   public static getInstance(): TechnicalAndFinancialEvaluationService {

@@ -85,7 +85,7 @@ export class KenyaEGPSAdapterService {
   private syncRecords: Map<string, EGPSSyncRecord> = new Map();
 
   private constructor() {
-    this.seedDefaultSyncRecords();
+    // e-GPS sync records are created only after a verified tender and export target exist.
   }
 
   public static getInstance(): KenyaEGPSAdapterService {
@@ -93,24 +93,6 @@ export class KenyaEGPSAdapterService {
       KenyaEGPSAdapterService.instance = new KenyaEGPSAdapterService();
     }
     return KenyaEGPSAdapterService.instance;
-  }
-
-  private seedDefaultSyncRecords() {
-    const record: EGPSSyncRecord = {
-      syncId: 'EGPS-SYNC-2026-001',
-      tenderId: 'TND-2026-08',
-      tenderNumber: 'KETRACO/PT/024/2026',
-      portalTarget: 'KENYA_EGPS',
-      syncType: 'EVALUATION_REPORT_SCM08',
-      status: 'SYNCED',
-      externalReferenceId: 'EGPS-KE-2026-98124',
-      idempotencyKey: 'IDEMP-TND-2026-08-EVAL',
-      lastAttemptTimestamp: '2026-08-17T09:00:00Z',
-      syncPayloadHash: 'sha256-4b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c',
-      retryCount: 0,
-      acknowledgementNotice: 'e-GPS API Gateway acknowledged reception of SCM-08 evaluation data.'
-    };
-    this.syncRecords.set(record.syncId, record);
   }
 
   public getSyncRecords(tenderId?: string): EGPSSyncRecord[] {

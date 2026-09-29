@@ -2428,8 +2428,6 @@ export default function TenderStudio({ onAskCopilot }: TenderStudioProps) {
 
                   <EnterpriseEvaluationEngine
                     activeContextTab="evaluation-os"
-                    selectedTender={tenders.find(t => t.id === selectedTenderId) || tenders[0]}
-                    selectedEvaluationId="EVAL-2026-0873"
                     onSelectContextTab={(tabId) => {
                       if (tabId === 'tender-overview') setActiveTab('dashboard');
                       else if (tabId === 'bid-intelligence') setActiveTab('suppliers');

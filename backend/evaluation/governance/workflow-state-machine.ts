@@ -8,6 +8,7 @@
  */
 
 export type ProcurementWorkflowState = 
+  | 'NOT_CONFIGURED'
   | 'DRAFT'
   | 'READY'
   | 'BID_OPENING'
@@ -62,6 +63,7 @@ export class ProcurementWorkflowStateMachine {
 
   // Allowed state transition matrix
   private allowedTransitions: Record<ProcurementWorkflowState, ProcurementWorkflowState[]> = {
+    NOT_CONFIGURED: [],
     DRAFT: ['READY'],
     READY: ['BID_OPENING'],
     BID_OPENING: ['PRELIMINARY'],
@@ -77,7 +79,7 @@ export class ProcurementWorkflowStateMachine {
   };
 
   private constructor() {
-    this.seedDefaultState();
+    // Intentionally empty: workflow state is carried only by authoritative tender records.
   }
 
   public static getInstance(): ProcurementWorkflowStateMachine {
@@ -87,68 +89,8 @@ export class ProcurementWorkflowStateMachine {
     return ProcurementWorkflowStateMachine.instance;
   }
 
-  private seedDefaultState() {
-    const tenderId = 'TND-2026-08';
-    this.tenderStates.set(tenderId, 'TECHNICAL');
-    
-    this.transitionHistories.set(tenderId, [
-      {
-        transitionId: 'TR-01',
-        tenderId,
-        fromState: 'DRAFT',
-        toState: 'READY',
-        actorId: 'SEC-01',
-        actorName: 'Kelvin Mutiso (Secretary)',
-        actorRole: 'PROCUREMENT_SECRETARIAT',
-        timestamp: '2026-08-01T10:00:00Z',
-        transitionReason: 'Tender documents finalized and approved by Accounting Officer.',
-        prerequisitesMet: ['Tender document approved', 'Notice published in MyGov & PPIP'],
-        auditLogId: 'AUD-TR-01'
-      },
-      {
-        transitionId: 'TR-02',
-        tenderId,
-        fromState: 'READY',
-        toState: 'BID_OPENING',
-        actorId: 'SEC-01',
-        actorName: 'Kelvin Mutiso (Secretary)',
-        actorRole: 'PROCUREMENT_SECRETARIAT',
-        timestamp: '2026-08-14T09:00:00Z',
-        transitionReason: 'Tender closing deadline reached. Opening session convened.',
-        prerequisitesMet: ['Opening committee convened', 'All physical and electronic bids sealed'],
-        auditLogId: 'AUD-TR-02'
-      },
-      {
-        transitionId: 'TR-03',
-        tenderId,
-        fromState: 'BID_OPENING',
-        toState: 'PRELIMINARY',
-        actorId: 'COMM-01',
-        actorName: 'Eng. David Kiprono',
-        actorRole: 'COMMITTEE_CHAIR',
-        timestamp: '2026-08-14T11:30:00Z',
-        transitionReason: 'Bid opening register executed. Commencing statutory preliminary examination.',
-        prerequisitesMet: ['Tender opening register signed by all bidders present', 'Document hashes sealed'],
-        auditLogId: 'AUD-TR-03'
-      },
-      {
-        transitionId: 'TR-04',
-        tenderId,
-        fromState: 'PRELIMINARY',
-        toState: 'TECHNICAL',
-        actorId: 'COMM-01',
-        actorName: 'Eng. David Kiprono',
-        actorRole: 'COMMITTEE_CHAIR',
-        timestamp: '2026-08-15T16:00:00Z',
-        transitionReason: 'Preliminary examination complete. Responsive bidders advanced to technical evaluation.',
-        prerequisitesMet: ['Preliminary matrix signed', 'Non-responsive notices prepared'],
-        auditLogId: 'AUD-TR-04'
-      }
-    ]);
-  }
-
   public getCurrentState(tenderId: string): ProcurementWorkflowState {
-    return this.tenderStates.get(tenderId) || 'DRAFT';
+    return this.tenderStates.get(tenderId) || 'NOT_CONFIGURED';
   }
 
   public getTransitionHistory(tenderId: string): WorkflowTransitionRecord[] {

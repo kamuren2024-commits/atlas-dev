@@ -46,7 +46,7 @@ export class AIGovernanceEngine {
   private records: Map<string, AIAssistanceRecord> = new Map();
 
   private constructor() {
-    this.seedSampleAIRecords();
+    // AI governance records are only created from authoritative evidence sources.
   }
 
   public static getInstance(): AIGovernanceEngine {
@@ -54,71 +54,6 @@ export class AIGovernanceEngine {
       AIGovernanceEngine.instance = new AIGovernanceEngine();
     }
     return AIGovernanceEngine.instance;
-  }
-
-  private seedSampleAIRecords() {
-    const records: AIAssistanceRecord[] = [
-      {
-        assistanceId: 'AI-REC-2026-001',
-        tenderId: 'TND-2026-08',
-        bidderId: 'BIDDER-01',
-        criterionOrRequirementId: 'TECH-02',
-        aiModel: 'Gemini-1.5-Pro-Procurement-Agent',
-        provider: 'Google Vertex AI / Salience Sovereign Gateway',
-        promptTaskVersion: 'eval-gis-specs-v3.2',
-        timestamp: '2026-08-15T09:12:00Z',
-        documentSourceIds: ['DOC-SHANGHAI-TEST-01'],
-        extractedFacts: [
-          { field: 'standard', value: 'IEC 62271-203', confidence: 0.99, sourcePage: 14, quoteSnippet: 'Tested in accordance with IEC 62271-203 edition 2.0' },
-          { field: 'ratedVoltage', value: '145kV (exceeds 132kV)', confidence: 0.98, sourcePage: 18, quoteSnippet: 'Rated maximum operating voltage: 145 kV' },
-          { field: 'accreditation', value: 'CESI / KEMA', confidence: 0.95, sourcePage: 2, quoteSnippet: 'CESI Test Certificate No. CESI-2024-HV-092' }
-        ],
-        aiSuggestedOutcome: 'COMPLIANT',
-        aiSuggestedScore: 39,
-        aiConfidenceScore: 0.97,
-        aiUncertaintyFlags: [],
-        humanReviewStatus: 'ACCEPTED_BY_HUMAN',
-        humanReviewerId: 'COMM-03',
-        humanReviewerName: 'Eng. Patrick Ochieng',
-        humanReviewerRole: 'TECHNICAL_MEMBER',
-        humanReviewTimestamp: '2026-08-16T12:00:00Z',
-        humanDecisionOutcome: 'COMPLIANT',
-        humanDecisionScore: 37,
-        humanOverrideDifference: 'AI suggested 39/40; Human evaluator scored 37/40.',
-        humanOverrideRationale: 'Minor deduction applied because secondary spare parts schedule delivery lead time is 18 weeks vs desired 14 weeks.',
-        auditTrailId: 'AUDIT-AI-GOV-001'
-      },
-      {
-        assistanceId: 'AI-REC-2026-002',
-        tenderId: 'TND-2026-08',
-        bidderId: 'BIDDER-02',
-        criterionOrRequirementId: 'MR-TAX',
-        aiModel: 'KRA-Document-OCR-Agent-v2',
-        provider: 'KRA Integration Hub',
-        promptTaskVersion: 'tax-tcc-extract-v1.1',
-        timestamp: '2026-08-15T10:04:00Z',
-        documentSourceIds: ['DOC-ATHI-TCC-01'],
-        extractedFacts: [
-          { field: 'tccNumber', value: 'KRA0882190111', confidence: 0.96, sourcePage: 1 },
-          { field: 'pin', value: 'P051992011A', confidence: 0.98, sourcePage: 1 },
-          { field: 'validUntil', value: '2026-12-31', confidence: 0.97, sourcePage: 1 }
-        ],
-        aiSuggestedOutcome: 'PASS',
-        aiConfidenceScore: 0.97,
-        aiUncertaintyFlags: [],
-        humanReviewStatus: 'ACCEPTED_BY_HUMAN',
-        humanReviewerId: 'COMM-02',
-        humanReviewerName: 'Sarah Mwangi, CPA-K',
-        humanReviewerRole: 'FINANCIAL_MEMBER',
-        humanReviewTimestamp: '2026-08-16T10:15:00Z',
-        humanDecisionOutcome: 'PASS',
-        auditTrailId: 'AUDIT-AI-GOV-002'
-      }
-    ];
-
-    for (const r of records) {
-      this.records.set(r.assistanceId, r);
-    }
   }
 
   public getAllRecords(tenderId?: string): AIAssistanceRecord[] {

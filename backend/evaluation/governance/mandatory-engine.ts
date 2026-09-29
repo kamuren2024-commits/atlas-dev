@@ -56,7 +56,7 @@ export class MandatoryResponsivenessEngine {
   private documents: Map<string, AuthoritativeBidDocument> = new Map();
 
   private constructor() {
-    this.seedAuthoritativeDocuments();
+    // Bid documents are authoritative only when they are loaded for a concrete tender.
   }
 
   public static getInstance(): MandatoryResponsivenessEngine {

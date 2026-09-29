@@ -28,7 +28,19 @@ export type DataSource =
   | 'THERMOGRAPHY'
   | 'PMU_WAMS';
 
-export type DataFreshness = 'LIVE' | 'REFERENCE' | 'SIMULATION' | 'DELAYED' | 'STALE' | 'OFFLINE';
+export type DataProvenanceState =
+  | 'VERIFIED_LIVE'
+  | 'VERIFIED_PUBLIC'
+  | 'OPERATIONAL_SIMULATION'
+  | 'INTEGRATION_PENDING'
+  | 'LIVE'
+  | 'REFERENCE'
+  | 'SIMULATION'
+  | 'DELAYED'
+  | 'STALE'
+  | 'OFFLINE';
+
+export type DataFreshness = DataProvenanceState;
 
 export interface DataProvenance {
   source: string;

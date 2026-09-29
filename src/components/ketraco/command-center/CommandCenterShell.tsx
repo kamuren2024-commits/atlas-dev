@@ -112,7 +112,7 @@ export default function CommandCenterShell() {
   const [activeDensityLevel, setActiveDensityLevel] = useState<number>(0);
   const [cameraPreset, setCameraPreset] = useState<ViewCameraPreset>('NATIONAL');
   const [highlightedPath, setHighlightedPath] = useState<string[]>([]);
-  const [dataFreshness, setDataFreshness] = useState<DataFreshness>('REFERENCE');
+  const [dataFreshness, setDataFreshness] = useState<DataFreshness>('OPERATIONAL_SIMULATION');
   const [mapProviderStatus, setMapProviderStatus] = useState<GridMapProviderStatus>(
     import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ? MapProviderState.LOADING : MapProviderState.ERROR_KEY_MISSING
   );
@@ -307,7 +307,13 @@ export default function CommandCenterShell() {
   };
 
   const handleToggleSimulation = () => {
-    setDataFreshness(prev => prev === 'REFERENCE' ? 'SIMULATION' : prev === 'SIMULATION' ? 'OFFLINE' : 'REFERENCE');
+    setDataFreshness(prev => {
+      if (prev === 'OPERATIONAL_SIMULATION') return 'VERIFIED_PUBLIC';
+      if (prev === 'VERIFIED_PUBLIC') return 'INTEGRATION_PENDING';
+      if (prev === 'INTEGRATION_PENDING') return 'VERIFIED_LIVE';
+      if (prev === 'VERIFIED_LIVE') return 'OPERATIONAL_SIMULATION';
+      return 'OPERATIONAL_SIMULATION';
+    });
   };
 
   const handleAskCopilot = (prompt: string) => {

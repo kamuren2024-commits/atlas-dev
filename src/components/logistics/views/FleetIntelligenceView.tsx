@@ -109,7 +109,7 @@ export default function FleetIntelligenceView() {
   const maintenanceCount = fleetStates.filter(v => v.status === 'MAINTENANCE' || v.status === 'BREAKDOWN').length;
 
   return (
-    <div className="flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
+    <div className="logistics-workspace flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
       {/* Top Notification Toast */}
       {lastNotification && (
         <div className="mb-3 p-3 rounded-xl bg-cyan-950/80 border border-cyan-500/50 text-cyan-200 flex items-center justify-between text-xs animate-fade-in shadow-xl">
@@ -131,7 +131,7 @@ export default function FleetIntelligenceView() {
             <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
               Fleet Telematics & Heavy Transport Registry
               <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/40 text-cyan-300">
-                KENYA TRANSMISSION GRID LIVE
+                DEMO SIMULATION
               </span>
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -198,7 +198,7 @@ export default function FleetIntelligenceView() {
         <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active In Transit</span>
           <div className="text-2xl font-bold text-cyan-400 mt-1">{movingCount}</div>
-          <span className="text-[11px] text-emerald-400 font-medium">Real-time GPS broadcast active</span>
+          <span className="text-[11px] text-slate-400 font-medium">Movement states from demo data</span>
         </div>
         <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Available / Staged</span>
@@ -395,7 +395,7 @@ export default function FleetIntelligenceView() {
                       <Clock size={12} /> Engine Hours
                     </span>
                     <div className="font-mono font-bold text-white text-sm mt-0.5">
-                      {selectedVehicle.telemetry.engineHours || 450} hrs
+                      {selectedVehicle.telemetry.engineHours ?? '—'} hrs
                     </div>
                   </div>
                 </div>
@@ -438,7 +438,7 @@ export default function FleetIntelligenceView() {
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-400">Highway Corridor:</span>
                     <span className="text-cyan-300 font-medium">
-                      {selectedVehicle.telemetry.locationName || 'A109 / A104 National Trunk'}
+                      {selectedVehicle.telemetry.locationName || 'Location not reported'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-[11px]">
@@ -463,13 +463,13 @@ export default function FleetIntelligenceView() {
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-400">Certified Driver:</span>
                     <span className="text-slate-200 font-medium">
-                      {selectedVehicle.currentDriver?.name || 'Assigned Transport Crew'}
+                      {selectedVehicle.currentDriver?.name || 'Not assigned'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-400">NTSA Duty Hours:</span>
                     <span className="font-mono text-slate-300">
-                      {selectedVehicle.currentDriver?.dutyHoursToday || 4.5} hrs today (Max 10)
+                      {selectedVehicle.currentDriver?.dutyHoursToday ?? '—'} hrs today
                     </span>
                   </div>
                 </div>

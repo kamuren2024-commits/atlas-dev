@@ -8,12 +8,9 @@ import DeliveryControlTowerView from './views/DeliveryControlTowerView';
 import LogisticsRiskCenterView from './views/LogisticsRiskCenterView';
 import AiOperationsWorkspaceView from './views/AiOperationsWorkspaceView';
 import LogisticsAnalyticsView from './views/LogisticsAnalyticsView';
+import './logistics.css';
 
-interface LogisticsViewProps {
-  onNavigate?: (view: string) => void;
-}
-
-export const LogisticsView: React.FC<LogisticsViewProps> = ({ onNavigate }) => {
+export const LogisticsView: React.FC = () => {
   const [activeView, setActiveView] = useState('command-center');
   const [dataMode, setDataMode] = useState<{ mode: string; label: string; syntheticNotice?: string } | null>(null);
 
@@ -39,7 +36,6 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({ onNavigate }) => {
 
   const handleViewChange = (view: string) => {
     setActiveView(view);
-    if (onNavigate) onNavigate(view);
   };
 
   const renderContent = () => {
@@ -68,11 +64,17 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({ onNavigate }) => {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-shrink-0 border-b border-cyan-500/20 bg-slate-950/70 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300 flex items-center justify-between gap-3">
-        <span>{dataMode?.label || '● SYNTHETIC DEMO'}</span>
+    <div className="logistics-module flex flex-col h-full">
+      <div className="logistics-environment flex-shrink-0 border-b border-cyan-500/20 bg-slate-950/70 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-cyan-300 flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2">
+          <span className="logistics-status-indicator" aria-hidden="true" />
+          DEMO SIMULATION
+          {dataMode?.label && dataMode.label !== 'DEMO SIMULATION' ? (
+            <span className="text-slate-400 font-medium tracking-normal">{dataMode.label}</span>
+          ) : null}
+        </span>
         {dataMode?.syntheticNotice ? (
-          <span className="text-[9px] tracking-[0.12em] text-slate-400 normal-case font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[60%]">
+          <span className="text-xs tracking-normal text-slate-400 normal-case font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[60%]">
             {dataMode.syntheticNotice}
           </span>
         ) : null}

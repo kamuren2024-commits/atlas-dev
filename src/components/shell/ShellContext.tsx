@@ -6,6 +6,8 @@ export type ShellDensity = 'compact' | 'comfortable' | 'focus';
 interface ShellContextValue {
   mobileOpen: boolean;
   setMobileOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
   breakpoint: ShellBreakpoint;
   density: ShellDensity;
   cycleDensity: () => void;
@@ -15,6 +17,7 @@ const ShellContext = createContext<ShellContextValue | undefined>(undefined);
 
 export function ShellProvider({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [density, setDensity] = useState<ShellDensity>('comfortable');
   const [breakpoint, setBreakpoint] = useState<ShellBreakpoint>(() => {
     if (typeof window === 'undefined') return 'desktop';
@@ -48,8 +51,8 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
   };
 
   const value = useMemo<ShellContextValue>(
-    () => ({ mobileOpen, setMobileOpen, breakpoint, density, cycleDensity }),
-    [mobileOpen, breakpoint, density]
+    () => ({ mobileOpen, setMobileOpen, sidebarCollapsed, setSidebarCollapsed, breakpoint, density, cycleDensity }),
+    [mobileOpen, sidebarCollapsed, breakpoint, density]
   );
 
   return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>;

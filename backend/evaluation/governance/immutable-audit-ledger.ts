@@ -65,7 +65,7 @@ export class ImmutableAuditLedgerService {
   private chain: AuditBlock[] = [];
 
   private constructor() {
-    this.seedInitialGenesisChain();
+    // Ledger blocks are written only for authoritative recorded procurement events.
   }
 
   public static getInstance(): ImmutableAuditLedgerService {

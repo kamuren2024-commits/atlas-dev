@@ -14,8 +14,15 @@
  */
 
 import { DatabaseCore } from '../database/db-core';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { isEvaluationOsProductionMode, ProductionModeError } from '../core/config/production-mode';
+
+export class ScoreAlreadySubmittedError extends Error {
+  constructor(tenderId: string, bidderId: string, criterionCode: string, evaluatorId: string) {
+    super(`SCORE_IMMUTABLE: An evaluator score already exists for ${tenderId}/${bidderId}/${criterionCode}/${evaluatorId}; an authorized amendment workflow is not implemented.`);
+    this.name = 'ScoreAlreadySubmittedError';
+  }
+}
 
 export interface EvaluationRowData {
   id: string;
@@ -73,12 +80,21 @@ export class EvaluationDbService {
     return createHash('sha256').update(data).digest('hex');
   }
 
+  private requireTenderId(tenderId: string | undefined, fieldName = 'tenderId'): string {
+    const normalized = (tenderId || '').trim();
+    if (!normalized) {
+      throw new Error(`${fieldName} is required.`);
+    }
+    return normalized;
+  }
+
   // --- 1. TENDER & LIFECYCLE ---
 
-  public async getTender(tenderId: string = 'TND-2026-08') {
+  public async getTender(tenderId: string) {
+    const normalizedTenderId = this.requireTenderId(tenderId);
     const tender = await this.db.get(`
       SELECT * FROM evaluation_tenders WHERE id = ? LIMIT 1
-    `, [tenderId]);
+    `, [normalizedTenderId]);
     return tender || null;
   }
 
@@ -88,18 +104,18 @@ export class EvaluationDbService {
 
   // --- 2. EVALUATION WORKSPACE ROWS (LIVE COMPUTATION) ---
 
-  public async getEvaluationRows(tenderId: string = 'TND-2026-08'): Promise<EvaluationRowData[]> {
-    // Check if tender exists
-    const tender = await this.getTender(tenderId);
-    const activeTenderId = tender ? tender.id : 'TND-2026-08';
+  public async getEvaluationRows(tenderId: string): Promise<EvaluationRowData[]> {
+    const normalizedTenderId = this.requireTenderId(tenderId);
+    const tender = await this.getTender(normalizedTenderId);
+    if (!tender) return [];
 
     // Retrieve bidders, criteria, documents, evidences, and scores
-    const bidders = await this.db.all(`SELECT * FROM evaluation_bidders WHERE tender_id = ? ORDER BY id ASC`, [activeTenderId]);
-    const criteria = await this.db.all(`SELECT * FROM evaluation_criteria WHERE tender_id = ?`, [activeTenderId]);
-    const documents = await this.db.all(`SELECT * FROM evaluation_documents WHERE tender_id = ?`, [activeTenderId]);
-    const evidences = await this.db.all(`SELECT * FROM evaluation_evidences WHERE tender_id = ?`, [activeTenderId]);
-    const scores = await this.db.all(`SELECT * FROM evaluator_scores WHERE tender_id = ?`, [activeTenderId]);
-    const auditBlocks = await this.db.all(`SELECT * FROM evaluation_audit_blocks WHERE tender_id = ? ORDER BY block_index DESC`, [activeTenderId]);
+    const bidders = await this.db.all(`SELECT * FROM evaluation_bidders WHERE tender_id = ? ORDER BY id ASC`, [tenderId]);
+    const criteria = await this.db.all(`SELECT * FROM evaluation_criteria WHERE tender_id = ?`, [tenderId]);
+    const documents = await this.db.all(`SELECT * FROM evaluation_documents WHERE tender_id = ?`, [tenderId]);
+    const evidences = await this.db.all(`SELECT * FROM evaluation_evidences WHERE tender_id = ?`, [tenderId]);
+    const scores = await this.db.all(`SELECT * FROM evaluator_scores WHERE tender_id = ?`, [tenderId]);
+    const auditBlocks = await this.db.all(`SELECT * FROM evaluation_audit_blocks WHERE tender_id = ? ORDER BY block_index DESC`, [tenderId]);
 
     // Build rich, dynamic rows for each bidder + evaluated criterion
     const rows: EvaluationRowData[] = [];
@@ -171,7 +187,7 @@ export class EvaluationDbService {
   // --- 3. SCORE SUBMISSION & VERSIONING (TRANSACTIONAL) ---
 
   public async submitScore(input: {
-    tenderId?: string;
+    tenderId: string;
     bidderId: string;
     criterionCode: string;
     evaluatorId: string;
@@ -181,7 +197,7 @@ export class EvaluationDbService {
     comments?: string;
     actorRole?: string;
   }): Promise<{ success: boolean; scoreId: string; version: number; auditBlockId: string; varianceWarning?: string }> {
-    const tenderId = input.tenderId || 'TND-2026-08';
+    const tenderId = this.requireTenderId(input.tenderId, 'tenderId');
 
     if (!Number.isFinite(input.score) || input.score < 0 || input.score > 100) {
       throw new Error('Score must be a number between 0 and 100.');
@@ -230,56 +246,41 @@ export class EvaluationDbService {
       throw new Error(`SECURITY EXCEPTION: Evaluator ${input.evaluatorId} is RECUSED due to statutory conflict of interest.`);
     }
 
-    // Check existing score
-    const existing = await this.db.get(`
-      SELECT * FROM evaluator_scores 
-      WHERE tender_id = ? AND bidder_id = ? AND criterion_code = ? AND evaluator_id = ?
-    `, [tenderId, input.bidderId, input.criterionCode, input.evaluatorId]);
-
-    const newVersion = existing ? (existing.version + 1) : 1;
-    const scoreId = existing ? existing.id : `SCR-${Date.now().toString().slice(-6)}`;
-    const previousScore = existing ? existing.score : null;
-    const digitalSig = `SIG-RSA256-${input.evaluatorId}-${Date.now()}`;
-
-    // Get previous audit block for chaining
-    const lastBlock = await this.db.get(`
-      SELECT block_hash FROM evaluation_audit_blocks 
-      WHERE tender_id = ? ORDER BY block_index DESC LIMIT 1
-    `, [tenderId]);
-    const previousHash = lastBlock ? lastBlock.block_hash : '0000000000000000000000000000000000000000000000000000000000000000';
-
-    const auditBlockId = `EVT-${Date.now().toString().slice(-5)}`;
+    const scoreId = `SCR-${randomUUID()}`;
+    const auditBlockId = `EVT-${randomUUID()}`;
+    const newVersion = 1;
     const timestamp = new Date().toISOString();
-    const action = existing ? 'CORRECT_EVALUATOR_SCORE' : 'SUBMIT_EVALUATOR_SCORE';
+    const digitalSig = this.calculateSha256(`${input.evaluatorId}:${scoreId}:${input.score}:${timestamp}`);
+    const action = 'SUBMIT_EVALUATOR_SCORE';
     const legalAuthority = 'PPADA 2015 Section 79 & 84; PPADR 2020 Reg 77';
-    const summary = `${action}: Score ${input.score}/100 recorded for Bidder ${input.bidderId} under Criterion ${input.criterionCode} (v${newVersion}) by ${input.evaluatorName}.`;
 
-    const blockHash = this.calculateSha256(`${previousHash}:${auditBlockId}:${tenderId}:${timestamp}:${input.evaluatorId}:${input.score}`);
-
-    // Begin Transaction
     await this.db.beginTransaction();
     try {
+      const existing = await this.db.get(`
+        SELECT id FROM evaluator_scores 
+        WHERE tender_id = ? AND bidder_id = ? AND criterion_code = ? AND evaluator_id = ?
+      `, [tenderId, input.bidderId, input.criterionCode, input.evaluatorId]);
       if (existing) {
-        await this.db.run(`
-          UPDATE evaluator_scores SET
-            score = ?, normalized_score = ?, rationale = ?, comments = ?,
-            version = ?, previous_score = ?, change_reason = ?, digital_signature = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `, [
-          input.score, input.score, input.rationale, input.comments || input.rationale,
-          newVersion, previousScore, 'Official Evaluator Assessment Submission', digitalSig, existing.id
-        ]);
-      } else {
-        await this.db.run(`
-          INSERT INTO evaluator_scores (
-            id, tender_id, bidder_id, criterion_code, evaluator_id, evaluator_name,
-            score, max_score, normalized_score, rationale, comments, version, is_locked, digital_signature
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 100, ?, ?, ?, ?, 1, ?)
-        `, [
-          scoreId, tenderId, input.bidderId, input.criterionCode, input.evaluatorId, input.evaluatorName,
-          input.score, input.score, input.rationale, input.comments || input.rationale, newVersion, digitalSig
-        ]);
+        throw new ScoreAlreadySubmittedError(tenderId, input.bidderId, input.criterionCode, input.evaluatorId);
       }
+
+      const lastBlock = await this.db.get(`
+        SELECT block_hash FROM evaluation_audit_blocks 
+        WHERE tender_id = ? ORDER BY block_index DESC LIMIT 1
+      `, [tenderId]);
+      const previousHash = lastBlock ? lastBlock.block_hash : '0000000000000000000000000000000000000000000000000000000000000000';
+      const summary = `${action}: Score ${input.score}/100 recorded for Bidder ${input.bidderId} under Criterion ${input.criterionCode} (v${newVersion}) by ${input.evaluatorName}.`;
+      const blockHash = this.calculateSha256(`${previousHash}:${auditBlockId}:${tenderId}:${timestamp}:${input.evaluatorId}:${input.score}`);
+
+      await this.db.run(`
+        INSERT INTO evaluator_scores (
+          id, tender_id, bidder_id, criterion_code, evaluator_id, evaluator_name,
+          score, max_score, normalized_score, rationale, comments, version, is_locked, digital_signature
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 100, ?, ?, ?, ?, 1, ?)
+      `, [
+        scoreId, tenderId, input.bidderId, input.criterionCode, input.evaluatorId, input.evaluatorName,
+        input.score, input.score, input.rationale, input.comments || input.rationale, newVersion, digitalSig
+      ]);
 
       // Update bidder average technical score
       const bidderScores = await this.db.all(`
@@ -341,14 +342,15 @@ export class EvaluationDbService {
 
   // --- 4. DOCUMENTS & EVIDENCE ---
 
-  public async getDocuments(tenderId: string = 'TND-2026-08') {
+  public async getDocuments(tenderId: string) {
+    const normalizedTenderId = this.requireTenderId(tenderId);
     return this.db.all(`
       SELECT d.*, b.name as bidder_name 
       FROM evaluation_documents d
       LEFT JOIN evaluation_bidders b ON d.bidder_id = b.id
       WHERE d.tender_id = ?
       ORDER BY d.uploaded_at DESC
-    `, [tenderId]);
+    `, [normalizedTenderId]);
   }
 
   public async getDocumentById(docId: string) {
@@ -372,7 +374,7 @@ export class EvaluationDbService {
   }
 
   public async ingestDocument(input: {
-    tenderId?: string;
+    tenderId: string;
     bidderId: string;
     category: string;
     filename: string;
@@ -381,7 +383,7 @@ export class EvaluationDbService {
     uploaderId: string;
     uploaderName: string;
   }) {
-    const tenderId = input.tenderId || 'TND-2026-08';
+    const tenderId = this.requireTenderId(input.tenderId, 'tenderId');
     const docId = `DOC-${Date.now().toString().slice(-6)}`;
     const hash = this.calculateSha256(input.fileContent);
     const sizeBytes = Buffer.byteLength(input.fileContent, 'utf8');
@@ -448,21 +450,22 @@ export class EvaluationDbService {
 
   // --- 5. COMMITTEE SESSIONS & CONSENSUS ---
 
-  public async getCommitteeSession(tenderId: string = 'TND-2026-08') {
+  public async getCommitteeSession(tenderId: string) {
+    const normalizedTenderId = this.requireTenderId(tenderId);
     return this.db.get(`
       SELECT * FROM committee_sessions WHERE tender_id = ? ORDER BY created_at DESC LIMIT 1
-    `, [tenderId]);
+    `, [normalizedTenderId]);
   }
 
   public async recordConsensus(input: {
-    tenderId?: string;
+    tenderId: string;
     resolutionNumber: string;
     recommendedBidderId: string;
     awardAmount: number;
     chairName: string;
     deliberations: string;
   }) {
-    const tenderId = input.tenderId || 'TND-2026-08';
+    const tenderId = this.requireTenderId(input.tenderId, 'tenderId');
     const sessionId = `SESS-${Date.now().toString().slice(-6)}`;
     const digitalSeal = `SEAL-KETRACO-TEC-${Date.now()}`;
 
@@ -533,25 +536,26 @@ export class EvaluationDbService {
 
   // --- 6. CLARIFICATIONS WORKFLOW ---
 
-  public async getClarifications(tenderId: string = 'TND-2026-08') {
+  public async getClarifications(tenderId: string) {
+    const normalizedTenderId = this.requireTenderId(tenderId);
     return this.db.all(`
       SELECT c.*, b.name as bidder_name 
       FROM evaluation_clarifications c
       LEFT JOIN evaluation_bidders b ON c.bidder_id = b.id
       WHERE c.tender_id = ?
       ORDER BY c.created_at DESC
-    `, [tenderId]);
+    `, [normalizedTenderId]);
   }
 
   public async requestClarification(input: {
-    tenderId?: string;
+    tenderId: string;
     bidderId: string;
     criterionCode: string;
     details: string;
     requestedById: string;
     requestedByName: string;
   }) {
-    const tenderId = input.tenderId || 'TND-2026-08';
+    const tenderId = this.requireTenderId(input.tenderId, 'tenderId');
     const id = `CLR-${Date.now().toString().slice(-6)}`;
     const ref = `CLAR-2026-${Date.now().toString().slice(-4)}`;
 
@@ -598,13 +602,14 @@ export class EvaluationDbService {
 
   // --- 7. AUDIT LEDGER & STATUTORY RECONSTRUCTION ---
 
-  public async getAuditBlocks(tenderId: string = 'TND-2026-08') {
+  public async getAuditBlocks(tenderId: string) {
+    const normalizedTenderId = this.requireTenderId(tenderId);
     return this.db.all(`
       SELECT * FROM evaluation_audit_blocks WHERE tender_id = ? ORDER BY block_index ASC
-    `, [tenderId]);
+    `, [normalizedTenderId]);
   }
 
-  public async verifyLedgerIntegrity(tenderId: string = 'TND-2026-08'): Promise<{
+  public async verifyLedgerIntegrity(tenderId: string): Promise<{
     verified: boolean;
     blockCount: number;
     tamperDetected: boolean;
@@ -640,8 +645,9 @@ export class EvaluationDbService {
     };
   }
 
-  public async reconstructAuditTrail(tenderId: string = 'TND-2026-08') {
-    const tender = await this.getTender(tenderId);
+  public async reconstructAuditTrail(tenderId: string) {
+    const normalizedTenderId = this.requireTenderId(tenderId);
+    const tender = await this.getTender(normalizedTenderId);
     const session = await this.getCommitteeSession(tenderId);
     const bidders = await this.db.all(`SELECT * FROM evaluation_bidders WHERE tender_id = ?`, [tenderId]);
     const scores = await this.db.all(`SELECT * FROM evaluator_scores WHERE tender_id = ? ORDER BY submitted_at ASC`, [tenderId]);
@@ -687,7 +693,8 @@ export class EvaluationDbService {
 
   // --- 8. ENTERPRISE SEARCH ---
 
-  public async searchProcurement(query: string, tenderId: string = 'TND-2026-08') {
+  public async searchProcurement(query: string, tenderId: string) {
+    const normalizedTenderId = this.requireTenderId(tenderId);
     if (!query || !query.trim()) {
       return { bidders: [], documents: [], scores: [], auditBlocks: [] };
     }
@@ -698,23 +705,23 @@ export class EvaluationDbService {
       this.db.all(`
         SELECT * FROM evaluation_bidders 
         WHERE tender_id = ? AND (name LIKE ? OR id LIKE ? OR tax_pin LIKE ? OR registration_number LIKE ?)
-      `, [tenderId, term, term, term, term]),
+      `, [normalizedTenderId, term, term, term, term]),
       this.db.all(`
         SELECT * FROM evaluation_documents 
         WHERE tender_id = ? AND (filename LIKE ? OR id LIKE ? OR extracted_text LIKE ?)
-      `, [tenderId, term, term, term]),
+      `, [normalizedTenderId, term, term, term]),
       this.db.all(`
         SELECT * FROM evaluation_criteria 
         WHERE tender_id = ? AND (name LIKE ? OR code LIKE ? OR description LIKE ?)
-      `, [tenderId, term, term, term]),
+      `, [normalizedTenderId, term, term, term]),
       this.db.all(`
         SELECT * FROM evaluator_scores 
         WHERE tender_id = ? AND (evaluator_name LIKE ? OR criterion_code LIKE ? OR rationale LIKE ?)
-      `, [tenderId, term, term, term]),
+      `, [normalizedTenderId, term, term, term]),
       this.db.all(`
         SELECT * FROM evaluation_audit_blocks 
         WHERE tender_id = ? AND (action LIKE ? OR actor_name LIKE ? OR payload_summary LIKE ? OR block_id LIKE ?)
-      `, [tenderId, term, term, term, term])
+      `, [normalizedTenderId, term, term, term, term])
     ]);
 
     return {
@@ -729,10 +736,11 @@ export class EvaluationDbService {
 
   // --- 9. WORKFLOW TASKS ---
 
-  public async getTasks(tenderId: string = 'TND-2026-08') {
+  public async getTasks(tenderId: string) {
+    const normalizedTenderId = this.requireTenderId(tenderId);
     return this.db.all(`
       SELECT * FROM evaluation_tasks WHERE tender_id = ? ORDER BY due_date ASC
-    `, [tenderId]);
+    `, [normalizedTenderId]);
   }
 
   public async completeTask(taskId: string, actorId: string, actorName: string) {

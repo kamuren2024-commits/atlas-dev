@@ -54,7 +54,7 @@ export default function WarehouseIntelligenceView() {
   );
 
   return (
-    <div className="flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
+    <div className="logistics-workspace flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
       {/* Top Bar */}
       <div className="flex items-center justify-between pb-4 border-b border-slate-800 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -93,9 +93,9 @@ export default function WarehouseIntelligenceView() {
         <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Average Capacity Utilization</span>
           <div className="text-2xl font-bold text-cyan-400 mt-1">
-            {warehouses.length > 0 ? Math.round(warehouses.reduce((a, b) => a + b.stockPercentage, 0) / warehouses.length) : 68}%
+            {warehouses.length > 0 ? `${Math.round(warehouses.reduce((a, b) => a + b.stockPercentage, 0) / warehouses.length)}%` : '—'}
           </div>
-          <span className="text-[11px] text-emerald-400 font-medium">Balanced stock distribution</span>
+          <span className="text-[11px] text-slate-400 font-medium">Across {warehouses.length} reported facilities</span>
         </div>
         <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Storage Footprint</span>
@@ -128,7 +128,7 @@ export default function WarehouseIntelligenceView() {
                 className="bg-transparent border-none text-white focus:outline-none w-full text-xs placeholder:text-slate-500"
               />
             </div>
-            <span className="text-xs text-slate-400">{filtered.length} Warehouses Operational</span>
+            <span className="text-xs text-slate-400">{filtered.length} facilities reported</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-4">
@@ -164,7 +164,7 @@ export default function WarehouseIntelligenceView() {
 
                   <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
                     <span className="text-slate-400">Critical Spare Skus:</span>
-                    <span className="font-bold text-white font-mono">{w.criticalSpareStock || 14} items</span>
+                    <span className="font-bold text-white font-mono">{w.criticalSpareStock ?? '—'} items</span>
                   </div>
                 </div>
               );
@@ -191,7 +191,7 @@ export default function WarehouseIntelligenceView() {
               <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800">
                 <span className="text-[10px] uppercase font-bold text-slate-500">Facility Master Record</span>
                 <div className="font-semibold text-white text-sm mt-0.5">{selectedWarehouse.name}</div>
-                <div className="text-[11px] text-slate-400 mt-1">{selectedWarehouse.address || 'KETRACO High-Voltage Grid Storage Facility'}</div>
+                <div className="text-[11px] text-slate-400 mt-1">{selectedWarehouse.address || 'Address not reported'}</div>
               </div>
 
               <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 space-y-2">
@@ -216,34 +216,16 @@ export default function WarehouseIntelligenceView() {
                 </div>
                 <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800">
                   <span className="text-[10px] uppercase font-bold text-slate-500">Site Superintendent</span>
-                  <div className="font-medium text-slate-200 mt-0.5">{selectedWarehouse.managerName || 'David Omondi, P.E.'}</div>
+                  <div className="font-medium text-slate-200 mt-0.5">{selectedWarehouse.managerName || 'Not reported'}</div>
                 </div>
               </div>
 
               <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 space-y-2">
-                <span className="text-[10px] uppercase font-bold text-slate-500">Strategic Critical Inventory</span>
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-slate-300">400kV Power Transformers:</span>
-                  <span className="font-mono text-emerald-400 font-bold">2 units staged</span>
+                <span className="text-[10px] uppercase font-bold text-slate-500">Reported Facility State</span>
+                <div className="font-semibold text-white">{selectedWarehouse.status.replace(/_/g, ' ')}</div>
+                <div className="text-[11px] text-slate-400">
+                  Critical spare stock: {selectedWarehouse.criticalSpareStock ?? 'Not reported'}
                 </div>
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-slate-300">EHV Glass Insulators:</span>
-                  <span className="font-mono text-cyan-300 font-bold">450 kits available</span>
-                </div>
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-slate-300">ACSR Zebra Conductor Drums:</span>
-                  <span className="font-mono text-slate-200 font-bold">28 drums</span>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-lg bg-cyan-950/30 border border-cyan-500/30 space-y-1">
-                <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-[11px]">
-                  <CheckCircle2 size={14} />
-                  <span>ERP & RFID Synchronization</span>
-                </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Real-time stock reconciliation verified with SAP S/4HANA Supply Chain ledger. Discrepancy rate 0.00%.
-                </p>
               </div>
             </div>
           ) : (

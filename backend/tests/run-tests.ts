@@ -18,6 +18,7 @@ import { AgentHarness } from '../agents/harness/agent-harness';
 import { DigitalTwinService } from '../digital-twin/digital-twin-service';
 import { TimeseriesLineageEngine } from '../digital-twin/timeseries-lineage-engine';
 import { TelemetryQualityEngine } from '../digital-twin/telemetry-quality-engine';
+import { EvaluationDbService } from '../evaluation/evaluation-db-service';
 
 interface TestResult {
   suite: string;
@@ -49,6 +50,14 @@ async function runAll() {
   const db = DatabaseCore.getInstance();
   await db.connect();
   await db.runMigrations();
+
+  console.log('\n[Evaluation OS Isolation]');
+  await test('Evaluation', 'Does not return another tender when the requested tender is unknown', async () => {
+    const rows = await EvaluationDbService.getInstance().getEvaluationRows(`missing-tender-${Date.now()}`);
+    if (rows.length !== 0) {
+      throw new Error('Unknown tender returned evaluation rows from another tender');
+    }
+  });
 
   console.log('\n[1. Database Storage & Schemas]');
   await test('Database', 'Verifies all 12 Phase 02 canonical tables exist', async () => {

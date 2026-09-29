@@ -188,15 +188,19 @@ export default function EvaluationWorkspaceTable({
                 <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
                 <div className="text-sm font-semibold text-slate-200">No evaluation records found</div>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                  No bidders or criteria match "{searchQuery}". Clear your search query to view the full dataset.
+                  {searchQuery
+                    ? `No persisted evaluation records match "${searchQuery}".`
+                    : 'No persisted evaluation records are available for this tender.'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 text-xs font-semibold cursor-pointer hover:bg-cyan-900/50"
-                >
-                  Clear Search Filter
-                </button>
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 text-xs font-semibold cursor-pointer hover:bg-cyan-900/50"
+                  >
+                    Clear Search Filter
+                  </button>
+                )}
               </div>
             ) : (
               <table className="w-full text-left border-collapse text-xs">

@@ -120,7 +120,7 @@ export class EvaluationContractManager {
   private contracts: Map<string, TenderEvaluationContract> = new Map();
 
   private constructor() {
-    this.seedDefaultKetracoContract();
+    // Contracts are created only from an authoritative versioned tender evaluation record.
   }
 
   public static getInstance(): EvaluationContractManager {

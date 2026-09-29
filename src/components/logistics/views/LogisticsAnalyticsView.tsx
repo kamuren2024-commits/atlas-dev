@@ -57,7 +57,7 @@ export default function LogisticsAnalyticsView() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-y-auto space-y-6">
+    <div className="logistics-workspace flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-y-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between pb-4 border-b border-slate-800 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -68,7 +68,7 @@ export default function LogisticsAnalyticsView() {
             <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
               Logistics Performance Analytics & Cost Intelligence
               <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/40 text-cyan-300">
-                Verified Ledger Aggregation
+                DEMO SIMULATION
               </span>
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -107,7 +107,7 @@ export default function LogisticsAnalyticsView() {
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Logistics Expenditure</span>
             <div className="text-2xl font-bold text-white mt-1">KES {(data.kpis.fuelSpendKes / 1000000).toFixed(2)}M</div>
-            <span className="text-[11px] text-emerald-400 font-medium">-4.2% variance to budget</span>
+            <span className="text-[11px] text-slate-400 font-medium">Reported fuel expenditure</span>
           </div>
         </div>
       )}

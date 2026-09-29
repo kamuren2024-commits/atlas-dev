@@ -29,9 +29,10 @@ const LogisticsShell: React.FC<LogisticsShellProps> = ({
   onViewChange,
 }) => {
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="logistics-shell flex flex-col h-full overflow-hidden">
       {/* Logistics sub-navigation tab bar */}
-      <div
+      <nav
+        aria-label="Logistics workspaces"
         className="flex-shrink-0 px-4 py-1.5 border-b flex items-center gap-1 overflow-x-auto"
         style={{
           borderColor: colors.logistics.border,
@@ -48,10 +49,14 @@ const LogisticsShell: React.FC<LogisticsShellProps> = ({
           const isActive = activeView === item.id;
           return (
             <motion.button
+              type="button"
               key={item.id}
               onClick={() => onViewChange(item.id)}
+              aria-current={isActive ? 'page' : undefined}
+              aria-label={item.label}
+              title={item.label}
               whileHover={{ y: -1 }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap cursor-pointer transition-all flex-shrink-0"
+              className="logistics-tab flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap cursor-pointer transition-all flex-shrink-0"
               style={{
                 backgroundColor: isActive ? 'rgba(0, 217, 255, 0.12)' : 'transparent',
                 color: isActive ? colors.logistics.primary : colors.logistics.textMuted,
@@ -63,7 +68,7 @@ const LogisticsShell: React.FC<LogisticsShellProps> = ({
             </motion.button>
           );
         })}
-      </div>
+      </nav>
 
       {/* Content Area */}
       <main className="flex-1 overflow-auto">

@@ -64,7 +64,7 @@ export default function DeliveryControlTowerView() {
           status: 'DELIVERED',
           recipientName: signoffName,
           recipientRole: signoffRole,
-          signoffSignature: `DIGITAL_SIG_${Date.now()}_${signoffName.toUpperCase().replace(/\s+/g, '_')}`,
+          signoffSignature: `DEMO_SIMULATION_SIGNOFF_${Date.now()}_${signoffName.toUpperCase().replace(/\s+/g, '_')}`,
         }),
       });
       const json = await res.json();
@@ -86,7 +86,7 @@ export default function DeliveryControlTowerView() {
   );
 
   return (
-    <div className="flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
+    <div className="logistics-workspace flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between pb-4 border-b border-slate-800 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -97,7 +97,7 @@ export default function DeliveryControlTowerView() {
             <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
               Delivery Control Tower & Electronic Proof of Delivery (e-PoD)
               <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/40 text-emerald-300">
-                SLA Custody Handover
+                DEMO SIMULATION
               </span>
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -127,19 +127,21 @@ export default function DeliveryControlTowerView() {
           <div className="text-2xl font-bold text-emerald-400 mt-1">
             {deliveries.filter(d => d.status === 'DELIVERED').length}
           </div>
-          <span className="text-[11px] text-emerald-400 font-medium">Digital signatures validated</span>
+          <span className="text-[11px] text-slate-400 font-medium">Reported delivery status</span>
         </div>
         <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In Route / Approaching</span>
           <div className="text-2xl font-bold text-cyan-400 mt-1">
             {deliveries.filter(d => d.status === 'IN_TRANSIT').length}
           </div>
-          <span className="text-[11px] text-slate-400">Escort proximity alerts</span>
+          <span className="text-[11px] text-slate-400">Records currently in transit</span>
         </div>
         <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SLA On-Time Rating</span>
-          <div className="text-2xl font-bold text-amber-400 mt-1">94.8%</div>
-          <span className="text-[11px] text-emerald-400 font-medium">+2.1% improvement</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Awaiting Delivery</span>
+          <div className="text-2xl font-bold text-amber-400 mt-1">
+            {deliveries.filter(d => d.status !== 'DELIVERED').length}
+          </div>
+          <span className="text-[11px] text-slate-400">Based on returned delivery states</span>
         </div>
       </div>
 
@@ -233,7 +235,7 @@ export default function DeliveryControlTowerView() {
               <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800">
                 <span className="text-[10px] uppercase font-bold text-slate-500">Target Substation Facility</span>
                 <div className="font-bold text-white text-sm mt-0.5">{selectedDelivery.destinationSubstation}</div>
-                <div className="text-[11px] text-slate-400 mt-1">Origin: {selectedDelivery.originName || 'Embakasi Central Yard'}</div>
+                <div className="text-[11px] text-slate-400 mt-1">Origin: {selectedDelivery.originName || 'Not reported'}</div>
               </div>
 
               <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 space-y-2">
@@ -251,7 +253,7 @@ export default function DeliveryControlTowerView() {
               {signedSuccess && (
                 <div className="p-3 rounded-lg bg-emerald-950/50 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
                   <CheckCircle2 size={16} />
-                  <span>Electronic Proof of Delivery (e-PoD) locked into audit ledger.</span>
+                  <span>Demo e-PoD sign-off submitted to the Logistics service.</span>
                 </div>
               )}
 
@@ -259,7 +261,7 @@ export default function DeliveryControlTowerView() {
                 <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
                     <FileText size={14} />
-                    <span>Electronic Handover Signoff</span>
+                    <span>Demo Handover Signoff</span>
                   </div>
 
                   <div className="space-y-1">
@@ -283,6 +285,9 @@ export default function DeliveryControlTowerView() {
                     />
                   </div>
 
+                  <p className="text-[11px] text-amber-200">
+                    Simulation only. This creates a demo record, not a legal signature.
+                  </p>
                   <button
                     onClick={handleSignoff}
                     disabled={signing || !signoffName}
@@ -295,12 +300,12 @@ export default function DeliveryControlTowerView() {
                 <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-500/30 space-y-2">
                   <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
                     <CheckCircle2 size={14} />
-                    <span>e-PoD Verified & Archived</span>
+                    <span>Delivery marked as complete in the returned record</span>
                   </div>
                   <div className="text-[11px] text-slate-300 space-y-1">
                     <div>Signed By: <span className="text-white font-medium">{selectedDelivery.recipientName}</span></div>
                     <div>Designation: <span className="text-white font-medium">{selectedDelivery.recipientRole}</span></div>
-                    <div>Timestamp: <span className="font-mono text-cyan-300">{selectedDelivery.deliveredAt || '2026-09-18T07:44:00Z'}</span></div>
+                    <div>Timestamp: <span className="font-mono text-cyan-300">{selectedDelivery.deliveredAt || 'Not reported'}</span></div>
                   </div>
                 </div>
               )}

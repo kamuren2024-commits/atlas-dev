@@ -145,7 +145,7 @@ export default function RouteIntelligenceView() {
   );
 
   return (
-    <div className="flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
+    <div className="logistics-workspace flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between pb-4 border-b border-slate-800 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -156,7 +156,7 @@ export default function RouteIntelligenceView() {
             <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
               Transmission Corridor Route Intelligence & Bridge Feasibility
               <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/40 text-cyan-300">
-                Heavy Haul Feasibility Verified
+                DEMO SIMULATION
               </span>
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -216,21 +216,21 @@ export default function RouteIntelligenceView() {
           <div className="text-2xl font-bold text-cyan-400 mt-1">
             {routes.reduce((a, b) => a + (b.distanceKm || 0), 0).toLocaleString()} km
           </div>
-          <span className="text-[11px] text-emerald-400 font-medium">GPS polygon surveyed</span>
+          <span className="text-[11px] text-slate-400 font-medium">Distance summed from reported routes</span>
         </div>
         <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Critical Heavy-Haul Bridges</span>
           <div className="text-2xl font-bold text-amber-400 mt-1">
             {routes.reduce((a, b) => a + (b.bridgesCount || 0), 0)}
           </div>
-          <span className="text-[11px] text-slate-400">KeNHA axle permits issued</span>
+          <span className="text-[11px] text-slate-400">Bridge records across returned routes</span>
         </div>
         <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Routes with Risk Advisories</span>
           <div className="text-2xl font-bold text-rose-400 mt-1">
             {routes.filter(r => r.riskRating === 'HIGH' || r.riskRating === 'CRITICAL').length}
           </div>
-          <span className="text-[11px] text-rose-400/80 font-medium">Escorts actively enforced</span>
+          <span className="text-[11px] text-slate-400 font-medium">Based on route risk ratings</span>
         </div>
       </div>
 
@@ -584,7 +584,7 @@ export default function RouteIntelligenceView() {
                 <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-[10px] uppercase font-bold text-slate-500">Estimated Fuel Savings</span>
                   <div className="font-mono text-xl font-bold text-emerald-400 mt-1">
-                    {optResult.metrics?.fuelSavedPct || 14.8}%
+                    {optResult.metrics?.fuelSavedPct ?? 'Not reported'}{optResult.metrics?.fuelSavedPct != null ? '%' : ''}
                   </div>
                 </div>
                 <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
@@ -658,4 +658,3 @@ export default function RouteIntelligenceView() {
     </div>
   );
 }
-

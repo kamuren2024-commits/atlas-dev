@@ -49,7 +49,7 @@ export class AuthorizationAndConflictManager {
   private conflicts: Map<string, ConflictDeclarationRecord[]> = new Map(); // tenderId -> declarations
 
   private constructor() {
-    this.seedDefaultConflicts();
+    // Conflict declarations are authoritative only when they are persisted for an actual tender.
   }
 
   public static getInstance(): AuthorizationAndConflictManager {
@@ -57,59 +57,6 @@ export class AuthorizationAndConflictManager {
       AuthorizationAndConflictManager.instance = new AuthorizationAndConflictManager();
     }
     return AuthorizationAndConflictManager.instance;
-  }
-
-  private seedDefaultConflicts() {
-    const tenderId = 'TND-2026-08';
-    const sampleDeclarations: ConflictDeclarationRecord[] = [
-      {
-        declarationId: 'CONF-DECL-2026-001',
-        actorId: 'USER-01',
-        actorName: 'Eng. David Kiprono (Committee Chair)',
-        tenderId,
-        evaluationId: 'EVAL-TND-2026-08',
-        declarationType: 'NONE',
-        disclosureDetails: 'No pecuniary, familial, or professional association with any bidding entity.',
-        declaredAt: '2026-08-02T09:15:00Z',
-        status: 'CLEARED',
-        approvingAuthority: 'Dr. John Mutua, Managing Director',
-        resolutionDetails: 'Cleared to preside as Chair of Evaluation Committee.',
-        resolutionTimestamp: '2026-08-03T08:00:00Z',
-        digitalSignatureHash: 'sha256-d41d8cd98f00b204e9800998ecf8427e1b'
-      },
-      {
-        declarationId: 'CONF-DECL-2026-002',
-        actorId: 'USER-04',
-        actorName: 'Adv. Brenda Chebet (Legal Member)',
-        tenderId,
-        evaluationId: 'EVAL-TND-2026-08',
-        declarationType: 'NONE',
-        disclosureDetails: 'Sole legal counsel for KETRACO; no conflict of interest.',
-        declaredAt: '2026-08-02T14:00:00Z',
-        status: 'CLEARED',
-        approvingAuthority: 'Dr. John Mutua, Managing Director',
-        resolutionDetails: 'Cleared to evaluate preliminary and compliance schedules.',
-        resolutionTimestamp: '2026-08-03T08:00:00Z',
-        digitalSignatureHash: 'sha256-5eb63bbbe01eeed093cb22bb8f5acdc3'
-      },
-      {
-        declarationId: 'CONF-DECL-2026-003',
-        actorId: 'USER-RECUSED-99',
-        actorName: 'Eng. Peter Karanja (Original Technical Member)',
-        tenderId,
-        evaluationId: 'EVAL-TND-2026-08',
-        declarationType: 'PREVIOUS_EMPLOYMENT',
-        disclosureDetails: 'Previously served as technical advisor to Shanghai Grid Metal Corp subsidiary in 2024.',
-        declaredAt: '2026-08-01T11:00:00Z',
-        status: 'RECUSED',
-        approvingAuthority: 'Dr. John Mutua, Managing Director',
-        resolutionDetails: 'Formal recusal ordered under PPADA Section 66(2). Replaced by Eng. Patrick Ochieng.',
-        resolutionTimestamp: '2026-08-01T16:00:00Z',
-        digitalSignatureHash: 'sha256-78e731027d8fd50ed642340b7c9a63b3'
-      }
-    ];
-
-    this.conflicts.set(tenderId, sampleDeclarations);
   }
 
   public getDeclarationsForTender(tenderId: string): ConflictDeclarationRecord[] {

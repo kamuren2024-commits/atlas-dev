@@ -78,20 +78,32 @@ export default function GridHeader({
         {/* Data provenance state */}
         <button 
           onClick={onToggleSimulation}
-          title="Toggle the illustrative simulation indicator; live SCADA is not connected"
+          title="Operational data provenance state. No live SCADA or KETRACO telemetry feed is connected in this demonstration."
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border transition-all cursor-pointer ${
-            dataFreshness === 'SIMULATION' || dataFreshness === 'REFERENCE'
+            dataFreshness === 'OPERATIONAL_SIMULATION' || dataFreshness === 'VERIFIED_PUBLIC' || dataFreshness === 'REFERENCE' || dataFreshness === 'SIMULATION'
               ? 'bg-amber-950/60 text-amber-300 border-amber-500/40'
-              : 'bg-slate-900 text-slate-300 border-slate-600'
+              : dataFreshness === 'VERIFIED_LIVE'
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+                : dataFreshness === 'INTEGRATION_PENDING'
+                  ? 'bg-sky-950/60 text-sky-300 border-sky-500/40'
+                  : 'bg-slate-900 text-slate-300 border-slate-600'
           }`}
         >
-          <span className={`w-2 h-2 rounded-full ${dataFreshness === 'SIMULATION' || dataFreshness === 'REFERENCE' ? 'bg-amber-400' : 'bg-slate-400'}`} />
+          <span className={`w-2 h-2 rounded-full ${dataFreshness === 'VERIFIED_LIVE' ? 'bg-emerald-400' : dataFreshness === 'VERIFIED_PUBLIC' || dataFreshness === 'OPERATIONAL_SIMULATION' || dataFreshness === 'REFERENCE' || dataFreshness === 'SIMULATION' ? 'bg-amber-400' : dataFreshness === 'INTEGRATION_PENDING' ? 'bg-sky-400' : 'bg-slate-400'}`} />
           <span>
-            {dataFreshness === 'REFERENCE'
-              ? 'KETRACO REFERENCE'
-              : dataFreshness === 'SIMULATION'
-                ? 'SIMULATED REFERENCE'
-                : 'LIVE FEED NOT CONNECTED'}
+            {dataFreshness === 'VERIFIED_LIVE'
+              ? 'VERIFIED_LIVE'
+              : dataFreshness === 'VERIFIED_PUBLIC'
+                ? 'VERIFIED_PUBLIC'
+                : dataFreshness === 'OPERATIONAL_SIMULATION'
+                  ? 'OPERATIONAL_SIMULATION'
+                  : dataFreshness === 'INTEGRATION_PENDING'
+                    ? 'INTEGRATION_PENDING'
+                    : dataFreshness === 'REFERENCE'
+                      ? 'VERIFIED_PUBLIC'
+                      : dataFreshness === 'SIMULATION'
+                        ? 'OPERATIONAL_SIMULATION'
+                        : 'DATA SOURCE UNAVAILABLE'}
           </span>
         </button>
       </div>

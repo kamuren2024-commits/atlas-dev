@@ -46,3 +46,12 @@
 
 #### Audit correction
 Entry 001 is a historical baseline. Its claims that the incident, delivery, risk, analytics, entity, AI, workflow, and non-command-center UI modules were missing are superseded by the current implementation: those routes/views now exist, but presence alone does not establish production readiness or data correctness.
+
+### Entry 003: Logistics Submodule Navigation Recovery
+- **Timestamp**: 2026-09-28
+- **Action**: Traced the blank-workspace transition from Logistics tabs to the Atlas shell.
+- **Finding**: `LogisticsView` forwarded each selected Logistics tab ID to the parent `App` navigation handler. The parent treated IDs such as `fleet`, `shipments`, and `analytics` as top-level modules; because those IDs have no top-level render branches, selecting a Logistics tab unmounted Logistics and left the workspace empty.
+- **Fix**: Kept submodule selection inside `LogisticsView` and removed the parent-module callback. The existing views, API-backed dataset, synthetic provider, and production API providers were not replaced.
+- **Baseline comparison**: The Logistics source in `8cf32fd` matches the pre-fix implementation; that comparison identifies the inherited navigation wiring but does not independently prove a browser-verified known-good release.
+- **Verification**: `npm.cmd run lint` passed; `npm.cmd run test:logistics-security` passed (1/1). `git diff --check` passed.
+- **Remaining verification**: The local browser remained at the authenticated-access screen. No credentials were supplied, so the authenticated submodule walkthrough, data rendering, and interactions were not browser-verified. The complete presentation-readiness acceptance gate remains pending that walkthrough.

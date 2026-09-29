@@ -48,7 +48,7 @@ export interface EvaluationAuditEvent {
   evidence: string;
   criterion: string;
   legalBasis: string;
-  status: 'COMPLIANT' | 'FLAGGED' | 'RESOLVED';
+  status: 'COMPLIANT' | 'FLAGGED' | 'RESOLVED' | 'UNVERIFIED';
 }
 
 export interface ActiveTenderContext {

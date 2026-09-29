@@ -28,7 +28,7 @@ export class EvaluationReportingEngine {
     return EvaluationReportingEngine.instance;
   }
 
-  public async generateReport(reportType: string, tenderId: string = 'TND-2026-08'): Promise<{
+  public async generateReport(reportType: string, tenderId: string): Promise<{
     title: string;
     reportType: string;
     procurementReference: string;
@@ -38,6 +38,9 @@ export class EvaluationReportingEngine {
     content: any;
     markdownText: string;
   }> {
+    if (!tenderId || !tenderId.trim()) {
+      throw new Error('tenderId is required for report generation.');
+    }
     const tender = await this.dbService.getTender(tenderId);
     const rows = await this.dbService.getEvaluationRows(tenderId);
     const session = await this.dbService.getCommitteeSession(tenderId);

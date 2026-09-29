@@ -13,7 +13,6 @@ import { useEvaluationData } from './useEvaluationData';
 
 // Sub-components from existing enterprise-evaluation engine preserved for deep inspection
 import { EvidenceGraph } from '../enterprise-evaluation/EvidenceGraph';
-import { RuleEngineView } from '../enterprise-evaluation/RuleEngineView';
 import { AuditLogView } from '../enterprise-evaluation/AuditLogView';
 import { X, FileText, Download, CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
 
@@ -29,7 +28,7 @@ export default function EvaluationOSDashboard({
   onSelectContextTab,
   activeContextTab = 'evaluation-os',
   selectedTender,
-  selectedEvaluationId = 'EVAL-2026-0873',
+  selectedEvaluationId = '',
   onSelectEvaluationId
 }: EvaluationOSDashboardProps) {
   // Real data integration via useEvaluationData hook
@@ -59,8 +58,7 @@ export default function EvaluationOSDashboard({
     evaluationIdOverride: selectedEvaluationId
   });
 
-  const [currentStageNumber, setCurrentStageNumber] = useState<number>(5);
-  const [selectedRowId, setSelectedRowId] = useState<string>('ROW-001');
+  const [selectedRowId, setSelectedRowId] = useState<string>('');
 
   // Interactive Inspection Modals
   const [activeSpecializedModal, setActiveSpecializedModal] = useState<
@@ -71,6 +69,7 @@ export default function EvaluationOSDashboard({
   const [selectedReportType, setSelectedReportType] = useState<string>('scm08');
   const [reportLoading, setReportLoading] = useState<boolean>(false);
   const [reportData, setReportData] = useState<any>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   // Security enforcement state
   const [unauthorizedModal, setUnauthorizedModal] = useState<{
@@ -100,11 +99,13 @@ export default function EvaluationOSDashboard({
   const handleExportReport = async () => {
     setActiveSpecializedModal('report');
     setReportLoading(true);
+    setReportError(null);
+    setReportData(null);
     try {
       const data = await generateReport('scm08');
       setReportData(data);
     } catch (e) {
-      console.warn('Report fetch notice:', e);
+      setReportError(e instanceof Error ? e.message : 'Report request failed.');
     } finally {
       setReportLoading(false);
     }
@@ -113,11 +114,13 @@ export default function EvaluationOSDashboard({
   const handleReportTypeChange = async (type: string) => {
     setSelectedReportType(type);
     setReportLoading(true);
+    setReportError(null);
+    setReportData(null);
     try {
       const data = await generateReport(type);
       setReportData(data);
     } catch (e) {
-      console.warn('Report fetch notice:', e);
+      setReportError(e instanceof Error ? e.message : 'Report request failed.');
     } finally {
       setReportLoading(false);
     }
@@ -135,7 +138,7 @@ export default function EvaluationOSDashboard({
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    setExportNotice(`Report [${reportData.title || selectedReportType.toUpperCase()}] downloaded with SHA-256 digital signature (${reportData.digitalSignature?.slice(0, 24)}...).`);
+    setExportNotice(`Report downloaded: ${reportData.title || selectedReportType.toUpperCase()}.`);
     setActiveSpecializedModal(null);
     setTimeout(() => {
       setExportNotice(null);
@@ -181,9 +184,8 @@ export default function EvaluationOSDashboard({
         {/* Left Panel: Evaluation Lifecycle (3 cols on lg) */}
         <div className="lg:col-span-3 xl:col-span-3 flex flex-col min-h-[480px]">
           <EvaluationLifecyclePanel
-            currentStageNumber={currentStageNumber}
+            currentStageNumber={0}
             stages={stages}
-            onSelectStage={(num) => setCurrentStageNumber(num)}
           />
         </div>
 
@@ -303,27 +305,12 @@ export default function EvaluationOSDashboard({
                   <div className="p-4 rounded-xl bg-cyan-950/20 border border-cyan-500/30 text-xs text-slate-300 space-y-2">
                     <h4 className="font-bold text-cyan-300 uppercase font-mono text-sm flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-cyan-400" />
-                      Autonomous Technical Evaluation Trace
+                      AI Evidence Analysis
                     </h4>
                     <p className="leading-relaxed">
-                      Agent <strong>PPADA Section 79 Evaluation Agent</strong> extracted 42 requirements from the Tender Document and mapped them against <strong>DOC-2026-001 ({selectedRow.bidderName})</strong>.
+                      No persisted, source-linked AI analysis is available for this evaluation. AI output must not be treated as evidence, compliance, or a score.
                     </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 font-mono text-[11px]">
-                      <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
-                        <span className="text-slate-400 block">Cosine Similarity:</span>
-                        <span className="text-cyan-400 font-bold">0.962</span>
-                      </div>
-                      <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
-                        <span className="text-slate-400 block">OCR Character Accuracy:</span>
-                        <span className="text-emerald-400 font-bold">99.8%</span>
-                      </div>
-                      <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
-                        <span className="text-slate-400 block">Collusion Risk Score:</span>
-                        <span className="text-emerald-400 font-bold">0.02 (Minimal)</span>
-                      </div>
-                    </div>
                   </div>
-                  <RuleEngineView />
                 </div>
               )}
 
@@ -360,7 +347,11 @@ export default function EvaluationOSDashboard({
                   {reportLoading ? (
                     <div className="p-12 text-center text-slate-400 space-y-2">
                       <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
-                      <p className="font-mono text-xs">Generating statutory report & computing cryptographic seals...</p>
+                      <p className="font-mono text-xs">Requesting report from the evaluation service...</p>
+                    </div>
+                  ) : reportError ? (
+                    <div role="alert" className="p-4 rounded-xl bg-rose-950/30 border border-rose-500/40 text-sm text-rose-200">
+                      {reportError}
                     </div>
                   ) : reportData ? (
                     <div className="space-y-4">
@@ -378,8 +369,8 @@ export default function EvaluationOSDashboard({
                           </div>
                         </div>
                         <div className="text-right">
-                          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded">
-                            DIGITALLY SEALED
+                          <span className="text-[10px] font-mono text-slate-300 bg-slate-800 border border-slate-700 px-2 py-0.5 rounded">
+                          REPORT RESPONSE
                           </span>
                           <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate max-w-[220px]" title={reportData.digitalSignature}>
                             {reportData.digitalSignature?.slice(0, 28)}...
@@ -411,7 +402,7 @@ export default function EvaluationOSDashboard({
                             className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold flex items-center gap-2 cursor-pointer shadow-[0_0_12px_rgba(0,225,255,0.3)] text-xs"
                           >
                             <Download className="w-4 h-4" />
-                            <span>Download Certified Document (.md)</span>
+                            <span>Download Report (.md)</span>
                           </button>
                         </div>
                       </div>

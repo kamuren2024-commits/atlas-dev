@@ -49,6 +49,7 @@ import GlobalSidebar from './components/shell/GlobalSidebar';
 import MinimalPageHero from './components/shell/MinimalPageHero';
 import TransparentFooter from './components/shell/TransparentFooter';
 import AtlasInspector from './components/shell/AtlasInspector';
+import EvaluationOSModuleBoundary from './components/ketraco/tender/evaluation-os/EvaluationOSModuleBoundary';
 import type { ShellNavItem } from './components/shell/types';
 
 // Static ambient texture for shell depth; it does not represent live data.
@@ -945,7 +946,9 @@ function AppInner() {
                   transition={{ duration: 0.15 }}
                   className="flex-1 flex flex-col overflow-hidden"
                 >
-                  <TenderStudio onAskCopilot={handleTriggerCopilot} />
+                  <EvaluationOSModuleBoundary>
+                    <TenderStudio onAskCopilot={handleTriggerCopilot} />
+                  </EvaluationOSModuleBoundary>
                 </motion.div>
               )}
 
@@ -1010,7 +1013,7 @@ function AppInner() {
                   transition={{ duration: 0.15 }}
                   className="flex-1 flex flex-col overflow-hidden"
                 >
-                  <LogisticsView onNavigate={(view) => setActiveModule(view as any)} />
+                  <LogisticsView />
                 </motion.div>
               )}
 

@@ -136,6 +136,7 @@ export const CommandCenter: React.FC = () => {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [liveClock, setLiveClock] = useState<string>('');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [selectedException, setSelectedException] = useState<any | null>(null);
@@ -154,18 +155,20 @@ export const CommandCenter: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch real data from backend
+  // Fetch the current Logistics snapshot.
   const fetchOverview = useCallback(async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
     try {
       const res = await fetch('/api/logistics/overview');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      if (json.ok && json.data) {
-        setData(json.data);
-      }
+      if (!json.ok || !json.data) throw new Error(json.error || 'The Logistics overview returned no data.');
+      setData(json.data);
+      setFetchError(null);
     } catch (err) {
-      console.warn('[CommandCenter] Failed to fetch overview, using fallback:', err);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setFetchError(`Unable to load the Logistics overview: ${message}`);
+      console.warn('[CommandCenter] Failed to fetch overview:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -218,147 +221,31 @@ export const CommandCenter: React.FC = () => {
     }
   };
 
-  // Resolve / Apply AI Recommendation
-  const handleApplyRecommendation = (rec: string, title: string) => {
-    setActionSuccess(`Executing AI Directive: "${rec.slice(0, 45)}..."`);
-    setSelectedException(null);
-    setTimeout(() => setActionSuccess(null), 3500);
-  };
+  if (!data) {
+    return (
+      <main className="logistics-workspace flex min-h-full flex-col items-center justify-center gap-4 p-8 text-center">
+        <div role={fetchError ? 'alert' : 'status'} className="max-w-xl rounded-xl border border-slate-700/70 bg-slate-900/70 p-6 shadow-xl">
+          <h2 className="text-lg font-semibold text-white">
+            {fetchError ? 'Command Center data unavailable' : 'Loading operational snapshot'}
+          </h2>
+          <p className="mt-2 text-sm text-slate-300">
+            {fetchError || 'Waiting for the Logistics overview service. No sample telemetry is shown.'}
+          </p>
+          {fetchError && (
+            <button
+              type="button"
+              onClick={() => void fetchOverview(false)}
+              className="mt-4 rounded-lg border border-cyan-400/40 bg-cyan-900/30 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-800/40"
+            >
+              Retry overview
+            </button>
+          )}
+        </div>
+      </main>
+    );
+  }
 
-  // Safe fallback if still initializing
-  const kpis = data?.kpis || {
-    fleet: { label: 'Fleet', total: 87, moving: 61, available: 14, maintenance: 7, offline: 5, availabilityPct: 84.5, trend: '+6% vs last week' },
-    missions: { label: 'Active Missions', total: 23, critical: 4, delayed: 3, atRisk: 2, trend: '+12% MoM' },
-    cargo: { label: 'Active Cargo', shipmentsInTransit: 56, highPriority: 12, valueKes: '4.2B' },
-    warehouses: { label: 'Warehouses', total: 6, operational: 4, lowStock: 2 },
-    projects: { label: 'Projects', total: 27, nearMilestone: 3 },
-    weather: { location: 'Nairobi', tempC: 24, condition: 'Partly Cloudy', wind: '12 km/h', humidity: '68%', visibility: '10 km' }
-  };
-
-  const fleetStatus = data?.fleetStatus || {
-    total: 87, moving: 61, movingPct: 70, available: 14, availablePct: 16, maintenance: 7, maintenancePct: 8, offline: 5, offlinePct: 6
-  };
-
-  const recentMissions = data?.recentMissions || [
-    { id: 'LM-2026-00942', rawId: 'msn-942', description: 'Transformer accessories', status: 'En Route', eta: '16:24', priority: 'Critical' },
-    { id: 'LM-2026-00941', rawId: 'msn-941', description: 'Line hardware', status: 'On Site', eta: '18:03', priority: 'High' },
-    { id: 'LM-2026-00940', rawId: 'msn-940', description: 'Conductor reels', status: 'Delayed', eta: '17:45', priority: 'High' },
-    { id: 'LM-2026-00939', rawId: 'msn-939', description: 'Tower materials', status: 'En Route', eta: '20:12', priority: 'Medium' },
-    { id: 'LM-2026-00938', rawId: 'msn-938', description: 'Substation equipment', status: 'Loading', eta: '15:20', priority: 'Medium' },
-    { id: 'LM-2026-00937', rawId: 'msn-937', description: 'Fuel delivery', status: 'Completed', eta: '13:10', priority: 'Low' }
-  ];
-
-  const rawFuel = data?.fuelIntelligence;
-  const fuelIntelligence = {
-    totalFuelIssuedL: rawFuel?.totalFuelIssuedL ?? rawFuel?.totalIssuedL ?? 28450,
-    totalIssuedTrend: rawFuel?.totalIssuedTrend ?? '+12% vs last week',
-    actualConsumptionL: rawFuel?.actualConsumptionL ?? 26320,
-    actualConsumptionTrend: rawFuel?.actualConsumptionTrend ?? '+8% vs expected',
-    varianceL: rawFuel?.varianceL ?? -2130,
-    variancePct: rawFuel?.variancePct ?? -7.5,
-    history: rawFuel?.history && rawFuel.history.length > 0 ? rawFuel.history : [
-      { day: 'Apr 17', expected: 3800, actual: 3600 },
-      { day: 'Apr 18', expected: 4100, actual: 3950 },
-      { day: 'Apr 19', expected: 3900, actual: 3700 },
-      { day: 'Apr 20', expected: 4200, actual: 3850 },
-      { day: 'Apr 21', expected: 4000, actual: 3650 },
-      { day: 'Apr 22', expected: 4300, actual: 3750 },
-      { day: 'Apr 23', expected: 4150, actual: 3820 },
-    ]
-  };
-
-  const warehouses = data?.warehouseOverview || [
-    { name: 'Apex (Nairobi)', stockPercentage: 78, itemsCount: 12430, status: 'OPERATIONAL', alert: false },
-    { name: 'Nakuru', stockPercentage: 42, itemsCount: 4210, status: 'LOW_STOCK', alert: true },
-    { name: 'Eldoret', stockPercentage: 67, itemsCount: 8950, status: 'OPERATIONAL', alert: false },
-    { name: 'Mombasa', stockPercentage: 33, itemsCount: 2110, status: 'LOW_STOCK', alert: true },
-    { name: 'Isiolo', stockPercentage: 56, itemsCount: 6740, status: 'OPERATIONAL', alert: false },
-    { name: 'Kisumu', stockPercentage: 61, itemsCount: 7220, status: 'OPERATIONAL', alert: false }
-  ];
-
-  const projectProgress = data?.projectProgress || [
-    { name: 'Isinya 400/220kV', progressPct: 78, status: 'On track' },
-    { name: 'Turkwel 400kV', progressPct: 65, status: 'At risk' },
-    { name: 'Tana River', progressPct: 42, status: 'Delayed' },
-    { name: 'Meru 220kV', progressPct: 91, status: 'On track' },
-    { name: 'Embu 220kV', progressPct: 58, status: 'On track' },
-    { name: 'Kisii 220kV', progressPct: 33, status: 'At risk' }
-  ];
-
-  const exceptions = data?.aiOperationsFeed || [
-    {
-      id: 'exc-01', code: 'EXC-2026-001', category: 'DELAY', severity: 'CRITICAL',
-      title: 'Transformer movement delayed',
-      message: 'Isinya Substation · ETA +46 min due to Escort Permit check',
-      entityType: 'MISSION', entityId: 'msn-942', entityName: 'KET-042 / LM-2026-00942',
-      variance: '+46m delay', probabilityPct: 94,
-      aiRecommendation: 'Authorize Mai Mahiu bypass clearance and notify Isinya crane standby crew.',
-      timeAgo: '12m ago'
-    },
-    {
-      id: 'exc-02', code: 'EXC-2026-002', category: 'FUEL_ANOMALY', severity: 'HIGH',
-      title: 'Vehicle KET-017 abnormal fuel consumption',
-      message: '13.9 L/100km (expected 8.4) · Possible mechanical issue',
-      entityType: 'VEHICLE', entityId: 'veh-017', entityName: 'KET-017 (Actros 3340)',
-      variance: '+65% consumption', probabilityPct: 88,
-      aiRecommendation: 'Instruct driver to check turbo manifold pressure at Nyahururu station.',
-      timeAgo: '18m ago'
-    },
-    {
-      id: 'exc-03', code: 'EXC-2026-003', category: 'COMPLIANCE', severity: 'HIGH',
-      title: 'Crane certification expires in 9 days',
-      message: 'KET-006 · Heavy Equipment statutory inspection due',
-      entityType: 'EQUIPMENT', entityId: 'he-01', entityName: 'KET-006 (Liebherr Crane)',
-      variance: '9 days remaining', probabilityPct: 95,
-      aiRecommendation: 'Schedule DOSHS third-party certification inspector before September 24.',
-      timeAgo: '26m ago'
-    },
-    {
-      id: 'exc-04', code: 'EXC-2026-004', category: 'INVENTORY_SHORTAGE', severity: 'MEDIUM',
-      title: 'Regional store stock below requirement',
-      message: 'Nakuru Regional Store · 42% of required minimum',
-      entityType: 'WAREHOUSE', entityId: 'wh-02', entityName: 'Nakuru Regional Store',
-      variance: '-18% below buffer', probabilityPct: 79,
-      aiRecommendation: 'Initiate stock transfer of 150 suspension insulator sets from Apex Nairobi.',
-      timeAgo: '34m ago'
-    },
-    {
-      id: 'exc-05', code: 'EXC-2026-005', category: 'DUTY_LIMIT', severity: 'MEDIUM',
-      title: 'Driver approaching duty-time threshold',
-      message: 'KET-031 · 4h 12m continuous driving',
-      entityType: 'DRIVER', entityId: 'drv-03', entityName: 'James Mwangi (KET-031)',
-      variance: '48 min to limit', probabilityPct: 82,
-      aiRecommendation: 'Require mandatory 45-minute rest break before proceeding with evening dispatch.',
-      timeAgo: '42m ago'
-    },
-    {
-      id: 'exc-06', code: 'EXC-2026-006', category: 'UTILIZATION', severity: 'LOW',
-      title: 'Vehicle utilization below target',
-      message: 'KET-019 · 36% utilization against 70% benchmark',
-      entityType: 'VEHICLE', entityId: 'veh-019', entityName: 'KET-019 (Isuzu FSR)',
-      variance: '-34% utilization', probabilityPct: 71,
-      aiRecommendation: 'Assign vehicle to Eldoret-Kitale feeder line maintenance run tomorrow.',
-      timeAgo: '1h ago'
-    },
-    {
-      id: 'exc-07', code: 'EXC-2026-007', category: 'ROUTE_HAZARD', severity: 'INFO',
-      title: 'Route re-optimized due to weather',
-      message: 'KET-042 · New ETA 16:24 via Escarpment bypass',
-      entityType: 'ROUTE', entityId: 'rt-01', entityName: 'Corridor A104',
-      variance: '-12 min recovered', probabilityPct: 91,
-      aiRecommendation: 'Route telemetry synchronized with KeNHA flood alert system.',
-      timeAgo: '1h ago'
-    }
-  ];
-
-  const liveEvents = data?.liveEvents || [
-    { id: '1', type: 'status_changed', severity: 'INFO', message: 'KET-031 arrived at loading bay (Apex Warehouse · 14:32)', timestamp: '14:32' },
-    { id: '2', type: 'dispatched', severity: 'INFO', message: 'Mission LM-2026-00941 dispatched (Nakuru → Nyahururu · 14:18)', timestamp: '14:18' },
-    { id: '3', type: 'alert', severity: 'WARNING', message: 'Weather alert - heavy rain (Nakuru County · 13:55)', timestamp: '13:55' },
-    { id: '4', type: 'maintenance', severity: 'WARNING', message: 'Maintenance due in 1,284 km (KET-042 · 13:32)', timestamp: '13:32' },
-    { id: '5', type: 'fuel', severity: 'INFO', message: 'Fuel anomaly resolved (KET-017 · 12:47)', timestamp: '12:47' },
-    { id: '6', type: 'delivered', severity: 'INFO', message: 'Cargo delivered (Isinya Substation · 11:26)', timestamp: '11:26' },
-  ];
+  const { kpis, fleetStatus, recentMissions, fuelIntelligence, warehouseOverview: warehouses, projectProgress, aiOperationsFeed: exceptions, liveEvents } = data;
 
   const pieData = [
     { name: 'Moving', value: fleetStatus.moving, color: '#3b82f6' },
@@ -368,7 +255,7 @@ export const CommandCenter: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#070B14] text-slate-100 font-sans pb-16">
+    <div className="logistics-workspace logistics-command-center flex flex-col min-h-screen bg-[#070B14] text-slate-100 font-sans pb-16">
       {/* Toast Notification */}
       <AnimatePresence>
         {actionSuccess && (
@@ -404,7 +291,7 @@ export const CommandCenter: React.FC = () => {
                 ) : (
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wide uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                    LIVE TELEMETRY
+                    {data.simulationMode ? 'DEMO SIMULATION' : 'OPERATIONAL DATA'}
                   </span>
                 )}
 
@@ -413,7 +300,7 @@ export const CommandCenter: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Real-time insights · Smarter decisions · Greater impact
+                Logistics operational overview · Data supplied by the Logistics service
               </p>
             </div>
           </div>
@@ -422,7 +309,7 @@ export const CommandCenter: React.FC = () => {
             {/* Clock */}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs font-mono text-slate-300">
               <Clock size={13} className="text-cyan-400" />
-              <span>{liveClock || '14:35:22 EAT'}</span>
+              <span>{liveClock || '--:--:-- EAT'}</span>
             </div>
 
             {/* Simulation Controls */}
@@ -1005,7 +892,7 @@ export const CommandCenter: React.FC = () => {
         <div className="p-3.5 rounded-xl bg-[#090E1B] border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2 flex-shrink-0">
             <Radio size={14} className="text-cyan-400 animate-pulse" />
-            <span className="font-bold uppercase tracking-wider text-slate-300 text-[11px]">Live Events Stream:</span>
+            <span className="font-bold uppercase tracking-wider text-slate-300 text-[11px]">Recent Logistics Events:</span>
           </div>
 
           <div className="flex items-center gap-3 overflow-x-auto py-1 text-slate-400 flex-1">
@@ -1015,10 +902,13 @@ export const CommandCenter: React.FC = () => {
                 <span className="text-slate-200">{ev.message}</span>
               </div>
             ))}
+            {liveEvents.length === 0 && (
+              <span className="text-slate-400">No recent events reported.</span>
+            )}
           </div>
 
-          <div className="text-[10px] text-slate-500 font-mono flex-shrink-0">
-            Audit Hash: SHA-256 Verified
+          <div className="text-[11px] text-slate-400 font-mono flex-shrink-0">
+            Snapshot: {new Date(data.timestamp).toLocaleTimeString()}
           </div>
         </div>
       </div>
@@ -1079,12 +969,6 @@ export const CommandCenter: React.FC = () => {
                   className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 cursor-pointer"
                 >
                   Dismiss
-                </button>
-                <button
-                  onClick={() => handleApplyRecommendation(selectedException.aiRecommendation, selectedException.title)}
-                  className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white shadow-lg shadow-cyan-600/30 cursor-pointer"
-                >
-                  Apply Recommendation
                 </button>
               </div>
             </motion.div>
