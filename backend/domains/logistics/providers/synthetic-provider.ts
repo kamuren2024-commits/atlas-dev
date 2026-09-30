@@ -46,6 +46,14 @@ export interface LogisticsScenarioSnapshot {
   };
 }
 
+export const KETRACO_LOGISTICS_DEMO_FLEET = Object.freeze({
+  total: 87,
+  moving: 61,
+  available: 14,
+  maintenance: 7,
+  offline: 5,
+});
+
 export class SyntheticLogisticsProvider {
   public getMode(): LogisticsDataMode {
     return 'SYNTHETIC';
@@ -78,11 +86,7 @@ export class SyntheticLogisticsProvider {
         infrastructureFootprint: '6,344.5 km transmission lines · 39 substations constructed · 38 completed projects'
       },
       fleet: {
-        total: 86,
-        moving: 54,
-        available: 21,
-        maintenance: 7,
-        offline: 4
+        ...KETRACO_LOGISTICS_DEMO_FLEET,
       },
       missions: {
         total: 23,

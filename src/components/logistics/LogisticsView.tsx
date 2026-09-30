@@ -10,8 +10,26 @@ import AiOperationsWorkspaceView from './views/AiOperationsWorkspaceView';
 import LogisticsAnalyticsView from './views/LogisticsAnalyticsView';
 import './logistics.css';
 
+const LOGISTICS_VIEW_IDS = [
+  'command-center',
+  'shipments',
+  'fleet',
+  'warehouses',
+  'routes',
+  'deliveries',
+  'disruptions',
+  'ai-operations',
+  'analytics',
+] as const;
+
+type LogisticsViewId = typeof LOGISTICS_VIEW_IDS[number];
+
+function isLogisticsViewId(view: string): view is LogisticsViewId {
+  return LOGISTICS_VIEW_IDS.some(viewId => viewId === view);
+}
+
 export const LogisticsView: React.FC = () => {
-  const [activeView, setActiveView] = useState('command-center');
+  const [activeView, setActiveView] = useState<LogisticsViewId>('command-center');
   const [dataMode, setDataMode] = useState<{ mode: string; label: string; syntheticNotice?: string } | null>(null);
 
   useEffect(() => {
@@ -35,7 +53,7 @@ export const LogisticsView: React.FC = () => {
   }, []);
 
   const handleViewChange = (view: string) => {
-    setActiveView(view);
+    setActiveView(isLogisticsViewId(view) ? view : 'command-center');
   };
 
   const renderContent = () => {

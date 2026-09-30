@@ -38,7 +38,7 @@ const AIRuntimeDashboard = lazy(() => import('./components/ai-runtime/AIRuntimeD
 const AtlasAgentOS = lazy(() => import('./components/platform/AtlasAgentOS'));
 const ExecutiveDemoMode = lazy(() => import('./components/platform/ExecutiveDemoMode'));
 
-import { TenantProvider, useTenant } from './context/TenantContext';
+import { TenantProvider, useTenant, isAtlasDemoModeEnabled } from './context/TenantContext';
 import { ThemeProvider, useAtlasTheme } from './context/ThemeContext';
 import { AtlasContextProvider, useAtlasContext } from './context/AtlasContext';
 import { TenantBadge, PermissionBadge } from './components/ui/EnterpriseComponents';
@@ -154,7 +154,16 @@ function checkDevAuthBypass(): boolean {
 }
 
 function AppInner() {
-  const { currentTenant, availableTenants, switchTenant, userProfile, setUserProfile } = useTenant();
+  const {
+    currentTenant,
+    availableTenants,
+    switchTenant,
+    userProfile,
+    setUserProfile,
+    isDemoSession,
+    enterDemoSession,
+    exitDemoSession
+  } = useTenant();
   const { theme } = useAtlasTheme();
   const { setCurrentModule } = useAtlasContext();
 
@@ -163,9 +172,9 @@ function AppInner() {
 
   // Zero Trust Access States:
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return !!localStorage.getItem('atlas_access_token');
+    return isDemoSession || !!localStorage.getItem('atlas_access_token');
   });
-  const [allowDevAdmin, setAllowDevAdmin] = useState(false);
+  const [allowDevAdmin, setAllowDevAdmin] = useState(isAtlasDemoModeEnabled);
   const [loginEmail, setLoginEmail] = useState('kamau@ketraco.co.ke');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginTenantId, setLoginTenantId] = useState('ketraco');
@@ -174,6 +183,11 @@ function AppInner() {
 
   // Check auth configuration on mount & auto-login if devAuthBypass or in development with no token
   useEffect(() => {
+    if (isAtlasDemoModeEnabled) {
+      setAllowDevAdmin(true);
+      return;
+    }
+
     let isMounted = true;
     fetch('/api/auth/config')
       .then(res => res.json())
@@ -240,8 +254,19 @@ function AppInner() {
     const originalFetch = window.fetch;
     
     const interceptedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const token = localStorage.getItem('atlas_access_token');
+      const token = isDemoSession ? null : localStorage.getItem('atlas_access_token');
       const newInit = init ? { ...init } : {};
+      const requestUrl = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (
+        isDemoSession &&
+        isAtlasDemoModeEnabled &&
+        requestUrl.startsWith('/api/logistics/')
+      ) {
+        const headers = new Headers(newInit.headers || (input instanceof Request ? input.headers : undefined));
+        headers.set('X-Atlas-Demo-Session', 'active');
+        newInit.headers = headers;
+      }
       
       // Only intercept /api requests to add authorization header
       if (token && typeof input === 'string' && input.startsWith('/api')) {
@@ -295,7 +320,15 @@ function AppInner() {
         (window as any).fetch = originalFetch;
       }
     };
-  }, []);
+  }, [isDemoSession]);
+
+  const handleEnterDemoMode = () => {
+    if (!isAtlasDemoModeEnabled || !enterDemoSession()) return;
+    localStorage.removeItem('atlas_access_token');
+    localStorage.removeItem('atlas_refresh_token');
+    localStorage.removeItem('atlas_user');
+    setIsAuthenticated(true);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -338,6 +371,12 @@ function AppInner() {
   };
 
   const handleLogout = async () => {
+    if (isDemoSession) {
+      exitDemoSession();
+      setIsAuthenticated(false);
+      return;
+    }
+
     try {
       const token = localStorage.getItem('atlas_access_token');
       if (token) {
@@ -443,6 +482,8 @@ function AppInner() {
     
     // Check for Development Auth Bypass
     async function checkAuthBypass() {
+      if (isAtlasDemoModeEnabled || isDemoSession) return;
+
       if (devAuthBypass) {
         setIsAuthenticated(false);
         setUserProfile({
@@ -475,7 +516,7 @@ function AppInner() {
     getStats();
     fetchTelemetry();
     checkAuthBypass();
-  }, [devAuthBypass, setUserProfile, switchTenant]);
+  }, [devAuthBypass, isDemoSession, setUserProfile, switchTenant]);
 
   // Command palette keyboard shortcut listener (Ctrl+K / /)
   useEffect(() => {
@@ -742,6 +783,22 @@ function AppInner() {
               <p className="text-[10px] font-mono text-cyan-400/70 uppercase tracking-widest">Enterprise Intelligence Access</p>
             </div>
 
+            {isAtlasDemoModeEnabled && (
+              <section className="rounded-lg border border-amber-400/30 bg-amber-400/[0.06] p-4 space-y-3">
+                <div>
+                  <p className="text-[10px] font-mono font-bold tracking-widest text-amber-300 uppercase">DEMO ACCESS</p>
+                  <p className="mt-1 text-[10px] font-mono text-slate-300">Stakeholder demonstration. Identity gateway not required.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEnterDemoMode}
+                  className="w-full rounded-lg border border-amber-300/50 bg-amber-300/15 px-3 py-3 text-[11px] font-mono font-bold tracking-wider text-amber-100 transition-colors hover:bg-amber-300/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1220]"
+                >
+                  ENTER DEMO MODE
+                </button>
+              </section>
+            )}
+
             {loginError && (
               <div className="p-3 bg-rose-950/30 border border-rose-500/20 text-rose-400 text-[10px] font-mono rounded-lg flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -850,6 +907,22 @@ function AppInner() {
 
       {/* Dynamic background canvas */}
       <AmbientParticleCanvas />
+
+      {isDemoSession && (
+        <div className="relative z-40 flex min-h-9 items-center justify-between gap-3 border-b border-amber-400/20 bg-amber-400/10 px-4 text-[10px] font-mono text-amber-100">
+          <span className="inline-flex items-center gap-2 uppercase tracking-wider">
+            <span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden="true" />
+            DEMO MODE | Stakeholder Demonstration
+          </span>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded border border-amber-300/30 px-2 py-1 font-semibold hover:bg-amber-300/10"
+          >
+            Exit Demo
+          </button>
+        </div>
+      )}
 
       {/* TOP COMMAND NAVIGATION BAR - AI-native enterprise command rail */}
       <GlobalHeader

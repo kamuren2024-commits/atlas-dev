@@ -24,6 +24,25 @@ export const DEV_ADMIN_ALIASES = [
   'dev.admin@salienceatlas.local'
 ];
 export const DEV_ADMIN_ID = 'user_dev_admin_identity';
+export const DEV_ADMIN_PERMISSIONS = [
+  'development:testing',
+  'development:debug',
+  'development:configuration',
+  'development:ai',
+  'development:data',
+  'development:modules',
+  'project:read',
+  'tender:view', 'tender:create', 'tender:edit', 'tender:draft',
+  'procurement:read',
+  'contract:view', 'contract:edit',
+  'workflow:view', 'workflow:trigger',
+  'agent:view', 'agent:execute',
+  'compliance:view', 'compliance:score',
+  'finance_source:view', 'finance_budget:view', 'finance_commitment:view',
+  'finance_invoice:view', 'finance_payment:view', 'finance_project:view',
+  'finance_quality:view', 'finance_lineage:view',
+  'logistics:read', 'logistics:create', 'logistics:update'
+];
 
 export class DevAdminService {
   private static localCredential: string | null = null;
@@ -33,10 +52,14 @@ export class DevAdminService {
    * Asserts that DEV_ADMIN is permitted under the current InfrastructurePolicy.
    * Fails closed with SecurityError if executed in non-development environments.
    */
+  public static isDevAdminEnabled(): boolean {
+    return process.env.NODE_ENV?.trim().toLowerCase() === 'development' &&
+      InfrastructurePolicyService.getPolicy().allowDevAdmin;
+  }
+
   public static assertDevAdminAllowed(): void {
-    const policy = InfrastructurePolicyService.getPolicy();
-    if (!policy.allowDevAdmin || process.env.NODE_ENV === 'production') {
-      console.error('[SECURITY] Production development-admin attempt rejected');
+    if (!this.isDevAdminEnabled()) {
+      console.error('[SECURITY] DEV_ADMIN attempt rejected outside explicit development environment');
       throw new SecurityError('Development administrator is strictly unavailable in this environment.');
     }
   }
@@ -53,6 +76,11 @@ export class DevAdminService {
     }
 
     // 1. Check explicit environment overrides
+    if (process.env.DEV_ADMIN_PASSPHRASE) {
+      this.localCredential = process.env.DEV_ADMIN_PASSPHRASE;
+      return this.localCredential;
+    }
+
     if (process.env.DEV_ADMIN_PASSWORD) {
       this.localCredential = process.env.DEV_ADMIN_PASSWORD;
       return this.localCredential;
@@ -92,7 +120,7 @@ export class DevAdminService {
   /**
    * Builds the canonical DEV_ADMIN UserIdentity profile.
    */
-  public static getDevAdminUser(tenantId = 'ketraco', email = DEV_ADMIN_EMAIL): UserIdentity {
+  public static getDevAdminUser(email = DEV_ADMIN_EMAIL): UserIdentity {
     this.assertDevAdminAllowed();
     return {
       id: DEV_ADMIN_ID,
@@ -102,8 +130,8 @@ export class DevAdminService {
       roles: ['Administrator'],
       accessLevel: 'Level 10 (Full Access)',
       clearance: 'Top Secret',
-      tenantId,
-      permissions: ['*'],
+      tenantId: process.env.DEV_ADMIN_TENANT_ID?.trim() || 'ketraco',
+      permissions: [...DEV_ADMIN_PERMISSIONS],
       authenticated: true,
     };
   }
@@ -122,8 +150,7 @@ export class DevAdminService {
    */
   public static validateDevAdminLogin(
     email: string,
-    passwordAttempt: string,
-    tenantId: string
+    passwordAttempt: string
   ): { valid: boolean; user?: UserIdentity } {
     if (!this.isDevAdminEmail(email)) {
       return { valid: false };
@@ -133,13 +160,15 @@ export class DevAdminService {
     this.assertDevAdminAllowed();
 
     const expectedPassword = this.getDevAdminCredential();
-    const isMatch = passwordAttempt === expectedPassword;
+    const attemptDigest = crypto.createHash('sha256').update(passwordAttempt).digest();
+    const expectedDigest = crypto.createHash('sha256').update(expectedPassword).digest();
+    const isMatch = crypto.timingSafeEqual(attemptDigest, expectedDigest);
 
     if (isMatch) {
       console.log('[AUTH] DEV_ADMIN authenticated');
       return {
         valid: true,
-        user: this.getDevAdminUser(tenantId, email.toLowerCase().trim()),
+        user: this.getDevAdminUser(email.toLowerCase().trim()),
       };
     }
 

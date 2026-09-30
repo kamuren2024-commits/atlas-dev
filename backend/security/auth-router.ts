@@ -90,7 +90,7 @@ authRouter.post('/login', ApiGatewayMiddleware.rateLimit(10, 60), async (req, re
   // 1. Check for Development Administrator credentials
   if (DevAdminService.isDevAdminEmail(email)) {
     const policy = InfrastructurePolicyService.getPolicy();
-    if (!policy.allowDevAdmin) {
+    if (!DevAdminService.isDevAdminEnabled()) {
       console.error(`[SECURITY ALERT] DEV_ADMIN login rejected: Disabled in environment "${policy.environment}"`);
       return res.status(403).json({
         success: false,
@@ -98,7 +98,7 @@ authRouter.post('/login', ApiGatewayMiddleware.rateLimit(10, 60), async (req, re
       });
     }
 
-    const validation = DevAdminService.validateDevAdminLogin(email, password, tenantId);
+    const validation = DevAdminService.validateDevAdminLogin(email, password);
     if (!validation.valid || !validation.user) {
       console.warn(`[SECURITY VIOLATION] Failed DEV_ADMIN login attempt on tenant "${tenantId}"`);
       return res.status(401).json({
@@ -181,11 +181,10 @@ authRouter.post('/refresh', async (req, res) => {
   let user: UserIdentity | undefined;
 
   if (DevAdminService.isDevAdminEmail(email)) {
-    const policy = InfrastructurePolicyService.getPolicy();
-    if (!policy.allowDevAdmin) {
+    if (!DevAdminService.isDevAdminEnabled()) {
       return res.status(403).json({ success: false, error: 'DEV_ADMIN unavailable.' });
     }
-    user = DevAdminService.getDevAdminUser(tenantId || 'ketraco', email);
+    user = DevAdminService.getDevAdminUser(email);
   } else {
     user = ENTERPRISE_USERS[email.toLowerCase()];
   }
@@ -266,13 +265,14 @@ authRouter.post('/sessions/terminate', ApiGatewayMiddleware.authenticate, async 
 
 authRouter.get('/config', (_req, res) => {
   const policy = InfrastructurePolicyService.getPolicy();
+  const allowDevAdmin = DevAdminService.isDevAdminEnabled();
   res.json({
     environment: policy.environment,
-    allowDevAdmin: policy.allowDevAdmin,
+    allowDevAdmin,
     redisRequired: policy.redisRequired,
     redisBlocksAuthentication: policy.redisBlocksAuthentication,
-    devAdminEmail: policy.allowDevAdmin ? DEV_ADMIN_EMAIL : undefined,
-    isDev: policy.allowDevAdmin
+    devAdminEmail: allowDevAdmin ? DEV_ADMIN_EMAIL : undefined,
+    isDev: allowDevAdmin
   });
 });
 

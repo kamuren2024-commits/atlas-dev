@@ -8,6 +8,7 @@
  * - eval:tools (Tool validation, permission bounds, execution idempotency)
  */
 
+import { pathToFileURL } from 'node:url';
 import { DatabaseCore } from '../database/db-core';
 import { AgentHarness } from '../agents/harness/agent-harness';
 import { getAgentRegistry } from '../agents/registry';
@@ -15,8 +16,14 @@ import { AtlasAiGateway } from '../ai-federation/gateway/AtlasAiGateway';
 import { AtlasModelRegistry } from '../ai-federation/registry/ModelRegistry';
 import { CanonicalOntologyEngine } from '../ontology/canonical-ontology';
 import { AtlasToolRegistry } from '../tools/atlas-tool-registry';
+import {
+  hasConfiguredGatewayProvider,
+  parseEvaluationTarget,
+  type EvaluationTarget,
+} from './eval-harness-contracts';
 
-export async function runEvaluation(target: string): Promise<{ passed: boolean; details: any }> {
+export async function runEvaluation(targetInput: string): Promise<{ passed: true; details: { target: EvaluationTarget; timestamp: string } }> {
+  const target = parseEvaluationTarget(targetInput);
   const db = DatabaseCore.getInstance();
   await db.connect();
   await db.runMigrations();
@@ -44,16 +51,35 @@ export async function runEvaluation(target: string): Promise<{ passed: boolean; 
     console.log('Testing AI Gateway & Model Routing...');
     const gateway = AtlasAiGateway.getInstance();
     const modelReg = AtlasModelRegistry.getInstance();
+    await modelReg.refreshLocalModels();
     const models = modelReg.listModels();
     console.log(`Registered Models in Gateway: ${models.map(m => m.modelId).join(', ')}`);
 
-    const inferRes = await gateway.infer({
-      prompt: 'Summarize voltage stability on Olkaria-Nairobi 220kV transmission line.',
-      task: 'copilot',
-    });
-    console.log(`Gateway Response Model: ${inferRes.model} (${inferRes.provider})`);
-    console.log(`Gateway Latency: ${inferRes.latencyMs}ms`);
-    if (!inferRes.text) throw new Error('Gateway returned empty inference text');
+    if (hasConfiguredGatewayProvider(models, process.env)) {
+      const inferRes = await gateway.infer({
+        prompt: 'Summarize voltage stability on Olkaria-Nairobi 220kV transmission line.',
+        task: 'copilot',
+      });
+      console.log(`Gateway Response Model: ${inferRes.model} (${inferRes.provider})`);
+      console.log(`Gateway Latency: ${inferRes.latencyMs}ms`);
+      if (!inferRes.text.trim()) throw new Error('Gateway returned empty inference text');
+    } else {
+      let inferenceError: unknown;
+      try {
+        await gateway.infer({
+          prompt: 'Summarize voltage stability on Olkaria-Nairobi 220kV transmission line.',
+          task: 'copilot',
+        });
+      } catch (error) {
+        inferenceError = error;
+      }
+
+      const message = inferenceError instanceof Error ? inferenceError.message : String(inferenceError);
+      if (!message.includes('AI inference unavailable')) {
+        throw new Error(`Gateway did not fail closed when no provider was configured: ${message}`);
+      }
+      console.log('Gateway correctly rejected inference because no provider is configured.');
+    }
   }
 
   if (target === 'ontology' || target === 'all') {
@@ -79,7 +105,9 @@ export async function runEvaluation(target: string): Promise<{ passed: boolean; 
     });
 
     console.log(`Ontology Action Status: ${actionRes.status}, Verified: ${actionRes.verificationPassed}`);
-    if (actionRes.status !== 'SUCCESS') throw new Error(`Ontology action failed: ${actionRes.error}`);
+    if (actionRes.status !== 'SUCCESS' || !actionRes.verificationPassed) {
+      throw new Error(`Ontology action failed verification: ${actionRes.error}`);
+    }
   }
 
   if (target === 'tools' || target === 'all') {
@@ -87,6 +115,9 @@ export async function runEvaluation(target: string): Promise<{ passed: boolean; 
     const toolReg = AtlasToolRegistry.getInstance();
     const tools = toolReg.listTools();
     console.log(`Verified Registered Tools: ${tools.length} (Target: >= 15)`);
+    if (tools.length < 15) {
+      throw new Error(`Expected at least 15 governed tools, found ${tools.length}`);
+    }
 
     const execRes = await toolReg.executeTool(
       'ontology.query',
@@ -108,8 +139,15 @@ export async function runEvaluation(target: string): Promise<{ passed: boolean; 
 }
 
 // Support CLI invocation
-if (process.argv[2]) {
-  const target = process.argv[2];
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  let target: EvaluationTarget;
+  try {
+    target = parseEvaluationTarget(process.argv[2]);
+  } catch (err) {
+    console.error('❌ EVALUATION FAILED:', err);
+    process.exit(1);
+  }
+
   runEvaluation(target)
     .then(() => process.exit(0))
     .catch((err) => {

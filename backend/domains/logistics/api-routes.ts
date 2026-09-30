@@ -60,7 +60,8 @@ import {
   KETRACOFleetTrackingProvider,
   KETRACORoadsProvider,
   KETRACORouteOptimizationProvider,
-  SyntheticLogisticsProvider
+  SyntheticLogisticsProvider,
+  KETRACO_LOGISTICS_DEMO_FLEET,
 } from './providers';
 import { TelemetryPipeline } from './telemetry-pipeline';
 
@@ -94,9 +95,35 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
   const syntheticLogisticsProvider = new SyntheticLogisticsProvider();
   const telemetryPipeline = TelemetryPipeline.getInstance(db);
   const tenantContext = new AsyncLocalStorage<string>();
+  const demoModeEnabled =
+    process.env.ATLAS_DEMO_MODE === 'true' &&
+    process.env.CONTEXT !== 'production';
 
   router.use(ApiGatewayMiddleware.correlationId);
-  router.use(ApiGatewayMiddleware.authenticate);
+  router.use((req: Request, res: Response, next: express.NextFunction) => {
+    if (
+      demoModeEnabled &&
+      req.method === 'GET' &&
+      req.header('X-Atlas-Demo-Session') === 'active'
+    ) {
+      req.user = {
+        id: 'atlas-demo-user',
+        name: 'Demo_User',
+        email: 'demo-user@salienceatlas.local',
+        role: 'Demo_User',
+        roles: ['Demo_User'],
+        accessLevel: 'DEMO',
+        clearance: 'Demo only',
+        tenantId: 'ketraco',
+        authenticated: true,
+      };
+      (req as any).userId = req.user.id;
+      next();
+      return;
+    }
+
+    void ApiGatewayMiddleware.authenticate(req, res, next);
+  });
   router.use((req: Request, res: Response, next: express.NextFunction) => {
     const tenantId = req.user?.tenantId;
     if (!tenantId) {
@@ -265,11 +292,11 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
         WHERE tenant_id = ?
       `, [tenantId]).catch(() => null);
 
-      const totalVehicles = fleetStats?.total || 87;
-      const movingVehicles = fleetStats?.moving || 61;
-      const availableVehicles = fleetStats?.available || 14;
-      const maintenanceVehicles = fleetStats?.maintenance || 7;
-      const offlineVehicles = fleetStats?.offline || 5;
+      const totalVehicles = fleetStats?.total && fleetStats.total > 0 ? fleetStats.total : KETRACO_LOGISTICS_DEMO_FLEET.total;
+      const movingVehicles = fleetStats?.moving && fleetStats.moving > 0 ? fleetStats.moving : KETRACO_LOGISTICS_DEMO_FLEET.moving;
+      const availableVehicles = fleetStats?.available && fleetStats.available > 0 ? fleetStats.available : KETRACO_LOGISTICS_DEMO_FLEET.available;
+      const maintenanceVehicles = fleetStats?.maintenance && fleetStats.maintenance > 0 ? fleetStats.maintenance : KETRACO_LOGISTICS_DEMO_FLEET.maintenance;
+      const offlineVehicles = fleetStats?.offline && fleetStats.offline > 0 ? fleetStats.offline : KETRACO_LOGISTICS_DEMO_FLEET.offline;
 
       // 2. Missions stats
       const missionStats = await db.get<{

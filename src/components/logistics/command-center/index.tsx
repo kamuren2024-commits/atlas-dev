@@ -281,6 +281,7 @@ export const CommandCenter: React.FC = () => {
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h1 className="text-xl font-bold tracking-tight text-white">Logistics Command Center</h1>
+                <span className="text-sm font-semibold text-cyan-300">KETRACO — {kpis.fleet.total} Vehicles</span>
 
                 {/* Simulation Indicator Directive: Provide visual indicator for simulation mode */}
                 {data?.simulationMode ? (

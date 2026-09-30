@@ -3,6 +3,7 @@ import { IdentityService, UserIdentity } from './identity-service';
 import { AuthorizationService } from './authorization-service';
 import { RedisService } from '../database/redis-service';
 import { CryptographyService } from './cryptography-service';
+import { DevAdminService, DEV_ADMIN_ID } from './dev-admin';
 import { isEvaluationOsProductionMode } from '../core/config/production-mode';
 import { IdentityContext, OidcTokenValidator } from '../identity/oidc';
 
@@ -62,6 +63,13 @@ export class ApiGatewayMiddleware {
       return res.status(401).json({
         success: false,
         error: 'Authentication Failure: Invalid, expired, or revoked access token.'
+      });
+    }
+
+    if (user.id === DEV_ADMIN_ID && !DevAdminService.isDevAdminEnabled()) {
+      return res.status(403).json({
+        success: false,
+        error: 'Development administrator sessions are unavailable in this environment.'
       });
     }
 

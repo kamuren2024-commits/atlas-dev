@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
-import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { DatabaseCore } from './backend/database/db-core';
 import { AuthorizationService } from './backend/security/authorization-service';
@@ -27,11 +26,12 @@ import {
   ProductionModeError,
   validateProductionConfiguration
 } from './backend/core/config/production-mode';
+import { resolveHealthCheckStatus } from './backend/core/config/health-check';
+import { resolveHttpServerConfig } from './backend/core/config/http-server-config';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
-  const HOST = '0.0.0.0';
+  const { host: HOST, port: PORT } = resolveHttpServerConfig();
   let databaseStatus = 'INITIALIZING';
   let systemHealth = 'STARTING';
 
@@ -41,8 +41,18 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true }));
 
   // CORS and security headers
+  const allowedCorsOrigins = new Set(
+    (process.env.ATLAS_ALLOWED_ORIGINS || '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  );
   app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const requestOrigin = req.get('Origin');
+    if (requestOrigin && allowedCorsOrigins.has(requestOrigin)) {
+      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+      res.vary('Origin');
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Tenant-Id');
     if (req.method === 'OPTIONS') {
@@ -53,8 +63,9 @@ async function startServer() {
   });
 
   app.get('/api/health', (req: Request, res: Response) => {
-    res.json({
-      status: 'UP',
+    const health = resolveHealthCheckStatus(databaseStatus, systemHealth);
+    res.status(health.httpStatus).json({
+      status: health.status,
       systemHealth,
       version: '5.1.0',
       timestamp: new Date().toISOString(),
@@ -65,8 +76,7 @@ async function startServer() {
 
   // Make the HTTP surface available before migrations and optional services initialize.
   const distPath = path.join(process.cwd(), 'dist');
-  const hasBuiltFrontend = fs.existsSync(path.join(distPath, 'index.html'));
-  if (process.env.NODE_ENV !== 'production' && !hasBuiltFrontend) {
+  if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -80,6 +90,33 @@ async function startServer() {
         return;
       }
       vite.middlewares(req, res, next);
+    });
+    app.get('*', async (req, res, next) => {
+      try {
+        let html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script type="module" src="/@vite/client"><\/script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="all" onload="this.media='all'">
+    <title>Salience Atlas</title>
+</head>
+<body>
+    <div id="root"><\/div>
+    <script type="module" src="/src/main.tsx"><\/script>
+<\/body>
+<\/html>
+`;
+        html = await vite.transformIndexHtml(req.url, html);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+      } catch (err) {
+        next(err);
+      }
     });
   } else {
     const serveFrontend = express.static(distPath);

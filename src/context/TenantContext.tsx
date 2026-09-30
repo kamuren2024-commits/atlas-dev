@@ -40,6 +40,9 @@ export interface TenantContextType {
   currentTenant: Tenant;
   availableTenants: Tenant[];
   switchTenant: (id: string) => void;
+  isDemoSession: boolean;
+  enterDemoSession: () => boolean;
+  exitDemoSession: () => void;
   userProfile: {
     name: string;
     role: string;
@@ -160,6 +163,23 @@ const defaultTenants: Tenant[] = [
 ];
 
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
+const DEMO_SESSION_STORAGE_KEY = 'atlas_demo_session';
+export const isAtlasDemoModeEnabled = import.meta.env.VITE_ATLAS_DEMO_MODE === 'true';
+const demoUserProfile = {
+  name: 'Demo_User',
+  role: 'Stakeholder Demo',
+  accessLevel: 'DEMO',
+  clearance: 'Demo only'
+};
+
+const hasRestoredDemoSession = (() => {
+  if (!isAtlasDemoModeEnabled || typeof window === 'undefined') return false;
+  try {
+    return window.sessionStorage.getItem(DEMO_SESSION_STORAGE_KEY) === 'active';
+  } catch {
+    return false;
+  }
+})();
 
 const isDevAuthBypassActive = (() => {
   try {
@@ -179,8 +199,9 @@ const isDevAuthBypassActive = (() => {
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [tenantId, setTenantId] = useState<string>('ketraco');
+  const [isDemoSession, setIsDemoSession] = useState(hasRestoredDemoSession);
   const [userProfile, setUserProfile] = useState(() => (
-    isDevAuthBypassActive ? {
+    hasRestoredDemoSession ? demoUserProfile : isDevAuthBypassActive ? {
       name: 'Administrator',
       role: 'Administrator',
       accessLevel: 'Level 10 (Full Access)',
@@ -197,6 +218,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const switchTenant = (id: string) => {
     setTenantId(id);
+    if (isDemoSession) return;
     if (id === 'kengen') {
       setUserProfile({
         name: 'Dr. Peter Ndegwa',
@@ -221,11 +243,42 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const enterDemoSession = () => {
+    if (!isAtlasDemoModeEnabled) return false;
+    try {
+      window.sessionStorage.setItem(DEMO_SESSION_STORAGE_KEY, 'active');
+    } catch {
+      // The session remains active for this tab even when storage is unavailable.
+    }
+    setUserProfile(demoUserProfile);
+    setIsDemoSession(true);
+    return true;
+  };
+
+  const exitDemoSession = () => {
+    try {
+      window.sessionStorage.removeItem(DEMO_SESSION_STORAGE_KEY);
+    } catch {
+      // Continue clearing in-memory demo authorization.
+    }
+    setIsDemoSession(false);
+    setTenantId('ketraco');
+    setUserProfile({
+      name: 'John Kamau',
+      role: 'SCM Intelligence Officer',
+      accessLevel: 'LEVEL 04',
+      clearance: 'Enterprise Clear'
+    });
+  };
+
   return (
     <TenantContext.Provider value={{
       currentTenant,
       availableTenants: defaultTenants,
       switchTenant,
+      isDemoSession,
+      enterDemoSession,
+      exitDemoSession,
       userProfile,
       setUserProfile
     }}>

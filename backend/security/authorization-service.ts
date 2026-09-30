@@ -1,4 +1,5 @@
 import { UserIdentity } from './identity-service';
+import { DevAdminService, DEV_ADMIN_ID, DEV_ADMIN_PERMISSIONS } from './dev-admin';
 import { FinancePermissionAction } from '../../packages/domain';
 
 export interface PolicyResult {
@@ -11,6 +12,7 @@ export class AuthorizationService {
   private static ROLE_PERMISSIONS: Record<string, string[]> = {
     'admin': ['*'],
     'Administrator': ['*'],
+    'Demo_User': ['logistics:read'],
     'Director Grid Logistics': [
       'project:read',
       'tender:view', 'procurement:read', 'tender:create', 'tender:edit', 'tender:draft', 'tender:approve_minor',
@@ -230,8 +232,20 @@ export class AuthorizationService {
     resource: string,
     resourceAttributes: Record<string, any> = {}
   ): PolicyResult {
+    const isDevAdmin = user.id === DEV_ADMIN_ID;
+    if (isDevAdmin && !DevAdminService.isDevAdminEnabled()) {
+      return {
+        isAuthorized: false,
+        decision: 'DENY',
+        reason: 'DEV_ADMIN authorization is available only in an explicit development environment.'
+      };
+    }
+
+    // DEV_ADMIN uses a scoped development allowlist instead of the Administrator wildcard.
+    const permissions = isDevAdmin
+      ? DEV_ADMIN_PERMISSIONS
+      : this.ROLE_PERMISSIONS[user.role] || this.ROLE_PERMISSIONS['Guest'];
     // 1. Wildcard Check (Admin bypass)
-    const permissions = this.ROLE_PERMISSIONS[user.role] || this.ROLE_PERMISSIONS['Guest'];
     if (permissions.includes('*')) {
       return { isAuthorized: true, reason: 'Superuser admin bypass authorized.' };
     }

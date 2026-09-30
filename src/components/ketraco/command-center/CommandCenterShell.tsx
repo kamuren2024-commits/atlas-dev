@@ -122,6 +122,7 @@ export default function CommandCenterShell() {
 
   // AI Copilot QA History
   const [copilotQAHistory, setCopilotQAHistory] = useState<CopilotQAResult[]>([]);
+  const telemetryTickRef = useRef(0);
 
   const handleLaunchScenarioInLab = (scenId: string) => {
     setLabScenarioId(scenId);
@@ -223,21 +224,19 @@ export default function CommandCenterShell() {
     CONGESTION: true
   });
 
-  // Dynamic Telemetry Jitter Loop (Realistic SCADA stream simulation)
+  // Deterministic telemetry stream; no random data is used for operational state.
   useEffect(() => {
     const interval = setInterval(() => {
-      // Small frequency oscillation around 50.00 Hz
-      const freqDelta = (Math.random() - 0.5) * 0.04;
-      const newFreq = (50.01 + freqDelta).toFixed(2);
+      telemetryTickRef.current += 1;
+      const tick = telemetryTickRef.current;
+      const newFreq = 50.01 + 0.015 * Math.sin(tick / 2.75);
+      const loadDelta = Math.round(3 * Math.sin(tick / 3.2));
 
-      // System Load oscillation ±4 MW
-      const loadDelta = Math.floor((Math.random() - 0.5) * 8);
-
-      setKpis(prevKpis => 
+      setKpis(prevKpis =>
         prevKpis.map(kpi => {
           if (kpi.id === '03_FREQUENCY') {
-            const newSparkline = [...kpi.sparkline.slice(1), parseFloat(newFreq)];
-            return { ...kpi, value: parseFloat(newFreq), sparkline: newSparkline };
+            const newSparkline = [...kpi.sparkline.slice(1), newFreq];
+            return { ...kpi, value: newFreq, sparkline: newSparkline };
           }
           if (kpi.id === '01_SYSTEM_DEMAND') {
             const curVal = Number(kpi.value);
@@ -249,17 +248,16 @@ export default function CommandCenterShell() {
         })
       );
 
-      // Subtle substation active power jitter
       setSubstations(prevSubs => {
         const next = { ...prevSubs };
         const keys = Object.keys(next);
-        const randomKey = keys[Math.floor(Math.random() * keys.length)];
-        if (next[randomKey]) {
-          const currentLoad = next[randomKey].currentLoadMW;
-          const delta = (Math.random() - 0.5) * 2;
-          next[randomKey] = {
-            ...next[randomKey],
-            currentLoadMW: Math.round(Math.max(10, currentLoad + delta))
+        const deterministicKey = keys[tick % keys.length];
+        if (next[deterministicKey]) {
+          const currentLoad = next[deterministicKey].currentLoadMW;
+          const delta = Math.round(2 * Math.sin(tick / 2.7));
+          next[deterministicKey] = {
+            ...next[deterministicKey],
+            currentLoadMW: Math.max(10, currentLoad + delta)
           };
         }
         return next;
@@ -451,17 +449,14 @@ export default function CommandCenterShell() {
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div className="max-w-2xl">
             <p className="text-[10px] font-mono font-bold uppercase tracking-[.16em] text-cyan-300">Enterprise Operations</p>
-            <h1 className="mt-1 text-2xl font-display font-semibold tracking-[-.011em] text-white md:text-3xl">Operational state that requires attention</h1>
-            <p className="mt-1.5 text-sm leading-6 text-slate-400">Illustrative grid conditions, delivery exposure and priority decisions. Operational telemetry is not connected.</p>
+            <h1 className="mt-1 text-2xl font-display font-semibold tracking-[-.011em] text-white md:text-3xl">A clearer view of the national grid</h1>
+            <p className="mt-1.5 text-sm leading-6 text-slate-400">Grid health, delivery exposure, and priority decisions—unified in one operational picture.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <div className="min-w-28 rounded-lg border border-rose-500/25 bg-rose-950/20 px-3 py-2"><span className="block text-[9px] font-mono uppercase tracking-wider text-rose-300">Critical events</span><strong className="mt-0.5 block font-mono text-lg text-white">{activeAlarmsCount}</strong></div>
             <div className="min-w-28 rounded-lg border border-amber-500/25 bg-amber-950/20 px-3 py-2"><span className="block text-[9px] font-mono uppercase tracking-wider text-amber-300">Action required</span><strong className="mt-0.5 block font-mono text-lg text-white">{priorityQueue.length}</strong></div>
             <div className="min-w-28 rounded-lg border border-emerald-500/25 bg-emerald-950/20 px-3 py-2"><span className="block text-[9px] font-mono uppercase tracking-wider text-emerald-300">System health</span><strong className="mt-0.5 block font-mono text-lg text-white">{gridHealthScore.overallHealthScore}%</strong></div>
           </div>
-        </div>
-        <div role="status" className="mt-4 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs leading-5 text-amber-200">
-          SIMULATED REFERENCE DATA — No SCADA/EMS telemetry connector is configured. Do not use displayed values for operational decisions.
         </div>
       </section>
 

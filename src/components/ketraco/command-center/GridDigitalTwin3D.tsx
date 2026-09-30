@@ -488,9 +488,10 @@ export default function GridDigitalTwin3D({ selectedAsset, onClose }: GridDigita
     const posArray = new Float32Array(particleCount * 3);
 
     for (let i = 0; i < particleCount * 3; i += 3) {
-      posArray[i] = (Math.random() - 0.5) * 44;
-      posArray[i + 1] = 14 + Math.random() * 4;
-      posArray[i + 2] = (Math.random() - 0.5) * 32;
+      const seed = i * 0.61803398875;
+      posArray[i] = (Math.sin(seed) * 0.5 + 0.5) * 44 - 22;
+      posArray[i + 1] = 14 + (Math.cos(seed * 1.7) * 0.5 + 0.5) * 4;
+      posArray[i + 2] = (Math.sin(seed * 2.3) * 0.5 + 0.5) * 32 - 16;
     }
 
     particlesGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));

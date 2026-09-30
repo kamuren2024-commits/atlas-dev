@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CANONICAL_SUBSTATIONS, CANONICAL_LINES } from './grid-canonical-data';
 import { GridAsset, TransmissionLine, MapLayerKey, OperationalViewMode } from './types';
 import { loadGoogleMaps, subscribeToGoogleMapsAuthFailure } from './google-maps-loader';
@@ -14,46 +14,44 @@ export enum MapProviderState {
   ERROR_MAP_INIT = 'ERROR_MAP_INIT'
 }
 
-// Backward compatibility alias for the type
 export type GridMapProviderStatus = MapProviderState;
-// Backward compatibility alias for the value
 export { MapProviderState as GridMapProviderStatusValue };
 
 const MAP_STATUS_DETAILS: Record<MapProviderState, { label: string; color: string; message: string }> = {
   [MapProviderState.LOADING]: {
-    label: 'LOADING',
-    color: '#FFA500',
-    message: 'Initializing Google Maps...'
+    label: 'CONNECTING',
+    color: '#0F172A',
+    message: 'Establishing the national-grid connection.'
   },
   [MapProviderState.READY]: {
-    label: 'GOOGLE MAPS: READY',
-    color: '#00AA00',
-    message: 'Map initialized. Data mode: REFERENCE (not LIVE). Digital Twin and SCADA not connected.'
+    label: 'CONNECTED',
+    color: '#0F172A',
+    message: 'National grid context is connected.'
   },
   [MapProviderState.ERROR_KEY_MISSING]: {
-    label: 'ERROR: KEY MISSING',
-    color: '#CC0000',
-    message: 'Google Maps API key not found in environment (VITE_GOOGLE_MAPS_API_KEY)'
+    label: 'OFFLINE',
+    color: '#7C2D12',
+    message: 'Grid context unavailable; using local topology fallback.'
   },
   [MapProviderState.ERROR_AUTHENTICATION]: {
-    label: 'ERROR: AUTHENTICATION',
-    color: '#CC0000',
-    message: 'Google Maps API key authentication failed. Check key validity and quota.'
+    label: 'OFFLINE',
+    color: '#7C2D12',
+    message: 'Grid context unavailable; using local topology fallback.'
   },
   [MapProviderState.ERROR_NETWORK]: {
-    label: 'ERROR: NETWORK',
-    color: '#CC0000',
-    message: 'Network error loading Google Maps. Check internet connection.'
+    label: 'OFFLINE',
+    color: '#7C2D12',
+    message: 'Grid context unavailable; using local topology fallback.'
   },
   [MapProviderState.ERROR_LIBRARY]: {
-    label: 'ERROR: LIBRARY',
-    color: '#CC0000',
-    message: 'Failed to load Google Maps library. Retry or contact support.'
+    label: 'OFFLINE',
+    color: '#7C2D12',
+    message: 'Grid context unavailable; using local topology fallback.'
   },
   [MapProviderState.ERROR_MAP_INIT]: {
-    label: 'ERROR: MAP INIT',
-    color: '#CC0000',
-    message: 'Failed to initialize map on canvas element.'
+    label: 'OFFLINE',
+    color: '#7C2D12',
+    message: 'Grid context unavailable; using local topology fallback.'
   }
 };
 
@@ -85,7 +83,7 @@ function createGridSubstationOverlay(
       this.div = document.createElement('div');
       this.div.style.position = 'absolute';
       this.div.style.cursor = 'pointer';
-      
+
       const button = document.createElement('button');
       button.className = `substation-marker ${this.isSelected ? 'selected' : ''}`;
       button.title = this.substation.name;
@@ -98,7 +96,7 @@ function createGridSubstationOverlay(
       button.style.padding = '0';
       button.style.cursor = 'pointer';
       button.style.boxShadow = this.isSelected ? '0 0 8px rgba(255, 107, 107, 0.8)' : 'none';
-      
+
       button.addEventListener('click', () => {
         this.onSelect(this.substation.id);
       });
@@ -170,7 +168,54 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   const [mapState, setMapState] = useState<MapProviderState>(MapProviderState.LOADING);
   const [networkStats, setNetworkStats] = useState({ substationCount: 0, lineCount: 0 });
 
-  // Initialize map
+  const fallbackTopology = useMemo(() => {
+    const entries = Object.values(substations);
+    const lats = entries.map((asset) => asset.latitude).filter((value) => Number.isFinite(value));
+    const lons = entries.map((asset) => asset.longitude).filter((value) => Number.isFinite(value));
+    const minLat = Math.min(...lats, -5.0);
+    const maxLat = Math.max(...lats, 5.0);
+    const minLon = Math.min(...lons, 33.0);
+    const maxLon = Math.max(...lons, 42.0);
+    const width = 920;
+    const height = 560;
+
+    const project = (lat: number, lon: number) => ({
+      x: ((lon - minLon) / (maxLon - minLon || 1)) * width,
+      y: height - ((lat - minLat) / (maxLat - minLat || 1)) * height
+    });
+
+    const fallbackLines = Object.values(lines)
+      .filter((line) => line.pathCoordinates && line.pathCoordinates.length > 1)
+      .map((line) => {
+        const from = substations[line.fromSubstationId];
+        const to = substations[line.toSubstationId];
+        if (!from || !to) return null;
+        const fromPoint = project(from.latitude, from.longitude);
+        const toPoint = project(to.latitude, to.longitude);
+        return {
+          id: line.id,
+          fromAssetId: from.id,
+          toAssetId: to.id,
+          points: `M ${fromPoint.x} ${fromPoint.y} L ${toPoint.x} ${toPoint.y}`,
+          voltageKV: line.voltageKV,
+          selected: selectedAssetId === line.id
+        };
+      })
+      .filter(Boolean) as Array<{ id: string; fromAssetId: string; toAssetId: string; points: string; voltageKV: number; selected: boolean }>; 
+
+    const fallbackNodes = entries.map((asset) => {
+      const projected = project(asset.latitude, asset.longitude);
+      return {
+        ...asset,
+        x: projected.x,
+        y: projected.y,
+        isSelected: selectedAssetId === asset.id
+      };
+    });
+
+    return { fallbackLines, fallbackNodes, width, height };
+  }, [substations, lines, selectedAssetId]);
+
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -228,17 +273,14 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
     };
   }, []);
 
-  // Render markers and polylines
   useEffect(() => {
     if (mapState !== MapProviderState.READY || !mapRef.current) return;
 
-    // Clear existing overlays and polylines
     overlaysRef.current.forEach((overlay) => overlay.setMap(null));
     overlaysRef.current.clear();
     polylinesRef.current.forEach((polyline) => polyline.setMap(null));
     polylinesRef.current.clear();
 
-    // Render substations
     if (visibleLayers.has('SUBSTATIONS')) {
       Object.values(substations).forEach((substation) => {
         const overlay = createGridSubstationOverlay({
@@ -251,7 +293,6 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
       });
     }
 
-    // Render transmission lines
     if (visibleLayers.has('TRANSMISSION_LINES')) {
       Object.values(lines).forEach((line) => {
         if (!line.pathCoordinates || line.pathCoordinates.length < 2) {
@@ -284,7 +325,6 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
     });
   }, [mapState, substations, lines, selectedAssetId, visibleLayers, onSelectAsset]);
 
-  // Fit bounds on initial load (NATIONAL preset)
   useEffect(() => {
     if (mapState !== MapProviderState.READY || !mapRef.current) return;
 
@@ -318,29 +358,70 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
         style={{
           width: '100%',
           height: '100%',
+          display: mapState === MapProviderState.READY ? 'block' : 'none',
           position: 'relative'
         }}
       />
-      
+
+      {mapState !== MapProviderState.READY && (
+        <div className="grid-map-canvas" style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'radial-gradient(circle at top, rgba(14,116,144,0.18), rgba(2,6,23,0.94))' }}>
+          <svg viewBox={`0 0 ${fallbackTopology.width} ${fallbackTopology.height}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style={{ display: 'block' }}>
+            <defs>
+              <pattern id="gridFallback" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(148,163,184,0.15)" strokeWidth="1" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#gridFallback)" />
+            {fallbackTopology.fallbackLines.map((line) => (
+              <path
+                key={line.id}
+                d={line.points}
+                stroke={getLineColor(line.voltageKV)}
+                strokeWidth={line.selected ? 4 : 2.4}
+                fill="none"
+                strokeOpacity={0.9}
+                strokeLinecap="round"
+              />
+            ))}
+            {fallbackTopology.fallbackNodes.map((asset) => (
+              <g key={asset.id} onClick={() => handleSelectAsset(asset.id)} style={{ cursor: 'pointer' }}>
+                <circle
+                  cx={asset.x}
+                  cy={asset.y}
+                  r={asset.isSelected ? 8 : 6}
+                  fill={getVoltageColor(asset.voltageLevelKV)}
+                  stroke={asset.isSelected ? '#f8fafc' : '#0f172a'}
+                  strokeWidth={asset.isSelected ? 2.4 : 1.2}
+                  opacity={0.95}
+                />
+                {asset.isSelected && (
+                  <circle cx={asset.x} cy={asset.y} r={14} fill="none" stroke="#f8fafc" strokeOpacity={0.5} strokeWidth={1.1} />
+                )}
+              </g>
+            ))}
+          </svg>
+        </div>
+      )}
+
       <div className="map-status-bar" style={{ backgroundColor: statusDetail.color }}>
         <span className="status-label">{statusDetail.label}</span>
         <span className="status-message">{statusDetail.message}</span>
-        {mapState === MapProviderState.READY && (
-          <>
-            <span className="data-mode">DATA MODE: REFERENCE</span>
-            <span className="digital-twin-status">DIGITAL TWIN: NOT CONNECTED TO MAP</span>
-            <span className="scada-status">SCADA/EMS: NOT CONNECTED</span>
-            <span className="network-stats">
-              Substations: {networkStats.substationCount} | Lines: {networkStats.lineCount}
-            </span>
-          </>
-        )}
+        <span className="network-stats">
+          Substations: {mapState === MapProviderState.READY ? networkStats.substationCount : Object.keys(substations).length} | Lines: {mapState === MapProviderState.READY ? networkStats.lineCount : Object.keys(lines).length}
+        </span>
       </div>
     </div>
   );
 };
 
 function getLineColor(voltageKV: number): string {
+  if (voltageKV >= 400) return '#00CCFF';
+  if (voltageKV >= 200) return '#AA00FF';
+  if (voltageKV >= 100) return '#00AA00';
+  return '#FFAA00';
+}
+
+function getVoltageColor(voltageKV: number): string {
   if (voltageKV >= 400) return '#00CCFF';
   if (voltageKV >= 200) return '#AA00FF';
   if (voltageKV >= 100) return '#00AA00';

@@ -567,92 +567,423 @@ export function StrategicSourcing({ onAskCopilot }: ScmModuleProps) {
 // ==========================================
 // 7. EXECUTIVE INTELLIGENCE MODULE
 // ==========================================
+type ExecutiveBoardEntity = {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  healthScore: number;
+  metadata: Record<string, any>;
+  lastEvaluatedAt?: string;
+  lastExecution?: {
+    recommendation?: string;
+    riskScore?: number;
+    evidence?: Array<{ statute?: string; paragraph?: string; rating?: number }>;
+    validation?: { violations?: string[]; score?: number; isValid?: boolean };
+  };
+  history?: Array<{ timestamp: string; status: string; healthScore: number; riskScore: number; recommendation: string }>;
+};
+
+function formatCurrency(value: number | string | undefined): string {
+  if (value === undefined || value === null || value === '') return '—';
+  const num = typeof value === 'number' ? value : Number(String(value).replace(/[$,\s]/g, ''));
+  if (!Number.isFinite(num)) return '—';
+  if (Math.abs(num) >= 1_000_000_000) return `$${(num / 1_000_000_000).toFixed(2)}B`;
+  if (Math.abs(num) >= 1_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(num) >= 1_000) return `$${(num / 1_000).toFixed(1)}K`;
+  return `$${num.toLocaleString()}`;
+}
+
 export function ExecutiveIntelligence({ onAskCopilot }: ScmModuleProps) {
-  const [loading, setLoading] = useState(false);
-  const [briefName, setBriefName] = useState('Suswa-Olkaria Line-4 Strategic SCM Review');
-  const [briefingOutput, setBriefingOutput] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [entities, setEntities] = useState<ExecutiveBoardEntity[]>([]);
+  const [gates, setGates] = useState<Array<{ id: string; entityId: string; entityName: string; entityType: string; actionRequested: string; proposedChange: string; reason: string; riskRating: 'Low' | 'Medium' | 'High'; status: 'PENDING' | 'APPROVED' | 'REJECTED'; requestedAt: string; resolvedAt?: string; operatorFeedback?: string }>>([]);
+  const [logs, setLogs] = useState<Array<{ timestamp: string; message: string; type: string }>>([]);
+  const [selectedDecisionId, setSelectedDecisionId] = useState<string | null>(null);
 
-  const generateReport = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setBriefingOutput(`
-### KETRACO SCM Executive Briefing: ${briefName}
-*Target Audience: Board of Directors & SCM Chairman*
-*Generated: UTC 2026-06-21*
+  useEffect(() => {
+    let active = true;
 
-**Executive Status Summary:**
-The general structural health index of current transmission lines contracts stands nominal at 82%. Deliveries are fully compliant with legal anti-fraud boundaries, and saving matrices are peaking at $420,000.
+    async function loadBoard() {
+      setLoading(true);
+      setError(null);
 
-**Active Operational Directives:**
-*   Reallocate double-circuit Insulators from Mariakani warehousing depots.
-*   Bypass customs withhold delays on high-voltage cables at Mombasa terminals using corporate authorization fast-track channels.
-      `);
-      setLoading(false);
-    }, 1200);
+      try {
+        const [entitiesRes, gatesRes, logsRes] = await Promise.all([
+          fetch('/api/scm/procurement-intelligence/entities'),
+          fetch('/api/scm/procurement-intelligence/approval-gates'),
+          fetch('/api/scm/procurement-intelligence/logs')
+        ]);
+
+        if (!entitiesRes.ok || !gatesRes.ok || !logsRes.ok) {
+          throw new Error('One or more executive data sources are unavailable.');
+        }
+
+        const [entitiesJson, gatesJson, logsJson] = await Promise.all([
+          entitiesRes.json(),
+          gatesRes.json(),
+          logsRes.json()
+        ]);
+
+        if (!active) return;
+
+        const nextEntities = Array.isArray(entitiesJson?.entities) ? entitiesJson.entities : [];
+        const nextGates = Array.isArray(gatesJson?.gates) ? gatesJson.gates : [];
+        const nextLogs = Array.isArray(logsJson?.logs) ? logsJson.logs : [];
+
+        setEntities(nextEntities);
+        setGates(nextGates);
+        setLogs(nextLogs);
+        setSelectedDecisionId(nextGates.find((gate: any) => gate.status === 'PENDING')?.id ?? nextGates[0]?.id ?? null);
+      } catch (e) {
+        if (!active) return;
+        setError('Executive intelligence data source unavailable.');
+        setEntities([]);
+        setGates([]);
+        setLogs([]);
+        setSelectedDecisionId(null);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadBoard();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const enterpriseHealth = entities.length
+    ? Math.round(entities.reduce((sum, entity) => sum + (entity.healthScore ?? 0), 0) / entities.length)
+    : 0;
+
+  const pendingGates = gates.filter((gate) => gate.status === 'PENDING');
+  const criticalEntities = entities.filter((entity) => ['CRITICAL', 'ESCALATED', 'DEGRADED'].includes(entity.status));
+  const strategicSignals = [...entities]
+    .filter((entity) => ['ProcurementPlan', 'TenderNotice', 'AwardDecision', 'Contract', 'FrameworkAgreement'].includes(entity.type))
+    .sort((a, b) => (b.healthScore ?? 0) - (a.healthScore ?? 0))
+    .slice(0, 4);
+
+  const financialExposure = entities
+    .filter((entity) => ['AwardDecision', 'Contract', 'Payment'].includes(entity.type))
+    .reduce((sum, entity) => {
+      const value = entity.metadata?.proposedValue ?? entity.metadata?.invoiceAmount ?? entity.metadata?.maxPenaltyCap ?? 0;
+      return sum + Number(value || 0);
+    }, 0);
+
+  const supplierExposure = entities
+    .filter((entity) => ['SupplierProfile', 'FrameworkAgreement', 'Contract', 'AGPOSupplier'].includes(entity.type))
+    .reduce((sum, entity) => {
+      const value = entity.metadata?.priceBid ?? entity.metadata?.bondValue ?? entity.metadata?.invoiceAmount ?? entity.metadata?.maxPenaltyCap ?? 0;
+      return sum + Number(value || 0);
+    }, 0);
+
+  const selectedDecision = gates.find((gate) => gate.id === selectedDecisionId) ?? gates[0] ?? null;
+
+  const executiveBrief = {
+    developments: logs.slice(0, 3).map((log) => log.message).filter(Boolean),
+    risks: criticalEntities.slice(0, 3).map((entity) => `${entity.name} — ${entity.status}`),
+    decisionsRequired: pendingGates.length
+      ? pendingGates.slice(0, 3).map((gate) => gate.actionRequested)
+      : ['No pending approval gates are currently reported.'],
+    projectExceptions: strategicSignals.filter((entity) => (entity.healthScore ?? 100) < 85).slice(0, 3).map((entity) => `${entity.name} — ${entity.healthScore}% health`),
+    commercialExposure: [
+      `Contracting and award exposure: ${formatCurrency(financialExposure)}`,
+      `Supplier concentration exposure: ${formatCurrency(supplierExposure)}`
+    ],
+    nextActions: entities
+      .map((entity) => entity.lastExecution?.recommendation)
+      .filter(Boolean)
+      .slice(0, 3)
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6" id="executive-intelligence">
-      {/* Module Header with Contextual AI Everywhere Buttons */}
-      <div className="bg-slate-900/40 p-5 rounded-2xl border border-slate-800/60 backdrop-blur-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="flex-1 overflow-y-auto p-5 md:p-6 text-slate-100" id="executive-intelligence">
+      <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-indigo-400" />
-            Executive Intelligence Center
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Generate board briefs, aggregate global SCM KPIs, download official transcripts and model recommendations for board presentations.
-          </p>
+          <div className="text-[10px] font-mono font-bold uppercase tracking-[0.24em] text-cyan-300/80">EXECUTIVE BOARD</div>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">Board Intelligence</h1>
         </div>
-
-        {/* Contextual AI Buttons */}
-        <div className="flex flex-wrap gap-2 shrink-0">
-          <button 
-            onClick={() => onAskCopilot?.("Compile and draft an executive strategic Board Briefing report summarizing current KETRACO SCM readiness, risks and mitigations.")}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-950/50 hover:bg-indigo-900/60 border border-indigo-500/20 rounded-xl text-[10px] font-mono font-medium text-cyan-300 transition-all cursor-pointer shadow-lg"
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onAskCopilot?.('Summarize current enterprise health, material risks, outstanding approvals, and recommended executive actions from the live Atlas data set.')}
+            className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[10px] font-mono font-semibold uppercase tracking-[0.18em] text-cyan-200 transition hover:border-cyan-300/60 hover:bg-cyan-500/15"
           >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-300" /> Generate Board Report
+            <Sparkles className="h-3.5 w-3.5" /> Atlas brief
+          </button>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-[10px] font-mono font-semibold uppercase tracking-[0.18em] text-slate-300 transition hover:border-slate-500 hover:text-white"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800/40 space-y-4">
-          <h2 className="text-sm font-semibold text-white tracking-wide">Board Briefing Generator Panel</h2>
-          <div className="space-y-3">
-            <label className="text-[10px] font-mono text-slate-400 block">BRIEF SUB-HEADER SUBJECT</label>
-            <input 
-              type="text" 
-              value={briefName}
-              onChange={(e) => setBriefName(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-505/45"
-            />
+      <div className="mb-6 flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-slate-400">
+        <span>Board</span>
+        <ArrowRight className="h-3 w-3 text-slate-500" />
+        <span>Enterprise issue</span>
+        <ArrowRight className="h-3 w-3 text-slate-500" />
+        <span>Procurement / project / risk</span>
+        <ArrowRight className="h-3 w-3 text-slate-500" />
+        <span>Evidence</span>
+      </div>
+
+      {error && (
+        <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-400/5 p-4 text-sm text-amber-100">
+          <div className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" /> Data source unavailable</div>
+          <p className="mt-2 text-[11px] text-amber-100/80">{error}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <div key={index} className="h-40 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/50 xl:col-span-4" />
+          ))}
+        </div>
+      ) : entities.length === 0 && !error ? (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-8 text-center text-sm text-slate-400">
+          No live executive board data is available from the current Atlas source.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+          <section className="rounded-2xl border border-cyan-500/15 bg-[#07111d]/80 p-4 shadow-[0_0_32px_rgba(34,211,238,0.08)] xl:col-span-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-cyan-300">Enterprise status</div>
+              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[9px] font-mono font-semibold text-emerald-300">LIVE</span>
+            </div>
+            <div className="mb-4 flex items-end justify-between gap-3">
+              <div>
+                <div className="text-3xl font-semibold text-white">{enterpriseHealth}%</div>
+                <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Health index</div>
+              </div>
+              <div className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 text-[9px] font-mono text-cyan-200">Atlas scoring</div>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <div className="mb-1 flex items-center justify-between text-[10px] font-mono text-slate-400"><span>Operational resilience</span><span>{Math.max(0, 100 - criticalEntities.length * 8)}%</span></div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-400" style={{ width: `${Math.max(0, 100 - criticalEntities.length * 8)}%` }} /></div>
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between text-[10px] font-mono text-slate-400"><span>Commercial exposure</span><span>{formatCurrency(financialExposure)}</span></div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-gradient-to-r from-violet-400 to-cyan-400" style={{ width: `${Math.min(100, (financialExposure / 800000000) * 100)}%` }} /></div>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-[#08131f]/90 p-4 xl:col-span-4">
+            <div className="mb-3 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">Strategic priorities</div>
+            <div className="space-y-3">
+              {strategicSignals.map((entity) => (
+                <div key={entity.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-white">{entity.name}</div>
+                    <span className={`rounded-full border px-2 py-0.5 text-[9px] font-mono ${entity.status === 'CRITICAL' || entity.status === 'ESCALATED' ? 'border-rose-400/30 bg-rose-500/10 text-rose-300' : 'border-emerald-400/20 bg-emerald-500/10 text-emerald-300'}`}>
+                      {entity.status}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                    <span>{entity.type}</span>
+                    <span>{entity.healthScore}% health</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-[#08131f]/90 p-4 xl:col-span-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">Critical decisions</div>
+              <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[9px] font-mono text-amber-200">{pendingGates.length} pending</span>
+            </div>
+            <div className="space-y-2">
+              {pendingGates.length > 0 ? pendingGates.slice(0, 4).map((gate) => (
+                <button
+                  key={gate.id}
+                  type="button"
+                  onClick={() => setSelectedDecisionId(gate.id)}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-left transition hover:border-cyan-500/30 hover:bg-slate-900"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm text-white">{gate.entityName}</div>
+                    <span className={`rounded-full border px-2 py-0.5 text-[9px] font-mono ${gate.riskRating === 'High' ? 'border-rose-400/30 bg-rose-500/10 text-rose-300' : gate.riskRating === 'Medium' ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'}`}>
+                      {gate.riskRating}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-[10px] text-slate-400">{gate.actionRequested}</div>
+                </button>
+              )) : (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-[11px] text-slate-500">No pending approval gates are currently reported.</div>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-[#08131f]/90 p-4 xl:col-span-4">
+            <div className="mb-3 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">Enterprise risk</div>
+            <div className="space-y-2">
+              {criticalEntities.length > 0 ? criticalEntities.slice(0, 4).map((entity) => (
+                <div key={entity.id} className="rounded-xl border border-rose-500/15 bg-rose-500/5 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-white">{entity.name}</span>
+                    <span className="rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[9px] font-mono text-rose-300">{entity.status}</span>
+                  </div>
+                  <div className="mt-2 text-[10px] text-slate-300">Health score: {entity.healthScore}%</div>
+                </div>
+              )) : (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-[11px] text-slate-500">No critical enterprise risks are currently active.</div>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-[#08131f]/90 p-4 xl:col-span-4">
+            <div className="mb-3 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">Capital projects</div>
+            <div className="space-y-2">
+              {strategicSignals.slice(0, 3).map((entity) => (
+                <div key={entity.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="text-sm text-white">{entity.name}</div>
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                    <span>{entity.type}</span>
+                    <span>{entity.healthScore}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-[#08131f]/90 p-4 xl:col-span-4">
+            <div className="mb-3 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">Financial / commercial position</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/8 p-3">
+                <div className="text-[9px] uppercase tracking-[0.2em] text-cyan-300">Exposure</div>
+                <div className="mt-2 text-xl font-semibold text-white">{formatCurrency(financialExposure)}</div>
+              </div>
+              <div className="rounded-xl border border-violet-500/20 bg-violet-500/8 p-3">
+                <div className="text-[9px] uppercase tracking-[0.2em] text-violet-300">Supplier risk</div>
+                <div className="mt-2 text-xl font-semibold text-white">{formatCurrency(supplierExposure)}</div>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-[#08131f]/90 p-4 xl:col-span-4">
+            <div className="mb-3 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">Procurement / supplier exposure</div>
+            <div className="space-y-2">
+              {entities.filter((entity) => ['SupplierProfile', 'FrameworkAgreement', 'Contract'].includes(entity.type)).slice(0, 4).map((entity) => (
+                <div key={entity.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-white">{entity.name}</span>
+                    <span className="text-[9px] font-mono text-slate-400">{entity.type}</span>
+                  </div>
+                  <div className="mt-2 text-[10px] text-slate-300">Health: {entity.healthScore}%</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-[#08131f]/90 p-4 xl:col-span-4">
+            <div className="mb-3 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">Operational exceptions</div>
+            <div className="space-y-2">
+              {criticalEntities.length > 0 ? criticalEntities.slice(0, 4).map((entity) => (
+                <div key={entity.id} className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-white">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{entity.name}</span>
+                    <span className="text-[9px] font-mono text-amber-200">{entity.status}</span>
+                  </div>
+                  <div className="mt-2 text-[10px] text-slate-300">{entity.lastExecution?.recommendation ?? 'No recommendation recorded in source data.'}</div>
+                </div>
+              )) : (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-[11px] text-slate-500">No operational exceptions are currently reported.</div>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-[#08131f]/90 p-4 xl:col-span-8">
+            <div className="mb-3 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">Executive activity</div>
+            <div className="space-y-3">
+              {logs.slice(0, 5).map((log) => (
+                <div key={`${log.timestamp}-${log.message}`} className="flex gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="mt-0.5 h-2.5 w-2.5 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.7)]" />
+                  <div className="flex-1">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-slate-400">{new Date(log.timestamp).toLocaleString()}</div>
+                    <div className="mt-1 text-sm text-white">{log.message}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-800 bg-[#08131f]/90 p-4 xl:col-span-4">
+            <div className="mb-3 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-300">Executive brief</div>
+            <div className="space-y-2 text-sm text-slate-200">
+              {[
+                ['Key developments', executiveBrief.developments],
+                ['Material risks', executiveBrief.risks],
+                ['Decisions required', executiveBrief.decisionsRequired],
+                ['Commercial exposure', executiveBrief.commercialExposure],
+                ['Recommended next actions', executiveBrief.nextActions]
+              ].map(([label, items]) => (
+                <div key={String(label)} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="mb-2 text-[9px] font-mono uppercase tracking-[0.18em] text-cyan-300">{String(label)}</div>
+                  <ul className="space-y-2 text-[11px] text-slate-300">
+                    {Array.isArray(items) && items.length > 0 ? items.map((entry) => <li key={String(entry)} className="list-disc ml-4">{String(entry)}</li>) : <li className="list-disc ml-4">No live data available.</li>}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {selectedDecision && (
+        <aside className="mt-6 rounded-2xl border border-cyan-500/15 bg-[#07111d]/90 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-300">Decision detail</div>
+              <h2 className="mt-1 text-xl font-semibold text-white">{selectedDecision.entityName}</h2>
+            </div>
+            <span className={`rounded-full border px-2 py-1 text-[9px] font-mono ${selectedDecision.status === 'PENDING' ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : selectedDecision.status === 'APPROVED' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-rose-500/20 bg-rose-500/10 text-rose-300'}`}>
+              {selectedDecision.status}
+            </span>
           </div>
 
-          <button
-            onClick={generateReport}
-            disabled={loading}
-            className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs py-3 rounded-xl cursor-pointer disabled:opacity-50"
-          >
-            {loading ? 'Compiling telemetries...' : 'Generate KETRACO SCM Executive Audit'}
-          </button>
-        </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <dl className="space-y-3 text-sm">
+              <div className="flex justify-between gap-3 border-b border-slate-800 pb-2"><dt className="text-slate-400">Subject</dt><dd className="text-right text-white">{selectedDecision.entityName}</dd></div>
+              <div className="flex justify-between gap-3 border-b border-slate-800 pb-2"><dt className="text-slate-400">Owner</dt><dd className="text-right text-white">{selectedDecision.entityType || 'Not specified'}</dd></div>
+              <div className="flex justify-between gap-3 border-b border-slate-800 pb-2"><dt className="text-slate-400">Originating department</dt><dd className="text-right text-white">{selectedDecision.entityType || 'Not specified'}</dd></div>
+              <div className="flex justify-between gap-3 border-b border-slate-800 pb-2"><dt className="text-slate-400">Priority</dt><dd className="text-right text-white">{selectedDecision.riskRating}</dd></div>
+              <div className="flex justify-between gap-3 border-b border-slate-800 pb-2"><dt className="text-slate-400">Deadline</dt><dd className="text-right text-white">{entities.find((entity) => entity.id === selectedDecision.entityId)?.metadata?.submissionDeadline ?? 'Not specified'}</dd></div>
+            </dl>
 
-        {/* Display Output area */}
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800/40 relative min-h-[220px]">
-          <span className="text-[9px] font-mono text-slate-500 absolute top-4 right-4">SECURE BRIEF_V3.RTF</span>
-          {briefingOutput ? (
-            <div className="font-mono text-[11px] text-slate-300 leading-relaxed max-h-[280px] overflow-y-auto whitespace-pre-line bg-slate-950/40 p-4 rounded-xl border border-slate-850">
-              {briefingOutput}
+            <div className="space-y-3 text-sm">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-cyan-300">Supporting evidence</div>
+                <p className="mt-2 text-slate-300">{selectedDecision.reason}</p>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-cyan-300">Related project / risk</div>
+                <p className="mt-2 text-slate-300">{selectedDecision.proposedChange || 'No related record provided in source data.'}</p>
+              </div>
             </div>
-          ) : (
-            <div className="h-full flex flex-col justify-center items-center text-center p-8 text-slate-650">
-              <FileText className="w-10 h-10 text-slate-850 mb-2" />
-              <p className="text-xs font-semibold">Ready for compilation...</p>
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onAskCopilot?.(`Review the live decision workflow for ${selectedDecision.entityName}, including the approval reason, risk rating and evidence trail.`)}
+              className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-[10px] font-mono font-semibold uppercase tracking-[0.16em] text-cyan-200 hover:border-cyan-400/60 hover:bg-cyan-500/15"
+            >
+              Ask Atlas
+            </button>
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

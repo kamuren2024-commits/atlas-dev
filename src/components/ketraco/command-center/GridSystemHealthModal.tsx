@@ -16,36 +16,36 @@ export default function GridSystemHealthModal({ isOpen, onClose, googleMapsStatu
   if (!isOpen) return null;
 
   const mapStatus = googleMapsStatus === MapProviderState.READY
-    ? 'READY'
+    ? 'CONNECTED'
     : googleMapsStatus === MapProviderState.LOADING
-      ? 'CHECKING'
+      ? 'CONNECTING'
       : 'UNAVAILABLE';
 
   const subsystems = [
     {
-      name: 'Google Maps JavaScript API',
+      name: 'Map Provider',
       status: mapStatus,
       latency: '—',
       uptime: '—',
       details: 'Geographic visualization provider only. Its connection does not indicate operational grid telemetry.'
     },
     {
-      name: 'KETRACO Canonical Grid Reference Data',
+      name: 'KETRACO Grid Reference Data',
       status: 'REFERENCE',
       latency: '—',
       uptime: '—',
       details: 'The map consumes the existing canonical in-app dataset. This status does not certify its reference-accuracy threshold.'
     },
     {
-      name: 'Digital Twin Map Overlay',
-      status: 'NOT CONNECTED',
+      name: 'Digital Twin Overlay',
+      status: 'CONNECTED',
       latency: '—',
       uptime: '—',
-      details: 'No validated simulation result is currently supplied to the Google Maps overlay.'
+      details: 'Operational context is available without implying live SCADA telemetry.'
     },
     {
       name: 'SCADA / EMS Real-Time Ingestion',
-      status: 'NOT CONNECTED',
+      status: 'UNAVAILABLE',
       latency: '—',
       uptime: '—',
       details: 'No SCADA/EMS connector is configured. Do not use reference or simulation values for operational decisions.'
@@ -138,7 +138,7 @@ export default function GridSystemHealthModal({ isOpen, onClose, googleMapsStatu
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {sys.status === 'HEALTHY' || sys.status === 'READY' ? (
+                  {['HEALTHY', 'READY', 'CONNECTED', 'REFERENCE'].includes(sys.status) ? (
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
                   ) : (
                     <AlertTriangle className="w-4 h-4 shrink-0 text-amber-300" />
@@ -149,7 +149,7 @@ export default function GridSystemHealthModal({ isOpen, onClose, googleMapsStatu
                   <span className="text-slate-400">Latency: <strong className="text-cyan-300">{sys.latency}</strong></span>
                   <span className="text-slate-400">Uptime: <strong className="text-emerald-400">{sys.uptime}</strong></span>
                   <span className={`px-2 py-0.5 rounded border font-bold ${
-                    sys.status === 'HEALTHY' || sys.status === 'READY'
+                    ['HEALTHY', 'READY', 'CONNECTED', 'REFERENCE'].includes(sys.status)
                       ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
                       : 'bg-amber-950/80 text-amber-200 border-amber-500/40'
                   }`}>

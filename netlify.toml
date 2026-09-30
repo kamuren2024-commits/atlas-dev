@@ -1,0 +1,19 @@
+[build]
+command = "npm run build"
+publish = "dist"
+functions = "netlify/functions"
+
+[functions]
+node_bundler = "esbuild"
+
+[build.environment]
+ATLAS_DEMO_MODE = "false"
+VITE_ATLAS_DEMO_MODE = "false"
+
+[context.production.environment]
+ATLAS_DEMO_MODE = "false"
+VITE_ATLAS_DEMO_MODE = "false"
+
+[context.demo.environment]
+ATLAS_DEMO_MODE = "true"
+VITE_ATLAS_DEMO_MODE = "true"

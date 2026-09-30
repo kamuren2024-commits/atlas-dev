@@ -147,7 +147,7 @@ export class ConfigService {
     const masked: Record<string, string> = {};
     for (const k in this.configCache) {
       const val = this.configCache[k];
-      if (k.includes('KEY') || k.includes('SECRET') || k.includes('TOKEN') || k.includes('PASSWORD')) {
+      if (k.includes('KEY') || k.includes('SECRET') || k.includes('TOKEN') || k.includes('PASSWORD') || k.includes('PASSPHRASE')) {
         if (!val || val.trim() === '') {
           masked[k] = '[EMPTY]';
         } else {
