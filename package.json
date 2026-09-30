@@ -22,6 +22,7 @@
     "eval:ontology": "tsx backend/evaluation/eval-harness.ts ontology",
     "eval:tools": "tsx backend/evaluation/eval-harness.ts tools",
     "eval:all": "tsx backend/evaluation/eval-harness.ts all",
+    "eval:ollama": "tsx scripts/evaluate-ollama.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name db01_init",
     "migrate:sqlite-to-pg": "node scripts/migrate_sqlite_to_postgres.js",

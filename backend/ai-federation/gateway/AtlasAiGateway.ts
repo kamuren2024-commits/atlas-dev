@@ -47,6 +47,9 @@ export interface GatewayInferenceResponse {
   fallbackState?: {
     attemptedModel: string;
     fallbackReason: string;
+    primaryProvider?: string;
+    fallbackProvider?: string;
+    policyDecision?: string;
   };
   timestamp: string;
 }
@@ -99,8 +102,16 @@ export class AtlasAiGateway {
     }
 
     let selectedEntry: ModelRegistryEntry;
-    if (req.preferredModel && this.modelRegistry.getModel(req.preferredModel)) {
-      selectedEntry = this.modelRegistry.getModel(req.preferredModel)!;
+    const preferredEntry = req.preferredModel ? this.modelRegistry.getModel(req.preferredModel) : undefined;
+    const preferredIsEligible = preferredEntry &&
+      preferredEntry.availability === 'ACTIVE' &&
+      (preferredEntry.provider !== 'ollama' ||
+        preferredEntry.eligibility === 'PASSED' ||
+        preferredEntry.eligibility === 'PASSED_WITH_RESTRICTIONS');
+    if (preferredEntry && !preferredIsEligible) {
+      throw new Error(`Model ${req.preferredModel} is not eligible for production inference; direct runtime evaluation is required`);
+    } else if (preferredEntry) {
+      selectedEntry = preferredEntry;
     } else if (preferredLocal) {
       selectedEntry = preferredLocal;
     } else {
@@ -125,7 +136,7 @@ export class AtlasAiGateway {
     }
 
     let lastErr: Error | undefined;
-    let fallbackState: { attemptedModel: string; fallbackReason: string } | undefined;
+    let fallbackState: NonNullable<GatewayInferenceResponse['fallbackState']> | undefined;
 
     for (const candidate of taskCandidates) {
       try {
@@ -139,7 +150,7 @@ export class AtlasAiGateway {
           deploymentMode: candidate.deploymentMode,
           latencyMs,
           usage: result.usage,
-          fallbackState,
+          fallbackState: fallbackState ? { ...fallbackState, fallbackProvider: candidate.provider } : undefined,
           timestamp: new Date().toISOString(),
         };
 
@@ -151,6 +162,8 @@ export class AtlasAiGateway {
           fallbackState = {
             attemptedModel: candidate.modelId,
             fallbackReason: lastErr.message,
+            primaryProvider: candidate.provider,
+            policyDecision: 'Fallback is explicit and recorded after primary failure',
           };
         }
         console.warn(`[AtlasAiGateway] Model ${candidate.modelId} failed: ${lastErr.message}`);

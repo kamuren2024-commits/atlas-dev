@@ -28,6 +28,8 @@ export interface ModelRegistryEntry {
   latencyClass: LatencyClass;
   costClass: CostClass;
   availability: ModelHealthStatus;
+  eligibility?: OllamaEvaluationStatus | 'NOT_APPLICABLE';
+  evaluation?: OllamaModelEvaluation;
   health: {
     lastChecked: string;
     consecutiveErrors: number;
@@ -42,6 +44,7 @@ export interface ModelRegistryEntry {
 }
 
 import { OllamaClient } from '../providers/ollama/OllamaClient';
+import { OllamaModelEvaluation, OllamaEvaluationStatus } from '../providers/ollama/types';
 
 export class AtlasModelRegistry {
   private static instance: AtlasModelRegistry | null = null;
@@ -193,7 +196,8 @@ export class AtlasModelRegistry {
           contextWindow: tag.details?.context_length ?? 32768,
           latencyClass: 'MEDIUM',
           costClass: 'FREE',
-          availability: 'ACTIVE',
+          availability: 'DISABLED',
+          eligibility: 'UNVERIFIED',
           health: {
             lastChecked: new Date().toISOString(),
             consecutiveErrors: 0,
@@ -214,6 +218,26 @@ export class AtlasModelRegistry {
     }
   }
 
+  /**
+   * Apply only evidence produced by the direct Ollama evaluator. Discovery
+   * metadata must never promote a model into the trust plane.
+   */
+  public applyOllamaEvaluation(evaluation: OllamaModelEvaluation): ModelRegistryEntry | undefined {
+    const model = this.models.get(evaluation.model);
+    if (!model || model.provider !== 'ollama') return undefined;
+    model.evaluation = evaluation;
+    model.eligibility = evaluation.status;
+    model.availability = evaluation.status === 'FAILED' || evaluation.status === 'UNVERIFIED' ||
+      evaluation.status === 'EXPIRED' || evaluation.status === 'REVOKED' ? 'DISABLED' : 'ACTIVE';
+    model.health.lastChecked = evaluation.evaluatedAt;
+    model.health.avgLatencyMs = evaluation.tests.boundedInference.durationMs;
+    model.capabilities.streaming = evaluation.capabilities.STREAMING === 'PASS';
+    model.capabilities.structuredOutput = evaluation.capabilities.STRUCTURED_OUTPUT === 'PASS';
+    model.capabilities.toolCalling = evaluation.capabilities.TOOL_CALLING === 'PASS';
+    model.capabilities.vision = evaluation.capabilities.VISION === 'PASS';
+    return model;
+  }
+
   public listModels(): ModelRegistryEntry[] {
     return Array.from(this.models.values());
   }
@@ -232,7 +256,10 @@ export class AtlasModelRegistry {
     highReasoning?: boolean;
     preferredProvider?: ModelProvider;
   }): ModelRegistryEntry {
-    const candidates = Array.from(this.models.values()).filter((m) => m.availability === 'ACTIVE');
+    const candidates = Array.from(this.models.values()).filter((m) =>
+      m.availability === 'ACTIVE' &&
+      (m.provider !== 'ollama' || m.eligibility === 'PASSED' || m.eligibility === 'PASSED_WITH_RESTRICTIONS')
+    );
 
     const localCandidates = candidates.filter((m) => m.deploymentMode === 'LOCAL');
     if (localCandidates.length > 0 && (params.requiresAirGap || !params.preferredProvider || params.preferredProvider === 'ollama')) {

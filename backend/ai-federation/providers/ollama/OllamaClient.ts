@@ -114,7 +114,7 @@ export class OllamaClient {
   private async request<T>(
     path: string,
     init: RequestInit,
-    { responseTimeoutMs, connectOnly = false }: { responseTimeoutMs?: number; connectOnly?: boolean } = {}
+    { responseTimeoutMs, connectOnly = false, signal }: { responseTimeoutMs?: number; connectOnly?: boolean; signal?: AbortSignal } = {}
   ): Promise<T> {
     const { controller, clear } = this.createController(responseTimeoutMs);
     const connectController = new AbortController();
@@ -124,13 +124,16 @@ export class OllamaClient {
     try {
       response = await fetch(`${this.config.baseUrl}${path}`, {
         ...init,
-        signal: controller.signal,
+        signal: signal || controller.signal,
         headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
       });
     } catch (err: any) {
       clear();
       clearTimeout(connectTimer);
       if (err?.name === 'AbortError') {
+        if (signal?.aborted) {
+          throw new OllamaError('ABORTED', 'Ollama request was aborted by the caller', { cause: err });
+        }
         if (connectController.signal.aborted) {
           throw new OllamaError('CONNECTION_TIMEOUT', `Connection to Ollama timed out after ${this.config.connectTimeoutMs}ms`, { cause: err });
         }
@@ -210,28 +213,28 @@ export class OllamaClient {
   /**
    * Non-streaming generate (single prompt).
    */
-  async generate(req: OllamaGenerateRequest, options?: { timeoutMs?: number }): Promise<OllamaGenerateResponse> {
+  async generate(req: OllamaGenerateRequest, options?: { timeoutMs?: number; signal?: AbortSignal }): Promise<OllamaGenerateResponse> {
     return this.request<OllamaGenerateResponse>(
       '/api/generate',
       {
         method: 'POST',
         body: JSON.stringify({ ...req, stream: false }),
       },
-      { responseTimeoutMs: options?.timeoutMs ?? this.config.timeoutMs }
+      { responseTimeoutMs: options?.timeoutMs ?? this.config.timeoutMs, signal: options?.signal }
     );
   }
 
   /**
    * Non-streaming chat (message payloads). Preferred for Qwen-family chat.
    */
-  async chat(req: OllamaChatRequest, options?: { timeoutMs?: number }): Promise<OllamaGenerateResponse> {
+  async chat(req: OllamaChatRequest, options?: { timeoutMs?: number; signal?: AbortSignal }): Promise<OllamaGenerateResponse> {
     return this.request<OllamaGenerateResponse>(
       '/api/chat',
       {
         method: 'POST',
         body: JSON.stringify({ ...req, stream: false }),
       },
-      { responseTimeoutMs: options?.timeoutMs ?? this.config.timeoutMs }
+      { responseTimeoutMs: options?.timeoutMs ?? this.config.timeoutMs, signal: options?.signal }
     );
   }
 

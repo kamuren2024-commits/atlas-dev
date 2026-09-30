@@ -41,6 +41,75 @@ export interface LocalModel {
   capabilities: string[];
 }
 
+export type OllamaEvaluationStatus =
+  | 'DISCOVERED'
+  | 'PROBING'
+  | 'EVALUATING'
+  | 'PASSED'
+  | 'PASSED_WITH_RESTRICTIONS'
+  | 'FAILED'
+  | 'UNVERIFIED'
+  | 'EXPIRED'
+  | 'REVOKED';
+
+export type OllamaFailureClass =
+  | 'CONNECTIVITY_FAILURE'
+  | 'MODEL_NOT_FOUND'
+  | 'MODEL_LOAD_FAILURE'
+  | 'COLD_START_TIMEOUT'
+  | 'INFERENCE_TIMEOUT'
+  | 'REQUEST_ABORTED'
+  | 'STREAM_TIMEOUT'
+  | 'INVALID_RESPONSE'
+  | 'EMPTY_RESPONSE'
+  | 'MALFORMED_RESPONSE'
+  | 'OUT_OF_MEMORY'
+  | 'RUNTIME_ERROR'
+  | 'UNSUPPORTED_CAPABILITY'
+  | 'SUCCESS';
+
+export type OllamaProbeStatus = 'PASS' | 'FAIL' | 'UNVERIFIED' | 'UNSUPPORTED';
+
+export interface OllamaProbeEvidence {
+  provider: 'ollama';
+  model: string;
+  requestId: string;
+  traceId: string;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  timeoutMs: number;
+  status: OllamaProbeStatus;
+  errorClass?: OllamaFailureClass;
+  errorMessage?: string;
+  responseBytes: number;
+  tokensIfAvailable?: number;
+  streaming: boolean;
+  structuredOutput: boolean;
+  toolCalling: boolean;
+  parameters?: Record<string, unknown>;
+}
+
+export interface OllamaModelEvaluation {
+  provider: 'ollama';
+  model: string;
+  evaluationVersion: string;
+  status: OllamaEvaluationStatus;
+  tests: {
+    connectivity: OllamaProbeEvidence;
+    minimalInference: OllamaProbeEvidence;
+    boundedInference: OllamaProbeEvidence;
+    streaming: OllamaProbeEvidence;
+    structuredOutput: OllamaProbeEvidence;
+    toolCalling: OllamaProbeEvidence;
+    cancellation: OllamaProbeEvidence;
+  };
+  capabilities: Record<string, OllamaProbeStatus>;
+  errors: Array<{ class: OllamaFailureClass; message: string }>;
+  traceRefs: string[];
+  evaluatedAt: string;
+}
+
 /** Health check result for the Ollama runtime */
 export interface OllamaHealth {
   reachable: boolean;

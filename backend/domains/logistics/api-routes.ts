@@ -36,6 +36,7 @@
 
 import express, { type Request, type Response } from 'express';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import type { DatabaseCore } from '../../database/db-core';
 import type { KnowledgeGraph } from '../../evaluation/knowledge-graph';
 import { AuthorizationService } from '../../security/authorization-service';
@@ -184,6 +185,83 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
       });
     }
 
+    next();
+  });
+
+  router.use((req: Request, res: Response, next: express.NextFunction) => {
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+      next();
+      return;
+    }
+
+    res.on('finish', () => {
+      const tenantId = tenantContext.getStore();
+      const actor = req.user;
+      if (!tenantId || !actor || res.statusCode >= 400) return;
+
+      const details = {
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode,
+        bodyKeys: Object.keys(req.body || {}).sort(),
+        queryKeys: Object.keys(req.query || {}).sort(),
+      };
+      const createdAt = new Date().toISOString();
+      const id = uuidv4();
+      const appendAuditRecord = async () => {
+        const previous = await db.get<{ record_hash: string }>(
+          `SELECT record_hash FROM logistics_governance_audit
+           WHERE tenant_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+          [tenantId]
+        );
+        const detailsJson = JSON.stringify(details);
+        const recordHash = createHash('sha256')
+          .update(JSON.stringify({
+            id,
+            tenantId,
+            actorId: actor.id,
+            action: req.method,
+            resource: req.path,
+            outcome: res.statusCode < 400 ? 'SUCCESS' : 'FAILURE',
+            correlationId: req.correlationId || null,
+            detailsJson,
+            previousHash: previous?.record_hash || null,
+            createdAt,
+          }))
+          .digest('hex');
+
+        await db.run(`
+          INSERT INTO logistics_governance_audit
+          (id, tenant_id, actor_id, actor_role, action, resource, entity_id, outcome,
+           correlation_id, details_json, previous_hash, record_hash, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          id,
+          tenantId,
+          actor.id,
+          actor.role,
+          req.method,
+          'logistics',
+          req.params.id || null,
+          res.statusCode < 400 ? 'SUCCESS' : 'FAILURE',
+          req.correlationId || null,
+          detailsJson,
+          previous?.record_hash || null,
+          recordHash,
+          createdAt,
+        ]);
+        audit.log({
+          actorId: actor.id,
+          action: `${req.method} ${req.path}`,
+          timestamp: createdAt,
+          attributes: { tenantId, role: actor.role, outcome: res.statusCode < 400 ? 'SUCCESS' : 'FAILURE', correlationId: req.correlationId },
+        });
+      };
+
+      void appendAuditRecord().catch(error => {
+        console.error('[LOGISTICS-AUDIT] Failed to persist governance audit record:', error);
+      });
+    });
     next();
   });
 
@@ -1164,6 +1242,26 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
 
       if (!existing) {
         return fail(res, 404, 'MISSION_NOT_FOUND', `Mission ${id} not found`);
+      }
+
+      const allowedTransitions: Record<string, string[]> = {
+        CREATED: ['ASSIGNED', 'CANCELLED'],
+        ASSIGNED: ['DISPATCHED', 'CANCELLED'],
+        DISPATCHED: ['EN_ROUTE', 'DELAYED', 'CANCELLED'],
+        EN_ROUTE: ['ON_SITE', 'DELAYED', 'CANCELLED'],
+        ON_SITE: ['COMPLETED', 'DELAYED', 'CANCELLED'],
+        DELAYED: ['EN_ROUTE', 'ON_SITE', 'CANCELLED'],
+        COMPLETED: [],
+        CANCELLED: [],
+      };
+      if (status && status !== existing.status && !allowedTransitions[existing.status]?.includes(status)) {
+        return fail(
+          res,
+          409,
+          'INVALID_MISSION_TRANSITION',
+          `Mission ${existing.mission_code} cannot transition from ${existing.status} to ${status}`,
+          { currentStatus: existing.status, requestedStatus: status }
+        );
       }
 
       if (vehicleId) {

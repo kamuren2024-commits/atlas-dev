@@ -115,6 +115,8 @@ The module is not yet fully canonicalized to a complete graph model, but the arc
 - Fleet readiness summaries
 - Security/access gate checks before read actions
 - Audit logging for overview and data access events
+- Tenant-scoped, append-only governance audit records for successful state-changing requests
+- Explicit mission lifecycle transition validation; invalid transitions are rejected with `409`
 
 ## Existing Integrations
 
@@ -173,6 +175,23 @@ The model is not yet a full causal or graph-native intelligence model; it is a p
 7. UI consumes the payload in the logistics view
 8. `/data-quality` reports persisted source timestamps and unavailable import
    sources explicitly
+
+## Governance Controls
+
+The Logistics router reuses Atlas authentication and `AuthorizationService` checks at
+the API boundary; UI visibility is not treated as authorization. State-changing
+requests are recorded in `logistics_governance_audit` with actor, role, tenant,
+resource, correlation ID, outcome, and a SHA-256 hash chained to the preceding
+tenant record. Database triggers prevent updates and deletes of those records.
+Audit persistence failures are surfaced to server logs and are not converted into
+success responses.
+
+Mission lifecycle updates use an explicit transition map. The existing operational
+states remain supported, but terminal missions cannot be changed and callers cannot
+skip required assignment, dispatch, or execution stages. Approval and verification
+stages, richer segregation-of-duties identity attributes, and external records
+retention remain deferred until the corresponding Atlas identity and records
+contracts are available.
 
 ## UI Architecture
 
