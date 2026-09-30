@@ -5,6 +5,7 @@ import GridMapCanvas, { type GridMapProviderStatus, MapProviderState } from './G
 import GridGraphExplorer from './GridGraphExplorer';
 import GridDataQualityPanel from './GridDataQualityPanel';
 import GridIntelligencePanel from './GridIntelligencePanel';
+import SubstationDetailsPanel from './SubstationDetailsPanel';
 import GridEventFabric from './GridEventFabric';
 import GridCommandPalette from './GridCommandPalette';
 import GridSystemHealthModal from './GridSystemHealthModal';
@@ -96,7 +97,7 @@ import {
 } from './types';
 
 export default function CommandCenterShell() {
-  const { selectEntity } = useAtlasContext();
+  const { selectEntity, closeInspector } = useAtlasContext();
   // Live Data State
   const [substations, setSubstations] = useState<Record<string, GridAsset>>(CANONICAL_SUBSTATIONS);
   const [lines, setLines] = useState<Record<string, TransmissionLine>>(CANONICAL_LINES);
@@ -287,9 +288,14 @@ export default function CommandCenterShell() {
     const asset = substations[assetId] || lines[assetId];
     if (!asset) return;
     const isSubstation = assetId in substations;
+    if (isSubstation) {
+      closeInspector();
+      return;
+    }
+
     selectEntity({
       id: assetId,
-      type: isSubstation ? 'SUBSTATION' : 'TRANSMISSION_LINE',
+      type: 'TRANSMISSION_LINE',
       label: asset.name || assetId,
       status: asset.state,
       source: asset.source,
@@ -384,10 +390,10 @@ export default function CommandCenterShell() {
   const activeAlarmsCount = alarms.filter(a => !a.acknowledged && (a.severity === 'CRITICAL' || a.severity === 'HIGH' || a.severity === 'P1')).length;
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#050913] text-slate-100 overflow-y-auto font-sans relative select-text">
+    <div className="w-full h-full min-w-0 min-h-0 flex flex-col bg-[#050913] text-slate-100 overflow-y-auto font-sans relative select-text">
       
       {/* Secondary controls remain available without competing with the operating picture. */}
-      <details className="atlas-secondary-detail shrink-0 border-b border-slate-800/70 bg-[#070c16]/80 group">
+      <details open className="atlas-secondary-detail shrink-0 border-b border-slate-800/70 bg-[#070c16]/80 group">
         <summary className="cursor-pointer select-none px-5 py-2 text-[10px] font-mono font-bold uppercase tracking-[.12em] text-slate-400 hover:text-cyan-300">
           Grid controls, diagnostics &amp; time context
         </summary>
@@ -445,7 +451,7 @@ export default function CommandCenterShell() {
         </div>
       </details>
 
-      <section className="shrink-0 border-b border-slate-800/80 bg-[radial-gradient(900px_220px_at_10%_0%,rgba(0,217,255,.10),transparent_66%)] px-5 py-5 md:px-6">
+      <section className="order-first shrink-0 border-b border-slate-800/80 bg-[radial-gradient(900px_220px_at_10%_0%,rgba(0,217,255,.10),transparent_66%)] px-5 py-5 md:px-6">
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div className="max-w-2xl">
             <p className="text-[10px] font-mono font-bold uppercase tracking-[.16em] text-cyan-300">Enterprise Operations</p>
@@ -668,17 +674,28 @@ export default function CommandCenterShell() {
               )}
 
               {/* Right Intelligence Panel (AI Copilot, Anomaly Feed, Incidents) */}
-              <GridIntelligencePanel
-                selectedAsset={selectedAsset}
-                onClearSelection={() => setSelectedAssetId(null)}
-                alarms={alarms}
-                events={events}
-                aiInsights={CANONICAL_AI_INSIGHTS}
-                onAskCopilot={handleAskCopilot}
-                intelligenceState={intelligenceState}
-                copilotQAHistory={copilotQAHistory}
-                onSelectAsset={handleSelectAsset}
-              />
+              {selectedAsset ? (
+                <SubstationDetailsPanel
+                  substation={selectedAsset}
+                  substations={substations}
+                  lines={lines}
+                  alarms={alarms}
+                  events={events}
+                  onClose={() => setSelectedAssetId(null)}
+                />
+              ) : (
+                <GridIntelligencePanel
+                  selectedAsset={null}
+                  onClearSelection={() => setSelectedAssetId(null)}
+                  alarms={alarms}
+                  events={events}
+                  aiInsights={CANONICAL_AI_INSIGHTS}
+                  onAskCopilot={handleAskCopilot}
+                  intelligenceState={intelligenceState}
+                  copilotQAHistory={copilotQAHistory}
+                  onSelectAsset={handleSelectAsset}
+                />
+              )}
             </div>
           </div>
 

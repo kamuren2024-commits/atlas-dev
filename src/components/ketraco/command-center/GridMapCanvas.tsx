@@ -282,15 +282,6 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
             zoomControl: true,
             streetViewControl: false,
             mapTypeControl: false,
-            styles: [
-              { featureType: 'all', elementType: 'labels', stylers: [{ visibility: 'on' }] },
-              { featureType: 'poi', elementType: 'all', stylers: [{ visibility: 'off' }] },
-              { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
-              { featureType: 'landscape', elementType: 'all', stylers: [{ color: '#0b1220' }] },
-              { featureType: 'transit', elementType: 'all', stylers: [{ visibility: 'off' }] },
-              { featureType: 'road', elementType: 'all', stylers: [{ visibility: 'simplified' }] },
-              { featureType: 'water', elementType: 'all', stylers: [{ color: '#0f172a' }] }
-            ]
           });
           setMapState(MapProviderState.READY);
         } catch (err) {
@@ -413,7 +404,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
       />
 
       {mapState !== MapProviderState.READY && (
-        <div className="grid-map-canvas" style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'radial-gradient(circle at top, rgba(14,116,144,0.18), rgba(2,6,23,0.94))' }}>
+        <div className="grid-map-canvas" style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#f8fafc' }}>
           <svg viewBox={`0 0 ${fallbackTopology.width} ${fallbackTopology.height}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style={{ display: 'block' }}>
             <defs>
               <pattern id="gridFallback" width="40" height="40" patternUnits="userSpaceOnUse">

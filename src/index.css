@@ -44,6 +44,14 @@
 .atlas-glass--normal { border-radius: 10px; --atlas-glass-blur: 10px; }
 .atlas-glass--sparse { border-radius: 14px; --atlas-glass-blur: 16px; }
 
+.atlas-module-stage {
+  min-width: 0;
+  min-height: 0;
+  color: var(--atlas-text-primary);
+  font-family: var(--font-sans);
+  background-color: var(--atlas-bg-canvas);
+}
+
 /* Common utility classes for immediate adoption */
 .atlas-glass-card { padding: var(--atlas-spacing-md); }
 .atlas-glass-panel { padding: var(--atlas-spacing-lg); }
@@ -487,9 +495,6 @@ body {
 [data-density="focus"] .atlas-panel { border-radius: 14px; }
 [data-density="compact"] .atlas-table-row > td, [data-density="compact"] .atlas-table-row > th { padding-top: 6px; padding-bottom: 6px; }
 [data-density="focus"] .atlas-table-row > td, [data-density="focus"] .atlas-table-row > th { padding-top: 12px; padding-bottom: 12px; }
-/* Focus mode favors the mission canvas while retaining all information in-place. */
-[data-density="focus"] .atlas-secondary-detail { display: none; }
-
 .atlas-shell-header {
   background:
     linear-gradient(180deg, rgba(8, 11, 20, 0.92), rgba(8, 11, 20, 0.76));

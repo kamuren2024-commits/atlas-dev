@@ -785,7 +785,7 @@ function AppInner() {
 
   return (
     <div 
-      className="min-h-screen relative flex flex-col font-sans text-slate-200 overflow-hidden select-none"
+      className="min-h-screen relative flex flex-col font-sans text-slate-200 select-none"
       style={{ backgroundColor: theme === 'atlas-dark' ? currentTenant.theme.bodyBg : 'var(--atlas-bg-canvas)' }}
     >
       
@@ -833,7 +833,7 @@ function AppInner() {
       />
 
       {/* STAGE CONTAINER WITH LEFT COMPACT SIDEBAR AND CENTRAL STAGE */}
-      <div className="flex-1 flex overflow-hidden select-none" id="shell-container">
+      <div className="flex-1 min-h-0 flex overflow-hidden select-none" id="shell-container">
         <GlobalSidebar
           items={menuItems}
           activeModule={activeModule}
@@ -845,10 +845,10 @@ function AppInner() {
         />
 
         {/* WORKSPACE CENTRAL MAIN BOARD STAGE */}
-        <main className="flex-1 overflow-hidden flex select-none" id="workspace-main-board">
+        <main className="flex-1 min-w-0 min-h-0 overflow-hidden flex select-none" id="workspace-main-board">
           
           {/* Main Module Render Block inside animated presence container */}
-          <div className="flex-1 flex flex-col overflow-hidden relative">
+          <div className="atlas-module-stage flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden relative">
             {activeModule !== 'project' && activeModule !== 'overview' && <MinimalPageHero activeModule={activeModule} />}
             <Suspense
               fallback={

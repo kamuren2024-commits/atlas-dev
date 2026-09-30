@@ -52,7 +52,7 @@ export default function GlobalSidebar({ items, activeModule, onNavigate, onShutd
     <>
       {breakpoint !== 'desktop' && (
         <div
-          className={`fixed inset-0 z-30 bg-slate-950/70 transition-opacity duration-200 ${isMobileNavOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} md:hidden`}
+          className={`fixed inset-0 z-30 bg-slate-950/70 transition-opacity duration-200 ${isMobileNavOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} xl:hidden`}
           onClick={() => setMobileOpen(false)}
           aria-hidden="true"
         />
@@ -71,7 +71,6 @@ export default function GlobalSidebar({ items, activeModule, onNavigate, onShutd
           z-40 flex h-full shrink-0 flex-col border-r border-white/8 bg-[rgba(8,12,22,0.82)] backdrop-blur-2xl shadow-[0_0_0_1px_rgba(148,163,184,0.08),0_20px_50px_rgba(2,6,23,0.45)]
           ${breakpoint === 'desktop' ? desktopSidebarWidth : 'fixed left-0 top-0 bottom-0 w-[82%] max-w-[290px] shadow-2xl shadow-black/40'}
           ${breakpoint !== 'desktop' && !isMobileNavOpen ? '-translate-x-full hidden' : 'translate-x-0'}
-          md:translate-x-0 md:static md:flex
           ${isCollapsedDesktop ? 'overflow-hidden' : ''}
         `}
       >
