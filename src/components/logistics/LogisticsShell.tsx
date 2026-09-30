@@ -12,15 +12,15 @@ interface LogisticsShellProps {
 }
 
 const NAV_ITEMS = [
-  { id: 'command-center', icon: Zap, label: 'Command Center' },
-  { id: 'shipments', icon: Package, label: 'Shipments' },
-  { id: 'fleet', icon: Truck, label: 'Fleet Telematics' },
-  { id: 'warehouses', icon: MapPin, label: 'Warehouses' },
-  { id: 'routes', icon: Settings, label: 'Corridors' },
-  { id: 'deliveries', icon: BarChart3, label: 'Deliveries & e-PoD' },
-  { id: 'disruptions', icon: AlertTriangle, label: 'Risk Center' },
-  { id: 'ai-operations', icon: Bot, label: 'AI Ops' },
-  { id: 'analytics', icon: BarChart3, label: 'Analytics' },
+  { id: 'logistics-command-center', icon: Zap, label: 'Command Center' },
+  { id: 'logistics-shipments', icon: Package, label: 'Shipments' },
+  { id: 'logistics-fleet', icon: Truck, label: 'Fleet Telematics' },
+  { id: 'logistics-warehouses', icon: MapPin, label: 'Warehouses' },
+  { id: 'logistics-routes', icon: Settings, label: 'Corridors' },
+  { id: 'logistics-deliveries', icon: BarChart3, label: 'Deliveries & e-PoD' },
+  { id: 'logistics-disruptions', icon: AlertTriangle, label: 'Risk Center' },
+  { id: 'logistics-ai-operations', icon: Bot, label: 'AI Ops' },
+  { id: 'logistics-analytics', icon: BarChart3, label: 'Analytics' },
 ];
 
 const LogisticsShell: React.FC<LogisticsShellProps> = ({

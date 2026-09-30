@@ -26,6 +26,7 @@
     "src/**/*",
     "apps/**/*",
     "packages/**/*",
+    "platform/kernel/**/*.ts",
     "server.ts",
     "vite.config.ts",
     "index.html"

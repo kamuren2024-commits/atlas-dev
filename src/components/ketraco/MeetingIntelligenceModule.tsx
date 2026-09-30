@@ -64,7 +64,7 @@ import { CreateMeetingModal } from './meeting-intelligence/CreateMeetingModal';
 import { NotificationsDrawer } from './meeting-intelligence/NotificationsDrawer';
 
 type NavTab =
-  | 'command-center'
+  | 'meeting-command-center'
   | 'live-meetings'
   | 'calendar'
   | 'ai-minutes'
@@ -81,7 +81,7 @@ type NavTab =
   | 'memory-search';
 
 export default function MeetingIntelligenceModule() {
-  const [activeTab, setActiveTab] = useState<NavTab>('command-center');
+  const [activeTab, setActiveTab] = useState<NavTab>('meeting-command-center');
   const [data, setData] = useState<MeetingIntelligenceOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [sseConnected, setSseConnected] = useState(false);
@@ -624,7 +624,7 @@ export default function MeetingIntelligenceModule() {
       <nav className="bg-[#0b0f1a] border-b border-slate-800/80 px-6 py-2 overflow-x-auto">
         <div className="max-w-[1700px] mx-auto flex items-center gap-1">
           {[
-            { id: 'command-center', label: 'Command Center', icon: Activity },
+            { id: 'meeting-command-center', label: 'Command Center', icon: Activity },
             { id: 'live-meetings', label: 'Live Workspace', icon: Radio },
             { id: 'ai-minutes', label: 'AI Minutes & Governance', icon: FileText },
             { id: 'decisions', label: 'Decisions Register', icon: ShieldCheck },
@@ -659,7 +659,7 @@ export default function MeetingIntelligenceModule() {
 
       {/* Main Operational Stage */}
       <main className="flex-1 max-w-[1700px] w-full mx-auto p-6">
-        {activeTab === 'command-center' && (
+        {activeTab === 'meeting-command-center' && (
           <MeetingCommandCenterView
             data={data}
             onOpenLive={handleOpenLive}

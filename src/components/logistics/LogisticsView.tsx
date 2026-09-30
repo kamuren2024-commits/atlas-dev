@@ -8,28 +8,11 @@ import DeliveryControlTowerView from './views/DeliveryControlTowerView';
 import LogisticsRiskCenterView from './views/LogisticsRiskCenterView';
 import AiOperationsWorkspaceView from './views/AiOperationsWorkspaceView';
 import LogisticsAnalyticsView from './views/LogisticsAnalyticsView';
+import { LOGISTICS_VIEW_IDS, normalizeLogisticsViewId, type LogisticsViewId } from '../../modules/atlas-module-registry';
 import './logistics.css';
 
-const LOGISTICS_VIEW_IDS = [
-  'command-center',
-  'shipments',
-  'fleet',
-  'warehouses',
-  'routes',
-  'deliveries',
-  'disruptions',
-  'ai-operations',
-  'analytics',
-] as const;
-
-type LogisticsViewId = typeof LOGISTICS_VIEW_IDS[number];
-
-function isLogisticsViewId(view: string): view is LogisticsViewId {
-  return LOGISTICS_VIEW_IDS.some(viewId => viewId === view);
-}
-
 export const LogisticsView: React.FC = () => {
-  const [activeView, setActiveView] = useState<LogisticsViewId>('command-center');
+  const [activeView, setActiveView] = useState<LogisticsViewId>('logistics-command-center');
   const [dataMode, setDataMode] = useState<{ mode: string; label: string; syntheticNotice?: string } | null>(null);
 
   useEffect(() => {
@@ -53,28 +36,29 @@ export const LogisticsView: React.FC = () => {
   }, []);
 
   const handleViewChange = (view: string) => {
-    setActiveView(isLogisticsViewId(view) ? view : 'command-center');
+    const normalized = normalizeLogisticsViewId(view);
+    setActiveView(normalized ?? 'logistics-command-center');
   };
 
   const renderContent = () => {
     switch (activeView) {
-      case 'command-center':
+      case 'logistics-command-center':
         return <CommandCenter />;
-      case 'shipments':
+      case 'logistics-shipments':
         return <ShipmentIntelligenceView />;
-      case 'fleet':
+      case 'logistics-fleet':
         return <FleetIntelligenceView />;
-      case 'warehouses':
+      case 'logistics-warehouses':
         return <WarehouseIntelligenceView />;
-      case 'routes':
+      case 'logistics-routes':
         return <RouteIntelligenceView />;
-      case 'deliveries':
+      case 'logistics-deliveries':
         return <DeliveryControlTowerView />;
-      case 'disruptions':
+      case 'logistics-disruptions':
         return <LogisticsRiskCenterView />;
-      case 'ai-operations':
+      case 'logistics-ai-operations':
         return <AiOperationsWorkspaceView />;
-      case 'analytics':
+      case 'logistics-analytics':
         return <LogisticsAnalyticsView />;
       default:
         return <CommandCenter />;

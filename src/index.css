@@ -147,7 +147,14 @@
 
 /* Accessibility: reduce motion */
 @media (prefers-reduced-motion: reduce) {
-  .atlas-glass { transition: none; }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 
@@ -337,11 +344,12 @@
   --atlas-bg-elevated: #162038;
   --atlas-glass: rgba(17, 24, 39, 0.70);
   --atlas-border: #1F2937;
-  --atlas-accent: #3B82F6;
+  --atlas-accent: #00D9FF;
   --atlas-success: #10B981;
   --atlas-warning: #F59E0B;
   --atlas-danger: #EF4444;
   --atlas-info: #3B82F6;
+  color-scheme: dark;
   --atlas-radius-control: 8px;
   --atlas-radius-panel: 12px;
   --atlas-radius-floating: 16px;
@@ -394,6 +402,7 @@
 }
 
 [data-theme="enterprise-white"] {
+  color-scheme: light;
   --atlas-bg-canvas: #F1F5F9;
   --atlas-bg-surface: #FFFFFF;
   --atlas-bg-elevated: #FFFFFF;
@@ -453,6 +462,7 @@
 
 /* Purposeful dark variants for operations that need a distinct environmental mode. */
 [data-theme="enterprise-steel"] {
+  color-scheme: dark;
   --color-atlas-bg-deep: #111318; --color-atlas-bg-surface: #181B22; --color-atlas-bg-panel: #181B22; --color-atlas-bg-elevated: #222632; --color-atlas-bg-sunken: #0C0E12;
   --atlas-bg-canvas: #111318; --atlas-bg-surface: #181B22; --atlas-bg-elevated: #222632; --atlas-glass: rgba(24, 27, 34, .70); --atlas-border: #2A2E39; --atlas-accent: #6366F1;
   --atlas-text-primary: #F8FAFC; --atlas-text-secondary: #CBD5E1; --atlas-text-muted: #94A3B8; --atlas-border-subtle: rgba(99,102,241,.16); --atlas-border-standard: #2A2E39; --atlas-border-strong: rgba(99,102,241,.5);
@@ -462,6 +472,7 @@
 }
 
 [data-theme="midnight-emerald"] {
+  color-scheme: dark;
   --color-atlas-bg-deep: #080D0E; --color-atlas-bg-surface: #0E1517; --color-atlas-bg-panel: #0E1517; --color-atlas-bg-elevated: #172225; --color-atlas-bg-sunken: #050809;
   --atlas-bg-canvas: #080D0E; --atlas-bg-surface: #0E1517; --atlas-bg-elevated: #172225; --atlas-glass: rgba(14,21,23,.70); --atlas-border: #1B2A2D; --atlas-accent: #10B981;
   --atlas-text-primary: #F0FDF4; --atlas-text-secondary: #D1FAE5; --atlas-text-muted: #86EFAC; --atlas-border-subtle: rgba(16,185,129,.14); --atlas-border-standard: #1B2A2D; --atlas-border-strong: rgba(16,185,129,.5);
@@ -476,9 +487,9 @@
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(0, 217, 255, 0.08), transparent 26%),
-    radial-gradient(circle at top right, rgba(139, 92, 246, 0.08), transparent 28%),
-    linear-gradient(180deg, #05070d 0%, var(--atlas-bg-canvas, #0b0f17) 35%, #070d17 100%);
+    radial-gradient(circle at top left, color-mix(in srgb, var(--atlas-accent) 8%, transparent), transparent 26%),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--color-violet-500) 8%, transparent), transparent 28%),
+    linear-gradient(180deg, var(--atlas-bg-canvas, #0b0f17) 0%, var(--atlas-bg-canvas, #0b0f17) 100%);
   color: var(--atlas-text-primary, #f8fafc);
   font-family: var(--font-sans);
   font-optical-sizing: auto;

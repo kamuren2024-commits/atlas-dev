@@ -51,6 +51,11 @@ import TransparentFooter from './components/shell/TransparentFooter';
 import AtlasInspector from './components/shell/AtlasInspector';
 import EvaluationOSModuleBoundary from './components/ketraco/tender/evaluation-os/EvaluationOSModuleBoundary';
 import type { ShellNavItem } from './components/shell/types';
+import {
+  normalizeAtlasModuleId,
+  resolveAtlasModuleFromPath,
+  type AtlasModuleId
+} from './modules/atlas-module-registry';
 
 // Static ambient texture for shell depth; it does not represent live data.
 function AmbientParticleCanvas() {
@@ -325,16 +330,9 @@ function AppInner() {
   };
 
   // KETRACO SCM Navigation State
-  const [activeModule, setActiveModule] = useState<'overview' | 'meeting-intelligence' | 'drone-intelligence' | 'tender' | 'project' | 'inventory' | 'supplier' | 'logistics' | 'risk' | 'twin' | 'sourcing' | 'executive' | 'admin' | 'agents' | 'decision' | 'ai-ops' | 'acin' | 'ai-runtime' | 'procurement-graph' | 'intelligence' | 'finance' | 'atlas-demo'>(() => {
+  const [activeModule, setActiveModule] = useState<AtlasModuleId>(() => {
     if (typeof window === 'undefined') return 'overview';
-    const route = window.location.pathname.replace(/\/+$/, '') || '/';
-    if (route === '/meeting-intelligence' || route.startsWith('/meeting-intelligence/')) return 'meeting-intelligence';
-    if (route === '/drone-intelligence' || route.startsWith('/drone-intelligence/')) return 'drone-intelligence';
-    if (route === '/project-supply-nexus' || route.startsWith('/project-supply-nexus') || route === '/project' || route.startsWith('/project/')) return 'project';
-    if (route === '/tender' || route.startsWith('/tender')) return 'tender';
-    if (route === '/overview') return 'overview';
-    if (route === '/atlas-demo') return 'atlas-demo';
-    return 'overview';
+    return resolveAtlasModuleFromPath(window.location.pathname);
   });
   const [intelligenceTab, setIntelligenceTab] = useState('Watch Center');
   const [activeWorkspace, setActiveWorkspace] = useState('NEXUS_SCM_MAIN');
@@ -611,38 +609,25 @@ function AppInner() {
     setCopilotOverridePrompt(promptText);
   };
 
+  const navigateToModule = (moduleId: string) => {
+    const normalized = normalizeAtlasModuleId(moduleId);
+    if (!normalized) {
+      console.warn('[ATLAS] Ignored attempt to navigate to non-top-level module id:', moduleId);
+      return;
+    }
+    setActiveModule(normalized);
+  };
+
   // Listen for browser Back/Forward navigation
   useEffect(() => {
     const handlePopState = () => {
-      const route = window.location.pathname.replace(/\/+$/, '') || '/';
-      if (route === '/meeting-intelligence' || route.startsWith('/meeting-intelligence/')) setActiveModule('meeting-intelligence');
-      else if (route === '/drone-intelligence' || route.startsWith('/drone-intelligence/')) setActiveModule('drone-intelligence');
-      else if (route === '/project-supply-nexus' || route.startsWith('/project-supply-nexus') || route === '/project' || route.startsWith('/project/')) setActiveModule('project');
-      else if (route === '/tender' || route.startsWith('/tender')) setActiveModule('tender');
-      else if (route === '/overview') setActiveModule('overview');
-      else if (route === '/atlas-demo') setActiveModule('atlas-demo');
+      setActiveModule(resolveAtlasModuleFromPath(window.location.pathname));
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   useEffect(() => {
-    if (activeModule === 'drone-intelligence') {
-      const currentPath = window.location.pathname.replace(/\/+$/, '');
-      if (!currentPath.startsWith('/drone-intelligence')) {
-        window.history.replaceState({}, '', '/drone-intelligence');
-      }
-      return;
-    }
-
-    if (activeModule === 'tender') {
-      const currentPath = window.location.pathname.replace(/\/+$/, '');
-      if (!currentPath.startsWith('/tender')) {
-        window.history.replaceState({}, '', '/tender');
-      }
-      return;
-    }
-
     const normalizedPath = `/${activeModule}`;
     if (window.location.pathname !== normalizedPath) {
       window.history.replaceState({}, '', normalizedPath);
@@ -837,7 +822,7 @@ function AppInner() {
         <GlobalSidebar
           items={menuItems}
           activeModule={activeModule}
-          onNavigate={(id) => setActiveModule(id as any)}
+          onNavigate={(id) => navigateToModule(id)}
           onShutdown={(msg) => {
             setNotifications(prev => [{ id: Date.now().toString(), type: 'shutdown', text: msg }, ...prev]);
             setShowNotifications(true);
@@ -1192,7 +1177,7 @@ function AppInner() {
       <TransparentFooter systemHealth={systemHealth} />
 
       <AtlasInspector onOpenRelationships={() => {
-        setActiveModule('procurement-graph');
+        navigateToModule('procurement-graph');
         window.history.replaceState({}, '', '/procurement-graph');
       }} />
 
@@ -1215,7 +1200,7 @@ function AppInner() {
             <ExecutiveDemoMode
               scenes={DEMO_SCENES}
               activeModule={activeModule}
-              onNavigate={(id) => setActiveModule(id as any)}
+              onNavigate={(id) => navigateToModule(id)}
               onExit={() => setDemoMode(false)}
             />
           </Suspense>
@@ -1268,7 +1253,7 @@ function AppInner() {
                       if (paletteSearch.trim()) {
                         const matched = menuItems.find(m => m.label.toLowerCase() === paletteSearch.toLowerCase().trim());
                         if (matched) {
-                           setActiveModule(matched.id as any);
+                           navigateToModule(matched.id);
                            setShowCommandPalette(false);
                            setPaletteSearch('');
                         } else {
@@ -1324,7 +1309,7 @@ function AppInner() {
                           key={m.id}
                           role="option"
                           onClick={() => {
-                            setActiveModule(m.id as any);
+                            navigateToModule(m.id);
                             setShowCommandPalette(false);
                             setPaletteSearch('');
                           }}

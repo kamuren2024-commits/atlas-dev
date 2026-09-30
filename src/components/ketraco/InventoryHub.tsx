@@ -62,7 +62,7 @@ interface SCMDecision {
 
 export default function InventoryHub({ onAskCopilot }: { onAskCopilot: (prompt: string) => void }) {
   // Navigation states (Matches secondary sidebar layout of uploaded mockup)
-  const [activeSubTab, setActiveSubTab] = useState<string>('command-center');
+  const [activeSubTab, setActiveSubTab] = useState<string>('inventory-command-center');
   
   // Interactive global SCM state variables (Simulation dynamic deltas)
   const [simImpact, setSimImpact] = useState<{
@@ -495,7 +495,7 @@ export default function InventoryHub({ onAskCopilot }: { onAskCopilot: (prompt: 
             <span className="text-[9px] font-mono text-slate-505 block tracking-widest pl-2">INVENTORY DOMAIN</span>
             <div className="space-y-1">
               {[
-                { tabId: 'command-center', label: 'Command Center', icon: Warehouse },
+                { tabId: 'inventory-command-center', label: 'Command Center', icon: Warehouse },
                 { tabId: 'items', label: 'Items (Master SKU)', icon: Layers },
                 { tabId: 'warehouses', label: 'Warehouses Network', icon: Map },
                 { tabId: 'ledger', label: 'Immutable Ledger', icon: History },
@@ -556,7 +556,7 @@ export default function InventoryHub({ onAskCopilot }: { onAskCopilot: (prompt: 
           {/* DYNAMIC TAB CONTROLLERS */}
 
           {/* TAB 1: COMMAND CENTER (Matches primary mockup view) */}
-          {activeSubTab === 'command-center' && (
+          {activeSubTab === 'inventory-command-center' && (
             <div className="p-4 space-y-4">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
                 
