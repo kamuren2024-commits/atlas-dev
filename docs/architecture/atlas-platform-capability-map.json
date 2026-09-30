@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.0",
+  "evaluatedAt": "2026-09-30",
+  "statusVocabulary": ["IMPLEMENTED", "PARTIAL", "UNVERIFIED", "MISSING", "BLOCKED"],
+  "capabilities": [
+    {"id": "shared-contracts", "status": "PARTIAL", "anchors": ["packages/contracts/atlas-fabric.ts"]},
+    {"id": "mission-fabric", "status": "PARTIAL", "anchors": ["backend/mission-engine", "backend/ai-federation/agents/AgentRuntime.ts"]},
+    {"id": "skill-fabric", "status": "IMPLEMENTED", "anchors": ["backend/ai-federation/skills/SkillRegistry.ts"]},
+    {"id": "evidence-fabric", "status": "IMPLEMENTED", "anchors": ["backend/evaluation/evidence-schema.ts", "backend/evaluation/evidence-validator.ts"]},
+    {"id": "model-evaluation-gate", "status": "PARTIAL", "anchors": ["backend/ai-federation/providers/ollama/OllamaRuntimeEvaluator.ts", "docs/tevv/ollama-runtime-results.json"]},
+    {"id": "autonomous-local-model-execution", "status": "BLOCKED", "anchors": ["docs/tevv/ollama-eligibility-results.json"]},
+    {"id": "connector-fabric", "status": "PARTIAL", "anchors": ["backend/integration/connector-framework.ts"]},
+    {"id": "simulation-fabric", "status": "PARTIAL", "anchors": ["backend/mission-engine/scenarios.ts", "backend/domains/logistics/simulation-fabric.ts"]},
+    {"id": "governance-and-approvals", "status": "PARTIAL", "anchors": ["backend/security", "backend/governance", "backend/mission-engine/approvals.ts"]},
+    {"id": "cross-fabric-replay", "status": "UNVERIFIED", "anchors": ["docs/tevv"]},
+    {"id": "global-tenant-residency", "status": "UNVERIFIED", "anchors": ["backend/security", "backend/ai-federation/federation/types.ts"]},
+    {"id": "developer-platform-parity", "status": "PARTIAL", "anchors": ["backend/integrations/mcp", "platform/sdk"]}
+  ]
+}

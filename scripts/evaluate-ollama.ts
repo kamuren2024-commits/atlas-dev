@@ -10,6 +10,8 @@ const discovery = new OllamaModelDiscovery(client);
 const registry = AtlasModelRegistry.getInstance();
 
 const startedAt = new Date().toISOString();
+const discoveryStarted = Date.now();
+let evaluationFailed = false;
 let models;
 try {
   models = await discovery.discover();
@@ -18,6 +20,8 @@ try {
   const failure = {
     provider: 'ollama',
     evaluatedAt: new Date().toISOString(),
+    durationMs: Date.now() - discoveryStarted,
+    timeoutMs: client.timeoutMs,
     status: 'UNVERIFIED',
     discovery: { status: 'FAIL', errorClass: 'CONNECTIVITY_FAILURE', errorMessage: message },
     models: [],
@@ -30,7 +34,7 @@ try {
     writeFile(`${outputDirectory}/ollama-agent-results.json`, empty),
     writeFile(`${outputDirectory}/ollama-eligibility-results.json`, empty),
   ]);
-  process.exitCode = 1;
+  evaluationFailed = true;
   console.error(`[ollama-eval] ${message}`);
 } finally {
   if (!models) {
@@ -70,3 +74,5 @@ try {
     ]);
   }
 }
+
+if (evaluationFailed) process.exitCode = 1;

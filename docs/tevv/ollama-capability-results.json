@@ -1,0 +1,7 @@
+{
+  "provider": "ollama",
+  "evaluatedAt": "2026-09-30T05:52:13.414Z",
+  "status": "UNVERIFIED",
+  "models": [],
+  "reason": "Unable to reach Ollama at http://127.0.0.1:11434: fetch failed"
+}

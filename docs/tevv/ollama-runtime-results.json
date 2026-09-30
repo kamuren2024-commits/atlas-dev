@@ -1,6 +1,8 @@
 {
   "provider": "ollama",
-  "evaluatedAt": "2026-09-30T05:46:52.007Z",
+  "evaluatedAt": "2026-09-30T05:52:13.414Z",
+  "durationMs": 38,
+  "timeoutMs": 120000,
   "status": "UNVERIFIED",
   "discovery": {
     "status": "FAIL",
