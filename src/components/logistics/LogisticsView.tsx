@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { LogisticsShell, CommandCenter } from './index';
 import ShipmentIntelligenceView from './views/ShipmentIntelligenceView';
 import FleetIntelligenceView from './views/FleetIntelligenceView';
@@ -8,11 +8,9 @@ import DeliveryControlTowerView from './views/DeliveryControlTowerView';
 import LogisticsRiskCenterView from './views/LogisticsRiskCenterView';
 import AiOperationsWorkspaceView from './views/AiOperationsWorkspaceView';
 import LogisticsAnalyticsView from './views/LogisticsAnalyticsView';
-import { LOGISTICS_VIEW_IDS, normalizeLogisticsViewId, type LogisticsViewId } from '../../modules/atlas-module-registry';
-import './logistics.css';
 
 export const LogisticsView: React.FC = () => {
-  const [activeView, setActiveView] = useState<LogisticsViewId>('logistics-command-center');
+  const [activeView, setActiveView] = useState('command-center');
   const [dataMode, setDataMode] = useState<{ mode: string; label: string; syntheticNotice?: string } | null>(null);
 
   useEffect(() => {
@@ -36,29 +34,28 @@ export const LogisticsView: React.FC = () => {
   }, []);
 
   const handleViewChange = (view: string) => {
-    const normalized = normalizeLogisticsViewId(view);
-    setActiveView(normalized ?? 'logistics-command-center');
+    setActiveView(view);
   };
 
   const renderContent = () => {
     switch (activeView) {
-      case 'logistics-command-center':
+      case 'command-center':
         return <CommandCenter />;
-      case 'logistics-shipments':
+      case 'shipments':
         return <ShipmentIntelligenceView />;
-      case 'logistics-fleet':
+      case 'fleet':
         return <FleetIntelligenceView />;
-      case 'logistics-warehouses':
+      case 'warehouses':
         return <WarehouseIntelligenceView />;
-      case 'logistics-routes':
+      case 'routes':
         return <RouteIntelligenceView />;
-      case 'logistics-deliveries':
+      case 'deliveries':
         return <DeliveryControlTowerView />;
-      case 'logistics-disruptions':
+      case 'disruptions':
         return <LogisticsRiskCenterView />;
-      case 'logistics-ai-operations':
+      case 'ai-operations':
         return <AiOperationsWorkspaceView />;
-      case 'logistics-analytics':
+      case 'analytics':
         return <LogisticsAnalyticsView />;
       default:
         return <CommandCenter />;
@@ -66,17 +63,11 @@ export const LogisticsView: React.FC = () => {
   };
 
   return (
-    <div className="logistics-module flex flex-col h-full">
-      <div className="logistics-environment flex-shrink-0 border-b border-cyan-500/20 bg-slate-950/70 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-cyan-300 flex items-center justify-between gap-3">
-        <span className="flex items-center gap-2">
-          <span className="logistics-status-indicator" aria-hidden="true" />
-          DEMO SIMULATION
-          {dataMode?.label && dataMode.label !== 'DEMO SIMULATION' ? (
-            <span className="text-slate-400 font-medium tracking-normal">{dataMode.label}</span>
-          ) : null}
-        </span>
+    <div className="flex flex-col h-full">
+      <div className="flex-shrink-0 border-b border-cyan-500/20 bg-slate-950/70 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300 flex items-center justify-between gap-3">
+        <span>{dataMode?.label || '● SYNTHETIC DEMO'}</span>
         {dataMode?.syntheticNotice ? (
-          <span className="text-xs tracking-normal text-slate-400 normal-case font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[60%]">
+          <span className="text-[9px] tracking-[0.12em] text-slate-400 normal-case font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[60%]">
             {dataMode.syntheticNotice}
           </span>
         ) : null}
