@@ -76,8 +76,9 @@ async function startServer() {
 
   // Make the HTTP surface available before migrations and optional services initialize.
   const distPath = path.join(process.cwd(), 'dist');
+  let vite: Awaited<ReturnType<typeof createViteServer>> | null = null;
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
+    vite = await createViteServer({
       server: {
         middlewareMode: true,
         hmr: false,
@@ -89,34 +90,7 @@ async function startServer() {
         next();
         return;
       }
-      vite.middlewares(req, res, next);
-    });
-    app.get('*', async (req, res, next) => {
-      try {
-        let html = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <script type="module" src="/@vite/client"><\/script>
-
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="all" onload="this.media='all'">
-    <title>Salience Atlas</title>
-</head>
-<body>
-    <div id="root"><\/div>
-    <script type="module" src="/src/main.tsx"><\/script>
-<\/body>
-<\/html>
-`;
-        html = await vite.transformIndexHtml(req.url, html);
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
-      } catch (err) {
-        next(err);
-      }
+      vite!.middlewares(req, res, next);
     });
   } else {
     const serveFrontend = express.static(distPath);
@@ -126,13 +100,6 @@ async function startServer() {
         return;
       }
       serveFrontend(req, res, next);
-    });
-    app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api/')) {
-        next();
-        return;
-      }
-      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
@@ -254,6 +221,51 @@ async function startServer() {
       console.error('Copilot ask error:', err);
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // Final SPA fallback after all API routes are registered.
+  app.get('*', async (req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+      next();
+      return;
+    }
+
+    if (process.env.NODE_ENV !== 'production' && vite) {
+      try {
+        let html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script type="module" src="/@vite/client"><\/script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" media="all" onload="this.media='all'">
+    <title>Salience Atlas</title>
+</head>
+<body>
+    <div id="root"><\/div>
+    <script type="module" src="/src/main.tsx"><\/script>
+<\/body>
+<\/html>
+`;
+        html = await vite.transformIndexHtml(req.url, html);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+        return;
+      } catch (err) {
+        next(err);
+        return;
+      }
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      res.sendFile(path.join(distPath, 'index.html'));
+      return;
+    }
+
+    res.status(404).json({ error: 'Route not found', path: req.path });
   });
 
   // 404 handler for API routes to prevent falling through to Vite HTML response

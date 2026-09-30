@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CANONICAL_SUBSTATIONS, CANONICAL_LINES } from './grid-canonical-data';
-import { GridAsset, TransmissionLine, MapLayerKey, OperationalViewMode } from './types';
+import { GridAsset, TransmissionLine, MapLayerKey, OperationalViewMode, ViewCameraPreset } from './types';
 import { loadGoogleMaps, subscribeToGoogleMapsAuthFailure } from './google-maps-loader';
 import './GridMapCanvas.css';
 
@@ -151,6 +151,13 @@ interface GridMapCanvasProps {
   visibleLayers?: Set<MapLayerKey>;
   onToggleLayer?: (layerKey: MapLayerKey) => void;
   viewMode?: OperationalViewMode;
+  activeLayers?: Record<MapLayerKey, boolean>;
+  operationalMode?: OperationalViewMode;
+  onSetOperationalMode?: (mode: OperationalViewMode) => void;
+  cameraPreset?: ViewCameraPreset;
+  onSetCameraPreset?: (preset: ViewCameraPreset) => void;
+  highlightedPath?: string[];
+  onMapProviderStatusChange?: (status: MapProviderState) => void;
 }
 
 export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
@@ -158,8 +165,16 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   lines = CANONICAL_LINES,
   selectedAssetId,
   onSelectAsset,
-  visibleLayers = new Set(['SUBSTATIONS', 'TRANSMISSION_LINES']),
-  viewMode = 'REFERENCE'
+  visibleLayers,
+  onToggleLayer,
+  viewMode = 'NORMAL',
+  activeLayers,
+  operationalMode,
+  onSetOperationalMode,
+  cameraPreset = 'NATIONAL',
+  onSetCameraPreset,
+  highlightedPath = [],
+  onMapProviderStatusChange
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -167,6 +182,27 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   const polylinesRef = useRef<Map<string, google.maps.Polyline>>(new Map());
   const [mapState, setMapState] = useState<MapProviderState>(MapProviderState.LOADING);
   const [networkStats, setNetworkStats] = useState({ substationCount: 0, lineCount: 0 });
+
+  const resolvedVisibleLayers = useMemo(() => {
+    const base = visibleLayers ?? new Set<MapLayerKey>(['SUBSTATIONS', 'LINES', 'TRANSMISSION']);
+    const merged = new Set<MapLayerKey>(base);
+
+    if (activeLayers) {
+      (Object.keys(activeLayers) as MapLayerKey[]).forEach((key) => {
+        if (activeLayers[key]) {
+          merged.add(key);
+        } else {
+          merged.delete(key);
+        }
+      });
+    }
+
+    return merged;
+  }, [visibleLayers, activeLayers]);
+
+  useEffect(() => {
+    onMapProviderStatusChange?.(mapState);
+  }, [mapState, onMapProviderStatusChange]);
 
   const fallbackTopology = useMemo(() => {
     const entries = Object.values(substations);
@@ -238,13 +274,23 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
 
         try {
           mapRef.current = new google.maps.Map(mapContainerRef.current, {
-            zoom: 7,
-            center: { lat: -1.2921, lng: 36.8219 },
+            zoom: 6,
+            center: { lat: -0.37, lng: 37.8 },
             mapTypeId: 'roadmap',
             disableDefaultUI: false,
             fullscreenControl: true,
             zoomControl: true,
-            streetViewControl: false
+            streetViewControl: false,
+            mapTypeControl: false,
+            styles: [
+              { featureType: 'all', elementType: 'labels', stylers: [{ visibility: 'on' }] },
+              { featureType: 'poi', elementType: 'all', stylers: [{ visibility: 'off' }] },
+              { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
+              { featureType: 'landscape', elementType: 'all', stylers: [{ color: '#0b1220' }] },
+              { featureType: 'transit', elementType: 'all', stylers: [{ visibility: 'off' }] },
+              { featureType: 'road', elementType: 'all', stylers: [{ visibility: 'simplified' }] },
+              { featureType: 'water', elementType: 'all', stylers: [{ color: '#0f172a' }] }
+            ]
           });
           setMapState(MapProviderState.READY);
         } catch (err) {
@@ -281,7 +327,10 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
     polylinesRef.current.forEach((polyline) => polyline.setMap(null));
     polylinesRef.current.clear();
 
-    if (visibleLayers.has('SUBSTATIONS')) {
+    const hasSubstations = resolvedVisibleLayers.has('SUBSTATIONS');
+    const hasTransmissionLines = resolvedVisibleLayers.has('TRANSMISSION') || resolvedVisibleLayers.has('LINES');
+
+    if (hasSubstations) {
       Object.values(substations).forEach((substation) => {
         const overlay = createGridSubstationOverlay({
           substation,
@@ -293,7 +342,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
       });
     }
 
-    if (visibleLayers.has('TRANSMISSION_LINES')) {
+    if (hasTransmissionLines) {
       Object.values(lines).forEach((line) => {
         if (!line.pathCoordinates || line.pathCoordinates.length < 2) {
           return;
@@ -323,7 +372,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
       substationCount: Object.keys(substations).length,
       lineCount: Object.keys(lines).length
     });
-  }, [mapState, substations, lines, selectedAssetId, visibleLayers, onSelectAsset]);
+  }, [mapState, substations, lines, selectedAssetId, resolvedVisibleLayers, onSelectAsset]);
 
   useEffect(() => {
     if (mapState !== MapProviderState.READY || !mapRef.current) return;
