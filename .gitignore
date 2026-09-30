@@ -10,3 +10,5 @@ coverage/
 data/salience_atlas.db
 *.db
 .dev-admin*
+
+# Local development secrets.env.local

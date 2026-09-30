@@ -132,26 +132,17 @@ function AmbientParticleCanvas() {
   return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0 block w-full h-full opacity-60" />;
 }
 
-// Read explicit environment overrides only; do not accept client-side bypass flags.
-function checkDevAuthBypass(): boolean {
-  try {
-    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-      const raw = (import.meta as any).env.DEV_AUTH_BYPASS ?? (import.meta as any).env.VITE_DEV_AUTH_BYPASS;
-      if (raw && String(raw).trim().toLowerCase() === 'true') {
-        return true;
-      }
-    }
-  } catch {}
-  try {
-    if (typeof process !== 'undefined' && process.env) {
-      const raw = process.env.DEV_AUTH_BYPASS ?? process.env.VITE_DEV_AUTH_BYPASS;
-      if (raw && String(raw).trim().toLowerCase() === 'true') {
-        return true;
-      }
-    }
-  } catch {}
-  return false;
-}
+type AuthenticatedLogin = {
+  accessToken: string;
+  refreshToken: string;
+  user: {
+    name: string;
+    role: string;
+    accessLevel: string;
+    clearance: string;
+    tenantId: string;
+  };
+};
 
 function AppInner() {
   const {
@@ -161,18 +152,14 @@ function AppInner() {
     userProfile,
     setUserProfile,
     isDemoSession,
-    enterDemoSession,
     exitDemoSession
   } = useTenant();
   const { theme } = useAtlasTheme();
   const { setCurrentModule } = useAtlasContext();
 
-  // Check DEV_AUTH_BYPASS environment variable
-  const devAuthBypass = checkDevAuthBypass();
-
   // Zero Trust Access States:
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return isDemoSession || !!localStorage.getItem('atlas_access_token');
+    return !!localStorage.getItem('atlas_access_token');
   });
   const [allowDevAdmin, setAllowDevAdmin] = useState(isAtlasDemoModeEnabled);
   const [loginEmail, setLoginEmail] = useState('kamau@ketraco.co.ke');
@@ -181,64 +168,14 @@ function AppInner() {
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Check auth configuration on mount & auto-login if devAuthBypass or in development with no token
+  // Load development identity availability from the backend; only the backend can authenticate users.
   useEffect(() => {
-    if (isAtlasDemoModeEnabled) {
-      setAllowDevAdmin(true);
-      return;
-    }
-
     let isMounted = true;
     fetch('/api/auth/config')
       .then(res => res.json())
       .then(config => {
         if (!isMounted) return;
-        if (config.allowDevAdmin) {
-          setAllowDevAdmin(true);
-          // Local dev bypass is disabled unless explicitly configured; do not auto-login with a fallback secret.
-          const currentToken = localStorage.getItem('atlas_access_token');
-          if (devAuthBypass && !currentToken) {
-            fetch('/api/auth/config')
-              .then(res => res.json())
-              .then(config => {
-                if (config.devAdminEmail && config.allowDevAdmin) {
-                  setAllowDevAdmin(true);
-                }
-              })
-              .catch(() => undefined);
-          }
-
-          if (devAuthBypass && !currentToken) {
-            fetch('/api/auth/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: 'dev-admin@salienceatlas.local',
-                password: '',
-                tenantId: 'ketraco'
-              })
-            })
-              .then(res => res.json())
-              .then(data => {
-                if (data.success && isMounted) {
-                  localStorage.setItem('atlas_access_token', data.accessToken);
-                  localStorage.setItem('atlas_refresh_token', data.refreshToken);
-                  localStorage.setItem('atlas_user', JSON.stringify(data.user));
-                  setUserProfile({
-                    name: data.user.name,
-                    role: data.user.role,
-                    accessLevel: data.user.accessLevel,
-                    clearance: data.user.clearance
-                  });
-                  switchTenant(data.user.tenantId);
-                  setIsAuthenticated(true);
-                }
-              })
-              .catch(err => {
-                console.warn('[AUTH] Automatic development login deferred:', err.message);
-              });
-          }
-        }
+        setAllowDevAdmin(Boolean(config.allowDevAdmin));
       })
       .catch(err => {
         console.warn('[AUTH] Failed to fetch auth config:', err.message);
@@ -247,52 +184,29 @@ function AppInner() {
     return () => {
       isMounted = false;
     };
-  }, [devAuthBypass]);
+  }, []);
 
   // Global window.fetch interceptor to seamlessly inject JWT tokens
   useEffect(() => {
     const originalFetch = window.fetch;
     
     const interceptedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const token = isDemoSession ? null : localStorage.getItem('atlas_access_token');
+      const token = localStorage.getItem('atlas_access_token');
       const newInit = init ? { ...init } : {};
-      const requestUrl = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+      const requestUrl = input instanceof Request
+        ? new URL(input.url)
+        : input instanceof URL
+          ? input
+          : new URL(input, window.location.origin);
 
       if (
-        isDemoSession &&
-        isAtlasDemoModeEnabled &&
-        requestUrl.startsWith('/api/logistics/')
+        token &&
+        requestUrl.origin === window.location.origin &&
+        (requestUrl.pathname === '/api' || requestUrl.pathname.startsWith('/api/'))
       ) {
         const headers = new Headers(newInit.headers || (input instanceof Request ? input.headers : undefined));
-        headers.set('X-Atlas-Demo-Session', 'active');
+        if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
         newInit.headers = headers;
-      }
-      
-      // Only intercept /api requests to add authorization header
-      if (token && typeof input === 'string' && input.startsWith('/api')) {
-        let headers: any = {};
-        if (newInit.headers) {
-          if (newInit.headers instanceof Headers) {
-            headers = new Headers(newInit.headers);
-            headers.set('Authorization', `Bearer ${token}`);
-            newInit.headers = headers;
-          } else if (Array.isArray(newInit.headers)) {
-            headers = [...newInit.headers];
-            if (!headers.some((h: any) => h && h[0] && typeof h[0] === 'string' && h[0].toLowerCase() === 'authorization')) {
-              headers.push(['Authorization', `Bearer ${token}`]);
-            }
-            newInit.headers = headers;
-          } else {
-            headers = { ...newInit.headers };
-            if (!headers['Authorization'] && !headers['authorization']) {
-              headers['Authorization'] = `Bearer ${token}`;
-            }
-            newInit.headers = headers;
-          }
-        } else {
-          headers['Authorization'] = `Bearer ${token}`;
-          newInit.headers = headers;
-        }
       }
       return originalFetch(input, newInit);
     };
@@ -320,14 +234,43 @@ function AppInner() {
         (window as any).fetch = originalFetch;
       }
     };
-  }, [isDemoSession]);
+  }, []);
 
-  const handleEnterDemoMode = () => {
-    if (!isAtlasDemoModeEnabled || !enterDemoSession()) return;
-    localStorage.removeItem('atlas_access_token');
-    localStorage.removeItem('atlas_refresh_token');
-    localStorage.removeItem('atlas_user');
+  const completeLogin = (data: AuthenticatedLogin) => {
+    if (!data?.accessToken || !data?.refreshToken || !data?.user) {
+      throw new Error('The identity service returned an incomplete session.');
+    }
+    localStorage.setItem('atlas_access_token', data.accessToken);
+    localStorage.setItem('atlas_refresh_token', data.refreshToken);
+    localStorage.setItem('atlas_user', JSON.stringify(data.user));
+
+    if (isDemoSession) exitDemoSession();
+    switchTenant(data.user.tenantId);
+    setUserProfile({
+      name: data.user.name,
+      role: data.user.role,
+      accessLevel: data.user.accessLevel,
+      clearance: data.user.clearance
+    });
     setIsAuthenticated(true);
+  };
+
+  const handleEnterDemoMode = async () => {
+    setLoginError('');
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch('/api/auth/demo-login', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setLoginError(data.error || 'Demo authentication failed.');
+        return;
+      }
+      completeLogin(data);
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : 'Unable to reach the development identity service.');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -345,38 +288,19 @@ function AppInner() {
         })
       });
       const data = await res.json();
-      if (data.success) {
-        localStorage.setItem('atlas_access_token', data.accessToken);
-        localStorage.setItem('atlas_refresh_token', data.refreshToken);
-        localStorage.setItem('atlas_user', JSON.stringify(data.user));
-        
-        // Sync with tenant context user profile
-        setUserProfile({
-          name: data.user.name,
-          role: data.user.role,
-          accessLevel: data.user.accessLevel,
-          clearance: data.user.clearance
-        });
-        
-        switchTenant(data.user.tenantId);
-        setIsAuthenticated(true);
+      if (res.ok && data.success) {
+        completeLogin(data);
       } else {
         setLoginError(data.error || 'Authentication failed. Please verify credentials.');
       }
-    } catch (err: any) {
-      setLoginError('Security Gateway offline. Unable to reach identity service.');
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : 'Security Gateway offline. Unable to reach identity service.');
     } finally {
       setIsLoggingIn(false);
     }
   };
 
   const handleLogout = async () => {
-    if (isDemoSession) {
-      exitDemoSession();
-      setIsAuthenticated(false);
-      return;
-    }
-
     try {
       const token = localStorage.getItem('atlas_access_token');
       if (token) {
@@ -395,6 +319,7 @@ function AppInner() {
       localStorage.removeItem('atlas_access_token');
       localStorage.removeItem('atlas_refresh_token');
       localStorage.removeItem('atlas_user');
+      if (isDemoSession) exitDemoSession();
       setIsAuthenticated(false);
     }
   };
@@ -480,43 +405,9 @@ function AppInner() {
       setSystemHealth(stats);
     }
     
-    // Check for Development Auth Bypass
-    async function checkAuthBypass() {
-      if (isAtlasDemoModeEnabled || isDemoSession) return;
-
-      if (devAuthBypass) {
-        setIsAuthenticated(false);
-        setUserProfile({
-          name: 'John Kamau',
-          role: 'SCM Intelligence Officer',
-          accessLevel: 'LEVEL 04',
-          clearance: 'Enterprise Clear'
-        });
-        switchTenant('ketraco');
-        return;
-      }
-
-      try {
-        const res = await fetch('/api/auth/config');
-        const data = await res.json();
-        if (data.bypassActive || data.devAuthBypass) {
-          setIsAuthenticated(false);
-          setUserProfile({
-            name: 'John Kamau',
-            role: 'SCM Intelligence Officer',
-            accessLevel: 'LEVEL 04',
-            clearance: 'Enterprise Clear'
-          });
-          switchTenant('ketraco');        }
-      } catch (err) {
-        // Quiet in standard operation
-      }
-    }
-
     getStats();
     fetchTelemetry();
-    checkAuthBypass();
-  }, [devAuthBypass, isDemoSession, setUserProfile, switchTenant]);
+  }, []);
 
   // Command palette keyboard shortcut listener (Ctrl+K / /)
   useEffect(() => {
@@ -787,14 +678,14 @@ function AppInner() {
               <section className="rounded-lg border border-amber-400/30 bg-amber-400/[0.06] p-4 space-y-3">
                 <div>
                   <p className="text-[10px] font-mono font-bold tracking-widest text-amber-300 uppercase">DEMO ACCESS</p>
-                  <p className="mt-1 text-[10px] font-mono text-slate-300">Stakeholder demonstration. Identity gateway not required.</p>
+                  <p className="mt-1 text-[10px] font-mono text-slate-300">Sign in to a development administrator session through the identity gateway.</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleEnterDemoMode}
                   className="w-full rounded-lg border border-amber-300/50 bg-amber-300/15 px-3 py-3 text-[11px] font-mono font-bold tracking-wider text-amber-100 transition-colors hover:bg-amber-300/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1220]"
                 >
-                  ENTER DEMO MODE
+                  {isLoggingIn ? 'AUTHENTICATING...' : 'ENTER DEMO MODE'}
                 </button>
               </section>
             )}

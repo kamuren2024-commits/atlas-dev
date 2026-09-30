@@ -164,7 +164,10 @@ const defaultTenants: Tenant[] = [
 
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
 const DEMO_SESSION_STORAGE_KEY = 'atlas_demo_session';
-export const isAtlasDemoModeEnabled = import.meta.env.VITE_ATLAS_DEMO_MODE === 'true';
+export const isAtlasDemoModeEnabled =
+  import.meta.env.VITE_ATLAS_DEMO_MODE === 'true' ||
+  import.meta.env.MODE === 'development' ||
+  import.meta.env.MODE === 'test';
 const demoUserProfile = {
   name: 'Demo_User',
   role: 'Stakeholder Demo',

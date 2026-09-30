@@ -11,12 +11,12 @@ import { InfrastructurePolicyService } from '../core/config/infrastructure-polic
 
 test('DEV_ADMIN requires explicit development and receives scoped permissions', () => {
   const originalNodeEnv = process.env.NODE_ENV;
-  const originalPassphrase = process.env.DEV_ADMIN_PASSPHRASE;
+  const originalDemoPassword = process.env.DEMO_DEV_PASSWORD;
   const originalTenant = process.env.DEV_ADMIN_TENANT_ID;
 
   try {
     process.env.NODE_ENV = 'development';
-    process.env.DEV_ADMIN_PASSPHRASE = 'test-only-dev-admin-passphrase';
+    process.env.DEMO_DEV_PASSWORD = 'test-only-dev-admin-passphrase';
     process.env.DEV_ADMIN_TENANT_ID = 'dev-sandbox';
     InfrastructurePolicyService.resetPolicyForTesting();
 
@@ -66,8 +66,8 @@ test('DEV_ADMIN requires explicit development and receives scoped permissions', 
   } finally {
     if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = originalNodeEnv;
-    if (originalPassphrase === undefined) delete process.env.DEV_ADMIN_PASSPHRASE;
-    else process.env.DEV_ADMIN_PASSPHRASE = originalPassphrase;
+    if (originalDemoPassword === undefined) delete process.env.DEMO_DEV_PASSWORD;
+    else process.env.DEMO_DEV_PASSWORD = originalDemoPassword;
     if (originalTenant === undefined) delete process.env.DEV_ADMIN_TENANT_ID;
     else process.env.DEV_ADMIN_TENANT_ID = originalTenant;
     InfrastructurePolicyService.resetPolicyForTesting();

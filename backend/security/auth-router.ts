@@ -6,6 +6,7 @@ import { AuditLedger } from '../ai-federation/compliance/audit-ledger';
 import { ConfigService } from '../core/config/config-loader';
 import { DevAdminService, DEV_ADMIN_EMAIL } from './dev-admin';
 import { InfrastructurePolicyService } from '../core/config/infrastructure-policy';
+import type { Request, Response } from 'express';
 
 export const authRouter = Router();
 
@@ -74,6 +75,59 @@ const ENTERPRISE_USERS: Record<string, UserIdentity & { passwordHash: string }> 
   }
 } : {};
 
+async function createAuthenticatedSession(user: UserIdentity, req: Request) {
+  const tokens = await IdentityService.generateTokens(user);
+  const session = await IdentityService.createSession(
+    user,
+    req.headers['user-agent'] || 'Generic Browser',
+    req.ip || '127.0.0.1'
+  );
+  await IdentityService.registerActiveSession(session);
+
+  AuditLedger.append(
+    `Identity Verification Success: Access Token and Refresh Token generated for user ${user.email}`,
+    `Authorized Session ${session.id} generated with expiration.`,
+    'internal_auth',
+    'JWT_HS256',
+    0,
+    12,
+    user.email,
+    'identity:login',
+    ['ZERO_TRUST_PASS', 'MEMBER_LOGIN']
+  );
+
+  return { tokens, session };
+}
+
+function sendLoginSuccess(
+  res: Response,
+  user: UserIdentity,
+  tokens: Awaited<ReturnType<typeof IdentityService.generateTokens>>,
+  session: Awaited<ReturnType<typeof IdentityService.createSession>>
+) {
+  return res.json({
+    success: true,
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    expiresAt: tokens.expiresAt,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      accessLevel: user.accessLevel,
+      clearance: user.clearance,
+      tenantId: user.tenantId
+    },
+    session: {
+      id: session.id,
+      device: session.device,
+      ip: session.ip,
+      loginTime: session.loginTime
+    }
+  });
+}
+
 /**
  * Endpoint: POST /api/auth/login
  * Performs multi-tenant credential matching, generates access/refresh tokens, and records sessions.
@@ -122,49 +176,37 @@ authRouter.post('/login', ApiGatewayMiddleware.rateLimit(10, 60), async (req, re
   }
 
   try {
-    // Generate new JWT Token Set
-    const tokens = await IdentityService.generateTokens(user);
-    
-    // Create and index session in Redis (degraded gracefully to memory if Redis down in dev)
-    const session = await IdentityService.createSession(user, req.headers['user-agent'] || 'Generic Browser', req.ip || '127.0.0.1');
-    await IdentityService.registerActiveSession(session);
-
-    // Cryptographic log append to AuditLedger
-    AuditLedger.append(
-      `Identity Verification Success: Access Token and Refresh Token generated for user ${user.email}`,
-      `Authorized Session ${session.id} generated with expiration.`,
-      'internal_auth',
-      'JWT_HS256',
-      0,
-      12,
-      user.email,
-      'identity:login',
-      ['ZERO_TRUST_PASS', 'MEMBER_LOGIN']
-    );
-
-    res.json({
-      success: true,
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      expiresAt: tokens.expiresAt,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        accessLevel: user.accessLevel,
-        clearance: user.clearance,
-        tenantId: user.tenantId
-      },
-      session: {
-        id: session.id,
-        device: session.device,
-        ip: session.ip,
-        loginTime: session.loginTime
-      }
-    });
+    const { tokens, session } = await createAuthenticatedSession(user, req);
+    return sendLoginSuccess(res, user, tokens, session);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Endpoint: POST /api/auth/demo-login
+ * Issues a canonical DEV_ADMIN session without sending its server-only credential to the browser.
+ */
+authRouter.post('/demo-login', ApiGatewayMiddleware.rateLimit(10, 60), async (req, res) => {
+  if (
+    process.env.NODE_ENV !== 'development' ||
+    !ConfigService.getBoolean('ATLAS_DEMO_MODE') ||
+    !DevAdminService.isDevAdminEnabled()
+  ) {
+    return res.status(404).json({ success: false, error: 'Demo authentication is unavailable.' });
+  }
+
+  try {
+    const credential = DevAdminService.getDevAdminCredential();
+    const validation = DevAdminService.validateDevAdminLogin(DEV_ADMIN_EMAIL, credential);
+    if (!validation.valid || !validation.user) {
+      return res.status(401).json({ success: false, error: 'Development administrator authentication failed.' });
+    }
+
+    const { tokens, session } = await createAuthenticatedSession(validation.user, req);
+    return sendLoginSuccess(res, validation.user, tokens, session);
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

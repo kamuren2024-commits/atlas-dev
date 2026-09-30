@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { InfrastructurePolicyService } from '../core/config/infrastructure-policy';
+import { ConfigService } from '../core/config/config-loader';
 import { UserIdentity } from './identity-service';
 
 export class SecurityError extends Error {
@@ -86,8 +87,9 @@ export class DevAdminService {
       return this.localCredential;
     }
 
-    if (process.env.DEMO_DEV_PASSWORD) {
-      this.localCredential = process.env.DEMO_DEV_PASSWORD;
+    const demoPassword = process.env.DEMO_DEV_PASSWORD || ConfigService.get('DEMO_DEV_PASSWORD');
+    if (demoPassword) {
+      this.localCredential = demoPassword;
       return this.localCredential;
     }
 
