@@ -124,6 +124,8 @@ export class AgentRuntime {
   private toolGateway: ToolGateway;
   private agentStates: Map<string, AgentState> = new Map();
   private transitions: MissionStateTransition[] = [];
+  private missionTransitions: Map<string, MissionStateTransition[]> = new Map();
+  private missionStates: Map<string, MissionState> = new Map();
   private readonly validTransitions: Record<MissionState, MissionState[]> = {
     CREATED: ['OBSERVING', 'FAILED', 'CANCELLED'],
     OBSERVING: ['UNDERSTANDING', 'FAILED', 'CANCELLED'],
@@ -159,6 +161,95 @@ export class AgentRuntime {
     return AgentRuntime.instance;
   }
 
+  public assertMissionTransition(previousState: MissionState | undefined, nextState: MissionState): void {
+    if (previousState === undefined) {
+      if (nextState === 'CREATED') return;
+      throw new Error(`INVALID_MISSION_TRANSITION:undefined->${nextState}`);
+    }
+
+    const allowed = this.validTransitions[previousState] ?? [];
+    if (!allowed.includes(nextState)) {
+      throw new Error(`INVALID_MISSION_TRANSITION:${previousState}->${nextState}`);
+    }
+  }
+
+  public recordTransition(
+    missionId: string,
+    agentId: string,
+    previousState: MissionState,
+    nextState: MissionState,
+    reason: string,
+    actor: string,
+    evidenceRefs: string[] = []
+  ): MissionStateTransition {
+    this.assertMissionTransition(previousState, nextState);
+
+    const transition: MissionStateTransition = {
+      missionId,
+      agentId,
+      previousState,
+      nextState,
+      reason,
+      actor,
+      timestamp: new Date().toISOString(),
+      evidenceRefs,
+    };
+
+    this.transitions.push(transition);
+    const history = this.missionTransitions.get(missionId) ?? [];
+    history.push(transition);
+    this.missionTransitions.set(missionId, history);
+    this.setMissionState(missionId, nextState);
+
+    const state = this.agentStates.get(agentId);
+    if (state) {
+      state.missionState = nextState;
+      state.status = state.status === 'FAILED' ? 'FAILED' : 'RUNNING';
+    }
+
+    return transition;
+  }
+
+  public getMissionTransitions(missionId: string): MissionStateTransition[] {
+    return [...(this.missionTransitions.get(missionId) ?? [])];
+  }
+
+  public getMissionState(missionId: string): MissionState | undefined {
+    return this.missionStates.get(missionId);
+  }
+
+  private setMissionState(missionId: string, nextState: MissionState): void {
+    this.missionStates.set(missionId, nextState);
+    for (const agentState of this.agentStates.values()) {
+      if (agentState.currentMissionId === missionId) {
+        agentState.missionState = nextState;
+      }
+    }
+  }
+
+  private mapPhaseToMissionState(phase: CognitiveLoopPhase): MissionState {
+    switch (phase) {
+      case 'PERCEIVE':
+        return 'OBSERVING';
+      case 'UNDERSTAND':
+      case 'RETRIEVE':
+        return 'UNDERSTANDING';
+      case 'REASON':
+      case 'PLAN':
+        return 'PLANNING';
+      case 'SIMULATE':
+        return 'POLICY_CHECK';
+      case 'ACT':
+        return 'EXECUTING';
+      case 'VERIFY':
+        return 'VERIFYING';
+      case 'LEARN':
+        return 'REFLECTING';
+      default:
+        return 'CREATED';
+    }
+  }
+
   /**
    * Execute an agent task through the full cognitive loop
    */
@@ -180,6 +271,7 @@ export class AgentRuntime {
     console.log(`[AGENT-RUNTIME] Executing agent ${agent.name} for mission ${missionId}`);
     this.recordTransition(missionId, agent.id, 'CREATED', 'OBSERVING', 'mission started', 'system', ['mission_started']);
     state.missionState = 'OBSERVING';
+    this.setMissionState(missionId, 'OBSERVING');
 
     const cognitiveTrace: CognitiveLoopContext[] = [];
     let loopContext: CognitiveLoopContext = {
@@ -202,12 +294,22 @@ export class AgentRuntime {
         loopContext = { ...loopContext, phase, iteration: loopContext.iteration + 1 };
         console.log(`[COGNITIVE-LOOP] ${agent.name}: Phase ${phase}`);
 
+        const nextMissionState = this.mapPhaseToMissionState(phase);
+        const previousMissionState = this.getMissionState(missionId) ?? 'CREATED';
+        if (previousMissionState !== nextMissionState) {
+          this.recordTransition(missionId, agent.id, previousMissionState, nextMissionState, `cognitive phase ${phase} entered`, 'system', [phase]);
+        }
+        state.missionState = nextMissionState;
+        this.setMissionState(missionId, nextMissionState);
+
         loopContext = await this.executePhase(loopContext, agent, context);
         cognitiveTrace.push({ ...loopContext });
 
         if (phase === 'VERIFY' && loopContext.verification && !loopContext.verification.passed) {
-          this.recordTransition(missionId, agent.id, 'VERIFYING', 'FAILED', 'verification failure', 'system', ['verification_failed']);
+          const verificationState = this.getMissionState(missionId) ?? 'VERIFYING';
+          this.recordTransition(missionId, agent.id, verificationState, 'FAILED', 'verification failure', 'system', ['verification_failed']);
           state.missionState = 'FAILED';
+          this.setMissionState(missionId, 'FAILED');
           state.status = 'FAILED';
           state.error = (loopContext.verification.issues || ['verification failed']).join('; ');
           throw new Error(state.error);
@@ -240,8 +342,10 @@ export class AgentRuntime {
       });
 
       const nextState: MissionState = verificationPassed ? 'COMPLETED' : 'FAILED';
-      this.recordTransition(missionId, agent.id, 'VERIFYING', nextState, verificationPassed ? 'mission satisfied verification' : 'verification failed', 'system', ['mission_result']);
+      const terminalFromState = this.getMissionState(missionId) ?? 'VERIFYING';
+      this.recordTransition(missionId, agent.id, terminalFromState, nextState, verificationPassed ? 'mission satisfied verification' : 'verification failed', 'system', ['mission_result']);
       state.missionState = nextState;
+      this.setMissionState(missionId, nextState);
       state.status = verificationPassed ? 'COMPLETED' : 'FAILED';
       state.completedAt = new Date().toISOString();
 
