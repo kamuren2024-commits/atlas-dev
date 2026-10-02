@@ -258,6 +258,17 @@ export interface MeetingEntity {
 
 export type Meeting = MeetingEntity;
 
+export type MeetingRecordingStatus = import('./contracts').MeetingRecordingStatus;
+export type RecordingSession = import('./contracts').MeetingRecordingContract;
+export type MeetingTranscriptionContract = import('./contracts').MeetingTranscriptionContract;
+export type MeetingEvidenceContract = import('./contracts').MeetingEvidenceContract;
+export type MeetingWorkflowContract = import('./contracts').MeetingWorkflowContract;
+export type MeetingAIContextContract = import('./contracts').MeetingAIContextContract;
+export type MeetingTenantAccessContract = import('./contracts').MeetingTenantAccessContract;
+export type MeetingMediaAccessContract = import('./contracts').MeetingMediaAccessContract;
+export const AI_PROVIDER_NOT_CONFIGURED = 'AI_PROVIDER_NOT_CONFIGURED';
+export { AI_PROVIDER_NOT_CONFIGURED } from './contracts';
+
 export interface TranscriptSegment {
   id: string;
   meeting_id: string;
@@ -520,6 +531,17 @@ export interface MeetingNotification {
 }
 
 export type AttendanceStatus = ParticipantAttendance;
+
+export type MeetingRecordingStatus = import('./contracts').MeetingRecordingStatus;
+export type RecordingSession = import('./contracts').MeetingRecordingContract;
+export type MeetingTranscriptionContract = import('./contracts').MeetingTranscriptionContract;
+export type MeetingEvidenceContract = import('./contracts').MeetingEvidenceContract;
+export type MeetingWorkflowContract = import('./contracts').MeetingWorkflowContract;
+export type MeetingAIContextContract = import('./contracts').MeetingAIContextContract;
+export type MeetingTenantAccessContract = import('./contracts').MeetingTenantAccessContract;
+export type MeetingMediaAccessContract = import('./contracts').MeetingMediaAccessContract;
+
+export { AI_PROVIDER_NOT_CONFIGURED } from './contracts';
 
 export interface AuditLedgerEntry {
   id: string;

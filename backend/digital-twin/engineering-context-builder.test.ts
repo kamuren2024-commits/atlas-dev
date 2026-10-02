@@ -125,8 +125,8 @@ test('builds a canonical engineering context with authoritative live provenance'
   assert.ok(context.evidence.some(item => item.type === 'SCENARIO'));
 });
 
-test('rejects missing and cross-tenant identities before assembling protected context', async () => {
-  await assert.rejects(
+test('rejects missing and cross-tenant identities before assembling protected context', () => {
+  assert.throws(
     () => EngineeringContextBuilder.build({
       tenantId: 'tenant-a',
       actor: { id: 'engineer-a', tenantId: 'tenant-b', isAuthenticated: true },
@@ -135,7 +135,7 @@ test('rejects missing and cross-tenant identities before assembling protected co
     (error: unknown) => error instanceof EngineeringContextError && error.statusCode === 403
   );
 
-  await assert.rejects(
+  assert.throws(
     () => EngineeringContextBuilder.build({
       tenantId: 'tenant-a',
       actor: { id: 'engineer-a', tenantId: 'tenant-a', isAuthenticated: false },

@@ -209,6 +209,25 @@ export class MeetingIntelligenceMigration {
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS meeting_recording_sessions (
+        id TEXT PRIMARY KEY,
+        meeting_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL DEFAULT 'ketraco',
+        status TEXT NOT NULL DEFAULT 'IDLE',
+        started_at TEXT,
+        ended_at TEXT,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        media_type TEXT NOT NULL DEFAULT 'audio/webm',
+        codec TEXT,
+        storage_ref TEXT,
+        checksum TEXT,
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        created_by TEXT NOT NULL DEFAULT 'browser-recorder',
+        version TEXT NOT NULL DEFAULT '1.0',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS meeting_evidence (
         id TEXT PRIMARY KEY,
         meeting_id TEXT,
