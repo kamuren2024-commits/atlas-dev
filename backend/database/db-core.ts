@@ -13,6 +13,7 @@ import { AgentRegistryMigration } from './migration-011-agent-registry';
 import { PlatformFoundationMigration } from './migration-012-platform-foundation';
 import { EvaluationOSDomainMigration } from './migration-013-evaluation-os-domain';
 import { LogisticsGovernanceMigration } from './migration-014-logistics-governance';
+import { EngineeringKernelMigration } from './migration-015-engineering-kernel';
 import { isEvaluationOsProductionMode, ProductionModeError } from '../core/config/production-mode';
 
 export type DatabaseLifecycleState =
@@ -461,6 +462,9 @@ export class DatabaseCore {
 
     // Phase 14 — Logistics governance, immutable audit records, and control evidence
     await LogisticsGovernanceMigration.apply(this);
+
+    // Phase 15 — Engineering scenarios, versioned runs, and lifecycle events
+    await EngineeringKernelMigration.apply(this);
 
     return migrationsCount;
   }

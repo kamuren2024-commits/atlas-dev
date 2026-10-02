@@ -36,7 +36,7 @@ interface ProjectSupplyNexusProps {
 export function ProjectSupplyNexus({ onAskCopilot }: ProjectSupplyNexusProps) {
   const { selectEntity } = useAtlasContext();
   const [activeView, setActiveView] = useState<string>('project-command');
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('PRJ-01');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('mombasa');
   const [navCollapsed, setNavCollapsed] = useState(true);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string>('mombasa');

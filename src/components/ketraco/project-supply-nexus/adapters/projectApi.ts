@@ -40,7 +40,7 @@ import {
 import { MasterProjectSummary } from '../types';
 
 export interface ProjectTelemetryState {
-  status: 'LIVE' | 'DEGRADED' | 'STALE' | 'INITIALIZING';
+  status: 'LIVE' | 'DEGRADED' | 'STALE' | 'INITIALIZING' | 'UNAVAILABLE';
   lastUpdated: string;
   dataFreshnessSeconds: number;
   kpis: typeof PRIMARY_KPIS;
@@ -55,37 +55,10 @@ export interface ProjectTelemetryState {
 }
 
 export async function fetchProjectTelemetry(): Promise<ProjectTelemetryState> {
-  // Graceful try to fetch real backend telemetry if exists, otherwise return pristine deterministic fixtures
-  try {
-    const res = await fetch('/api/project-supply-nexus/telemetry', {
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(1200)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        status: 'LIVE',
-        lastUpdated: data.lastUpdated || '12:42:31',
-        dataFreshnessSeconds: data.dataFreshnessSeconds ?? 42,
-        kpis: data.kpis || PRIMARY_KPIS,
-        nodes: data.nodes || CONSTELLATION_NODES,
-        edges: data.edges || CONSTELLATION_EDGES,
-        exceptions: data.exceptions || CRITICAL_EXCEPTIONS,
-        stages: data.stages || PDS_STAGES,
-        genome: data.genome || PROJECT_HEALTH_GENOME,
-        materials: data.materials || SUPPLY_MATERIALS,
-        deltas: data.deltas || PROJECT_DELTA_EVENTS,
-        layers: data.layers || MAP_LAYERS
-      };
-    }
-  } catch {
-    // Graceful offline fallback
-  }
-
-  return {
-    status: 'LIVE',
-    lastUpdated: '12:42:31',
-    dataFreshnessSeconds: 42,
+  const fallback: ProjectTelemetryState = {
+    status: 'INITIALIZING',
+    lastUpdated: new Date().toISOString(),
+    dataFreshnessSeconds: 0,
     kpis: PRIMARY_KPIS,
     nodes: CONSTELLATION_NODES,
     edges: CONSTELLATION_EDGES,
@@ -95,6 +68,98 @@ export async function fetchProjectTelemetry(): Promise<ProjectTelemetryState> {
     materials: SUPPLY_MATERIALS,
     deltas: PROJECT_DELTA_EVENTS,
     layers: MAP_LAYERS
+  };
+
+  const candidates = ['/api/project-supply/telemetry', '/api/project-supply-nexus/telemetry'];
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(1200)
+      });
+
+      if (!res.ok) {
+        continue;
+      }
+
+      const payload = await res.json();
+      const data = payload?.data ?? payload;
+      return {
+        status: (data.status === 'UNAVAILABLE' || data.status === 'LIVE' || data.status === 'DEGRADED') ? data.status : 'LIVE',
+        lastUpdated: data.lastUpdated || new Date().toISOString(),
+        dataFreshnessSeconds: Number.isFinite(data.dataFreshnessSeconds) ? data.dataFreshnessSeconds : 0,
+        kpis: Array.isArray(data.kpis) ? data.kpis : fallback.kpis,
+        nodes: Array.isArray(data.nodes) ? data.nodes : fallback.nodes,
+        edges: Array.isArray(data.edges) ? data.edges : fallback.edges,
+        exceptions: Array.isArray(data.exceptions) ? data.exceptions : fallback.exceptions,
+        stages: Array.isArray(data.stages) ? data.stages : fallback.stages,
+        genome: Array.isArray(data.genome) ? data.genome : fallback.genome,
+        materials: Array.isArray(data.materials) ? data.materials : fallback.materials,
+        deltas: Array.isArray(data.deltas) ? data.deltas : fallback.deltas,
+        layers: Array.isArray(data.layers) ? data.layers : fallback.layers,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return fallback;
+}
+
+export interface ProjectSupplySnapshot {
+  projectId: string;
+  dataStatus: 'DERIVED' | 'UNAVAILABLE' | 'LIVE' | 'DEGRADED';
+  requirements: Array<Record<string, unknown>>;
+  supplyPositions: Array<Record<string, unknown>>;
+  limitations: string[];
+}
+
+export async function fetchProjectSupplySnapshot(projectId: string): Promise<ProjectSupplySnapshot> {
+  const selectedProjectId = projectId || 'mombasa';
+  const candidates = [
+    `/api/project-supply/projects/${encodeURIComponent(selectedProjectId)}`,
+    '/api/project-supply/projects/project-suswa-04',
+    '/api/project-supply/projects/mombasa'
+  ];
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(1500)
+      });
+
+      if (!res.ok) {
+        continue;
+      }
+
+      const payload = await res.json();
+      const data = payload?.data ?? payload;
+      if (!data || typeof data !== 'object') {
+        continue;
+      }
+
+      return {
+        projectId: String(data.projectId || selectedProjectId),
+        dataStatus: data.dataStatus === 'DERIVED' || data.dataStatus === 'UNAVAILABLE' || data.dataStatus === 'LIVE' || data.dataStatus === 'DEGRADED'
+          ? data.dataStatus
+          : 'UNAVAILABLE',
+        requirements: Array.isArray(data.requirements) ? data.requirements : [],
+        supplyPositions: Array.isArray(data.supplyPositions) ? data.supplyPositions : [],
+        limitations: Array.isArray(data.limitations) ? data.limitations : ['No persisted project requirements are linked to this project.'],
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return {
+    projectId: selectedProjectId,
+    dataStatus: 'UNAVAILABLE',
+    requirements: [],
+    supplyPositions: [],
+    limitations: ['Project requirement evidence is not persisted for this tenant scope yet.']
   };
 }
 

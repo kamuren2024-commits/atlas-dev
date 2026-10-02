@@ -97,7 +97,7 @@ import {
 } from './types';
 
 export default function CommandCenterShell() {
-  const { selectEntity, closeInspector } = useAtlasContext();
+  const { closeInspector } = useAtlasContext();
   // Live Data State
   const [substations, setSubstations] = useState<Record<string, GridAsset>>(CANONICAL_SUBSTATIONS);
   const [lines, setLines] = useState<Record<string, TransmissionLine>>(CANONICAL_LINES);
@@ -285,23 +285,7 @@ export default function CommandCenterShell() {
 
   const handleSelectAsset = (assetId: string) => {
     setSelectedAssetId(assetId);
-    const asset = substations[assetId] || lines[assetId];
-    if (!asset) return;
-    const isSubstation = assetId in substations;
-    if (isSubstation) {
-      closeInspector();
-      return;
-    }
-
-    selectEntity({
-      id: assetId,
-      type: 'TRANSMISSION_LINE',
-      label: asset.name || assetId,
-      status: asset.state,
-      source: asset.source,
-      updatedAt: asset.timestamp,
-      metadata: { voltageKV: asset.voltageKV, health: asset.health, risk: asset.risk },
-    });
+    closeInspector();
   };
 
   const handleAcknowledgeAlarm = (alarmId: string) => {
@@ -378,7 +362,9 @@ export default function CommandCenterShell() {
     }
   };
 
-  const selectedAsset = selectedAssetId ? substations[selectedAssetId] || null : null;
+  const selectedAsset = selectedAssetId
+    ? substations[selectedAssetId] || (Object.values(substations) as GridAsset[]).find(asset => asset.id === selectedAssetId) || null
+    : null;
 
   // Derive header values from canonical state
   const systemLoadKpi = kpis.find(k => k.id === '01_SYSTEM_DEMAND')?.value || 2984;
