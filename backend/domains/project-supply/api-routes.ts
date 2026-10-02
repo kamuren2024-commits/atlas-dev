@@ -6,7 +6,14 @@ import type { UserIdentity } from '../../security/identity-service';
 import type { AuditLogger } from '../../observability/audit-logger';
 import { ApiGatewayMiddleware } from '../../security/api-gateway-middleware';
 import { calculateSupplyPosition, type ProjectSupplyRequirement, type SupplyPosition } from './intelligence';
-import { type ProjectDataSourceState, type ProjectProvenance, type ProjectRecord } from './project-contract';
+import {
+  type Project360Section,
+  type Project360HealthState,
+  type Project360Snapshot,
+  type ProjectDataSourceState,
+  type ProjectProvenance,
+  type ProjectRecord,
+} from './project-contract';
 import { ProjectService } from './project-service';
 
 export interface ProjectSupplyApiDeps {
@@ -100,7 +107,11 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
       'SELECT id FROM project_supply_requirement WHERE tenant_id = ? AND project_id = ? LIMIT 1',
       [tenantId, projectId],
     );
-    if (!project && !requirement) {
+    const projectRecord = await deps.db.get<{ id: string }>(
+      'SELECT id FROM project_supply_project WHERE tenant_id = ? AND id = ? LIMIT 1',
+      [tenantId, projectId],
+    );
+    if (!project && !requirement && !projectRecord) {
       fail(res, 404, 'NOT_FOUND', 'Project not found');
       return null;
     }
@@ -137,6 +148,115 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
       project: null,
       dataStatus: 'NOT_CONNECTED',
       provenance: defaultProvenance(projectId, 'NOT_CONNECTED'),
+    };
+  }
+
+  function buildSnapshot(
+    projectId: string,
+    project: ProjectRecord | null,
+    projectState: { dataStatus: ProjectDataSourceState; provenance: ProjectProvenance },
+    requirements: ProjectSupplyRequirement[],
+    positions: SupplyPosition[],
+    graph: { nodes: unknown[]; edges: unknown[] },
+  ): Project360Snapshot {
+    const snapshotGeneratedAt = new Date().toISOString();
+    const section = <T,>(
+      state: ProjectDataSourceState,
+      source: string,
+      authority: ProjectProvenance['authority'],
+      data: T | null,
+      sourceUpdatedAt: string | null = null,
+      version: number | null = null,
+    ): Project360Section<T> => ({
+      state,
+      source,
+      authority,
+      sourceUpdatedAt,
+      retrievedAt: snapshotGeneratedAt,
+      version,
+      data,
+    });
+    const unavailable = (source: string) =>
+      section('NOT_CONNECTED', source, 'UNAVAILABLE', null);
+    const materialState: ProjectDataSourceState = requirements.length ? 'DERIVED' : 'NOT_CONNECTED';
+    const connectedGraph = graph.nodes.length > 0 || graph.edges.length > 0;
+    const dimensions: Array<{
+      domain: string;
+      state: Project360HealthState;
+      source: string;
+      authority: ProjectProvenance['authority'];
+      sourceUpdatedAt: string | null;
+      evidenceReferences: string[];
+      contributingConditions: string[];
+    }> = [
+      'schedule', 'procurement', 'suppliers', 'contracts', 'materials', 'logistics',
+      'site', 'risk', 'cost', 'quality', 'approvals', 'evidence',
+    ].map(domain => ({
+      domain,
+      state: 'NOT_CONNECTED' as const,
+      source: 'UNAVAILABLE',
+      authority: 'UNAVAILABLE' as const,
+      sourceUpdatedAt: null,
+      evidenceReferences: [],
+      contributingConditions: [`No authoritative ${domain} source is connected to Project 360.`],
+    }));
+
+    if (requirements.length) {
+      dimensions.find(item => item.domain === 'materials')!.state = 'UNKNOWN';
+      dimensions.find(item => item.domain === 'materials')!.source = 'project_supply_requirement + logistics stock/order records';
+      dimensions.find(item => item.domain === 'materials')!.authority = 'DERIVED';
+      dimensions.find(item => item.domain === 'materials')!.contributingConditions = [
+        'Material positions are derived from linked requirement, stock, and order records; source freshness is not available.',
+      ];
+    }
+
+    return {
+      projectId,
+      project: section(
+        projectState.dataStatus,
+        projectState.provenance.source,
+        projectState.provenance.authority,
+        project,
+        project?.updatedAt ?? null,
+        project?.version ?? null,
+      ),
+      domains: {
+        schedule: unavailable('schedule'),
+        procurement: unavailable('procurement'),
+        suppliers: unavailable('supplier'),
+        contracts: unavailable('contract'),
+        materials: section(
+          materialState,
+          requirements.length ? 'project_supply_requirement + logistics_stock + logistics_order' : 'project_supply_requirement',
+          requirements.length ? 'DERIVED' : 'UNAVAILABLE',
+          requirements.length ? { requirements, positions } : null,
+        ),
+        logistics: unavailable('logistics'),
+        site: unavailable('site'),
+        risk: unavailable('risk'),
+        cost: unavailable('finance'),
+        quality: unavailable('quality'),
+        approvals: unavailable('approvals'),
+        evidence: unavailable('evidence'),
+        exceptions: unavailable('project-exceptions'),
+        timeline: unavailable('atlas-event-fabric/project-events'),
+        dependencies: section(
+          connectedGraph ? 'DERIVED' : 'NOT_CONNECTED',
+          'atlas-knowledge-graph',
+          connectedGraph ? 'DERIVED' : 'UNAVAILABLE',
+          connectedGraph ? graph : null,
+        ),
+      },
+      health: {
+        state: 'UNKNOWN',
+        overall: 'UNKNOWN',
+        dimensions,
+      },
+      freshness: {
+        snapshotGeneratedAt,
+        sourceUpdatedAt: project?.updatedAt ?? null,
+      },
+      version: project?.version ?? null,
     };
   }
 
@@ -218,8 +338,17 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
       if (edge.target === req.params.projectId) relatedIds.add(edge.source);
     });
     const graph = {
-      nodes: deps.kg.nodes.filter(node => relatedIds.has(node.id)),
-      edges: deps.kg.edges.filter(edge => relatedIds.has(edge.source) && relatedIds.has(edge.target)),
+      nodes: deps.kg.nodes.filter(node => relatedIds.has(node.id) && node.properties?.tenantId === tenantId),
+      edges: deps.kg.edges.filter(edge =>
+        relatedIds.has(edge.source) &&
+        relatedIds.has(edge.target) &&
+        deps.kg.nodes.some(node => node.id === edge.source && node.properties?.tenantId === tenantId) &&
+        deps.kg.nodes.some(node => node.id === edge.target && node.properties?.tenantId === tenantId),
+      ),
+    };
+    const graphForProject = {
+      nodes: [...graph.nodes],
+      edges: [...graph.edges],
     };
     const requirementNodes = requirements.map(requirement => ({
       id: requirement.id,
@@ -255,6 +384,17 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
         provenance: { source: 'project_supply_requirement', sourceRecordId: requirement.id, verificationStatus: 'VERIFIED' },
       }] : []),
     ]);
+    const snapshot = buildSnapshot(
+      req.params.projectId,
+      project,
+      projectState,
+      requirements,
+      positions,
+      {
+        nodes: [...graphForProject.nodes, ...requirementNodes],
+        edges: [...graphForProject.edges, ...requirementEdges],
+      },
+    );
     deps.audit.log({
       actor: (req as AuthenticatedRequest).user!.id,
       action: 'project-supply:nexus:get',
@@ -268,6 +408,7 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
       data: {
         projectId: req.params.projectId,
         project: projectState.project,
+        snapshot,
         requirements,
         supplyPositions: positions,
         graph: {

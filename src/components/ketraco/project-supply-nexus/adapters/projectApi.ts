@@ -167,9 +167,50 @@ export interface ProjectSupplySnapshot {
   projectId: string;
   dataStatus: ProjectDataSourceState | 'LIVE' | 'DEGRADED';
   project?: ProjectEnvelope | null;
+  snapshot?: Project360Snapshot | null;
   requirements: Array<Record<string, unknown>>;
   supplyPositions: Array<Record<string, unknown>>;
   limitations: string[];
+}
+
+export interface Project360Snapshot {
+  projectId: string;
+  project: {
+    state: ProjectDataSourceState;
+    source: string;
+    authority: string;
+    sourceUpdatedAt: string | null;
+    retrievedAt: string;
+    version: number | null;
+    data: ProjectEnvelope | null;
+  };
+  domains: Record<string, {
+    state: ProjectDataSourceState;
+    source: string;
+    authority: string;
+    sourceUpdatedAt: string | null;
+    retrievedAt: string;
+    version: number | null;
+    data: unknown;
+  }>;
+  health: {
+    state: string;
+    overall: string;
+    dimensions: Array<{
+      domain: string;
+      state: string;
+      source: string;
+      authority: string;
+      sourceUpdatedAt: string | null;
+      evidenceReferences: string[];
+      contributingConditions: string[];
+    }>;
+  };
+  freshness: {
+    snapshotGeneratedAt: string;
+    sourceUpdatedAt: string | null;
+  };
+  version: number | null;
 }
 
 export async function fetchProjectSupplySnapshot(projectId: string): Promise<ProjectSupplySnapshot> {
@@ -222,6 +263,7 @@ export async function fetchProjectSupplySnapshot(projectId: string): Promise<Pro
         ? nextStatus as ProjectSupplySnapshot['dataStatus']
         : fallback.dataStatus,
       project: data.project ?? null,
+      snapshot: data.snapshot ?? null,
       requirements: Array.isArray(data.requirements) ? data.requirements : [],
       supplyPositions: Array.isArray(data.supplyPositions) ? data.supplyPositions : [],
       limitations: Array.isArray(data.limitations) ? data.limitations : ['No persisted project requirements are linked to this project.'],

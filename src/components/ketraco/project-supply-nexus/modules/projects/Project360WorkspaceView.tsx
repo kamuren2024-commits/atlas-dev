@@ -37,9 +37,10 @@ import {
   PROJECT_HEALTH_GENOME,
   PROJECT_DELTA_EVENTS
 } from '../../adapters/fixtures';
-import { fetchProjectSupplySnapshot, getMasterProjectById, type ProjectSupplySnapshot } from '../../adapters/projectApi';
+import { fetchProjectSupplySnapshot, getMasterProjectById, type Project360Snapshot, type ProjectSupplySnapshot } from '../../adapters/projectApi';
 import { ProjectViewMode, HealthStatus } from '../../types';
 import { NexusEntityDrawer, EntityDrawerData } from '../../shared/NexusEntityDrawer';
+import { isAtlasDemoModeEnabled } from '../../../../../../context/TenantContext';
 
 interface Project360WorkspaceViewProps {
   projectId: string;
@@ -130,7 +131,7 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
     { label: 'Planned Completion', value: toEvidenceValue(currentProject.baselineCompletion, unavailableEvidence) },
     { label: 'Forecast Completion', value: toEvidenceValue(currentProject.forecastCompletion, unavailableEvidence) },
     { label: 'Critical-Path Indicator', value: currentProject.delayDays > 0 ? `FLOAT EROSION (+${currentProject.delayDays}d)` : 'STABLE / NO ACTIVE CRITICAL PATH THREAT' },
-    { label: 'Last Data Refresh', value: supplySnapshot.dataStatus === 'LIVE' ? 'LIVE FEED' : 'NOT CONNECTED / DEMO FIXTURE STATE' },
+    { label: 'Last Data Refresh', value: supplySnapshot.dataStatus === 'LIVE_AUTHORITATIVE' ? toEvidenceValue(supplySnapshot.project?.updatedAt) : 'SOURCE TIMESTAMP UNAVAILABLE' },
     { label: 'Data Provenance', value: supplySnapshot.dataStatus === 'LIVE' ? 'Authoritative project-supply stream' : 'Project fixture adapter — not authoritative / not connected' }
   ];
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'GENOME' | 'DELTA' | 'PACKAGES' | 'MILESTONES' | 'DEPENDENCIES'>('OVERVIEW');
@@ -413,9 +414,98 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
     setDrawerOpen(true);
   };
 
+  if (!isAtlasDemoModeEnabled) {
+    const project = supplySnapshot.project;
+    const authoritative = project?.provenance?.authority === 'AUTHORITATIVE' &&
+      project.provenance.dataSourceState === 'LIVE_AUTHORITATIVE';
+    const unavailable = 'UNAVAILABLE / NOT CONNECTED / NOT VERIFIED';
+    const identity = [
+      ['Project ID', authoritative ? project?.id : unavailable],
+      ['Project Code', authoritative ? project?.projectCode : unavailable],
+      ['Project Name', authoritative ? project?.name : unavailable],
+      ['Project Type', authoritative ? project?.projectType : unavailable],
+      ['Category', authoritative ? project?.category : unavailable],
+      ['Status', authoritative ? project?.status : unavailable],
+      ['Lifecycle Stage', authoritative ? project?.lifecycleStage : unavailable],
+      ['Owner', authoritative ? project?.owner : unavailable],
+      ['Project Manager', authoritative ? project?.projectManager : unavailable],
+      ['Location / Corridor', authoritative ? project?.location : unavailable],
+      ['Planned Start', authoritative ? project?.plannedStart : unavailable],
+      ['Planned Completion', authoritative ? project?.plannedCompletion : unavailable],
+      ['Forecast Completion', authoritative ? project?.forecastCompletion : unavailable],
+      ['Actual Completion', authoritative ? project?.actualCompletion : unavailable],
+      ['Version', authoritative ? String(project?.version ?? unavailable) : unavailable],
+    ];
+    const domainStatuses = Object.entries(supplySnapshot.snapshot?.domains ?? {}) as Array<
+      [string, Project360Snapshot['domains'][string]]
+    >;
+    return (
+      <UIStateContainer moduleName="Project 360 Workspace">
+        <div className="space-y-4">
+          <div className="rounded-lg border border-amber-500/40 bg-amber-950/20 p-4">
+            <div className="text-xs font-mono font-bold uppercase tracking-widest text-amber-300">
+              Project 360 authoritative mode
+            </div>
+            <p className="mt-2 text-sm text-slate-200">
+              Fixture project metrics are disabled outside demo mode. Only project records explicitly verified as LIVE_AUTHORITATIVE are shown as operational truth.
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Project source: {authoritative ? project?.provenance?.source : 'NOT CONNECTED'} · Realtime: NOT CONNECTED
+            </p>
+          </div>
+
+          <section className="rounded-lg border border-slate-800 bg-[#080d17] p-4">
+            <h2 className="text-sm font-bold text-slate-100">Project identity & lifecycle</h2>
+            <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+              {identity.map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-slate-800 bg-slate-950/50 p-2.5">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-400 font-mono">{label}</div>
+                  <div className="mt-1 break-words text-xs font-medium text-slate-200">{value || unavailable}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 text-xs text-slate-400 font-mono">
+              Authority: {authoritative ? 'LIVE_AUTHORITATIVE' : 'NOT_CONNECTED'} ·
+              Source updated: {project?.updatedAt ?? 'UNAVAILABLE'} ·
+              Retrieved: {project?.provenance?.retrievedAt ?? 'UNAVAILABLE'}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-slate-800 bg-[#080d17] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-bold text-slate-100">Execution domains & health</h2>
+              <span className="rounded border border-slate-700 px-2 py-1 text-xs font-mono text-slate-300">
+                Overall health: {supplySnapshot.snapshot?.health.overall ?? 'UNKNOWN'}
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {domainStatuses.length > 0 ? domainStatuses.map(([domain, status]) => (
+                <div key={domain} className="rounded border border-slate-800 bg-slate-950/50 p-3">
+                  <div className="text-[10px] font-mono uppercase tracking-wide text-slate-400">{domain}</div>
+                  <div className="mt-1 text-xs font-bold text-amber-300">{status.state}</div>
+                  <div className="mt-1 break-words text-[10px] text-slate-500">Source: {status.source}</div>
+                  <div className="text-[10px] text-slate-500">Source updated: {status.sourceUpdatedAt ?? 'UNAVAILABLE'}</div>
+                </div>
+              )) : (
+                <div className="text-xs text-slate-400">Domain snapshot: UNAVAILABLE / NOT CONNECTED / NOT VERIFIED.</div>
+              )}
+            </div>
+            <div className="mt-3 text-xs text-slate-400 font-mono">
+              Snapshot generated: {supplySnapshot.snapshot?.freshness.snapshotGeneratedAt ?? 'UNAVAILABLE'} ·
+              Health derivation: UNKNOWN — no connected authoritative domain signals.
+            </div>
+          </section>
+        </div>
+      </UIStateContainer>
+    );
+  }
+
   return (
     <UIStateContainer moduleName="Project 360 Workspace">
       <div className="space-y-4">
+        <div className="rounded border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-mono text-amber-200">
+          SIMULATED — Project identity, health metrics, schedule, and domain cards below are demo fixtures, not authoritative KETRACO records.
+        </div>
         {/* Persistent Project Header */}
         <PersistentProjectHeader
           currentProject={currentProject}
@@ -504,7 +594,7 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
                 <span>•</span>
                 <span>Current Forecast: <strong className={currentProject.delayDays > 0 ? 'text-amber-400' : 'text-emerald-400'}>{currentProject.forecastCompletion}</strong></span>
                 <span>•</span>
-                <span>Last Updated: <strong className="text-slate-300">Today 12:42 EAT</strong></span>
+                <span>Source Timestamp: <strong className="text-amber-300">UNAVAILABLE — DEMO FIXTURE</strong></span>
               </div>
             </div>
 

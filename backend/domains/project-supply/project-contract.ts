@@ -40,3 +40,63 @@ export interface ProjectRecord {
   version: number | null;
   provenance: ProjectProvenance;
 }
+
+export type Project360HealthState =
+  | 'HEALTHY'
+  | 'WATCH'
+  | 'AT_RISK'
+  | 'CRITICAL'
+  | 'UNKNOWN'
+  | 'UNAVAILABLE'
+  | 'NOT_CONNECTED'
+  | 'NOT_VERIFIED';
+
+export interface Project360Section<T = unknown> {
+  state: ProjectDataSourceState;
+  source: string;
+  authority: ProjectProvenance['authority'];
+  sourceUpdatedAt: string | null;
+  retrievedAt: string;
+  version: number | null;
+  data: T | null;
+}
+
+export interface Project360Snapshot {
+  projectId: string;
+  project: Project360Section<ProjectRecord>;
+  domains: {
+    schedule: Project360Section;
+    procurement: Project360Section;
+    suppliers: Project360Section;
+    contracts: Project360Section;
+    materials: Project360Section;
+    logistics: Project360Section;
+    site: Project360Section;
+    risk: Project360Section;
+    cost: Project360Section;
+    quality: Project360Section;
+    approvals: Project360Section;
+    evidence: Project360Section;
+    exceptions: Project360Section;
+    timeline: Project360Section;
+    dependencies: Project360Section;
+  };
+  health: {
+    state: Project360HealthState;
+    overall: Project360HealthState;
+    dimensions: Array<{
+      domain: string;
+      state: Project360HealthState;
+      source: string;
+      authority: ProjectProvenance['authority'];
+      sourceUpdatedAt: string | null;
+      evidenceReferences: string[];
+      contributingConditions: string[];
+    }>;
+  };
+  freshness: {
+    snapshotGeneratedAt: string;
+    sourceUpdatedAt: string | null;
+  };
+  version: number | null;
+}
