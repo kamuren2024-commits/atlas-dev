@@ -1,4 +1,5 @@
 import sqlite3 from 'sqlite3';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import fs from 'fs';
 import { FinanceDataFabricMigration } from './migration-003-finance-data-fabric';
@@ -14,6 +15,7 @@ import { PlatformFoundationMigration } from './migration-012-platform-foundation
 import { EvaluationOSDomainMigration } from './migration-013-evaluation-os-domain';
 import { LogisticsGovernanceMigration } from './migration-014-logistics-governance';
 import { EngineeringKernelMigration } from './migration-015-engineering-kernel';
+import { ProjectScheduleMigration } from './migration-016-project-schedule';
 import { isEvaluationOsProductionMode, ProductionModeError } from '../core/config/production-mode';
 
 export type DatabaseLifecycleState =
@@ -41,6 +43,8 @@ export class DatabaseCore {
   private activeTxCount = 0;
   private isFallbackMode = false;
   private state: DatabaseLifecycleState = 'DATABASE_INITIALIZING';
+  private transactionTail: Promise<void> = Promise.resolve();
+  private readonly transactionContext = new AsyncLocalStorage<boolean>();
 
   private constructor() {
     const dataDir = path.resolve(process.cwd(), 'data');
@@ -112,9 +116,16 @@ export class DatabaseCore {
     return this.isFallbackMode;
   }
 
+  private async waitForTransactionAccess(): Promise<void> {
+    if (!this.transactionContext.getStore()) {
+      await this.transactionTail;
+    }
+  }
+
   // --- QUERY EXECUTORS ---
 
-  public run(sql: string, params: any[] = []): Promise<{ lastID: number; changes: number }> {
+  public async run(sql: string, params: any[] = []): Promise<{ lastID: number; changes: number }> {
+    await this.waitForTransactionAccess();
     if (this.state !== 'DATABASE_AVAILABLE') {
       throw new Error(`Database persistence unavailable: ${this.state}`);
     }
@@ -130,7 +141,8 @@ export class DatabaseCore {
     });
   }
 
-  public get<T = any>(sql: string, params: any[] = []): Promise<T | undefined> {
+  public async get<T = any>(sql: string, params: any[] = []): Promise<T | undefined> {
+    await this.waitForTransactionAccess();
     if (this.state !== 'DATABASE_AVAILABLE') {
       throw new Error(`Database persistence unavailable: ${this.state}`);
     }
@@ -146,7 +158,8 @@ export class DatabaseCore {
     });
   }
 
-  public all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  public async all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+    await this.waitForTransactionAccess();
     if (this.state !== 'DATABASE_AVAILABLE') {
       throw new Error(`Database persistence unavailable: ${this.state}`);
     }
@@ -162,7 +175,8 @@ export class DatabaseCore {
     });
   }
 
-  public exec(sql: string): Promise<void> {
+  public async exec(sql: string): Promise<void> {
+    await this.waitForTransactionAccess();
     if (this.state !== 'DATABASE_AVAILABLE') {
       throw new Error(`Database persistence unavailable: ${this.state}`);
     }
@@ -179,6 +193,33 @@ export class DatabaseCore {
   }
 
   // --- TRANSACTION MANAGER ---
+
+  public async withTransaction<T>(work: () => Promise<T>): Promise<T> {
+    if (this.transactionContext.getStore()) {
+      return work();
+    }
+    let release!: () => void;
+    const previous = this.transactionTail;
+    this.transactionTail = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await this.transactionContext.run(true, async () => {
+        await this.exec('BEGIN IMMEDIATE');
+        try {
+          const result = await work();
+          await this.exec('COMMIT');
+          return result;
+        } catch (error) {
+          await this.exec('ROLLBACK');
+          throw error;
+        }
+      });
+    } finally {
+      release();
+    }
+  }
 
   public async beginTransaction(): Promise<void> {
     if (this.state !== 'DATABASE_AVAILABLE') {
@@ -465,6 +506,9 @@ export class DatabaseCore {
 
     // Phase 15 — Engineering scenarios, versioned runs, and lifecycle events
     await EngineeringKernelMigration.apply(this);
+
+    // Phase 16 — Shared project schedule milestones and Atlas command ledger
+    await ProjectScheduleMigration.apply(this);
 
     return migrationsCount;
   }

@@ -146,8 +146,9 @@ function createGridSubstationOverlay(
 interface GridMapCanvasProps {
   substations?: Record<string, GridAsset>;
   lines?: Record<string, TransmissionLine>;
-  selectedAssetId?: string;
-  onSelectAsset?: (assetId: string) => void;
+  selectedAssetId?: string | null;
+  onSelectAsset?: (assetId: string | null) => void;
+  focusSignal?: number;
   visibleLayers?: Set<MapLayerKey>;
   onToggleLayer?: (layerKey: MapLayerKey) => void;
   viewMode?: OperationalViewMode;
@@ -160,11 +161,21 @@ interface GridMapCanvasProps {
   onMapProviderStatusChange?: (status: MapProviderState) => void;
 }
 
+const mapCameraPresets: Record<ViewCameraPreset, { center: google.maps.LatLngLiteral; zoom: number }> = {
+  NATIONAL: { center: { lat: -0.37, lng: 37.8 }, zoom: 6 },
+  CENTRAL_RIFT: { center: { lat: -0.9, lng: 36.7 }, zoom: 7.3 },
+  NAIROBI_METRO: { center: { lat: -1.29, lng: 36.82 }, zoom: 9.2 },
+  COASTAL_CORRIDOR: { center: { lat: -3.8, lng: 39.6 }, zoom: 7.8 },
+  WESTERN_INTERCONNECT: { center: { lat: 0.08, lng: 34.75 }, zoom: 7.8 },
+  NORTHERN_HVDC: { center: { lat: 1.7, lng: 38.0 }, zoom: 7.2 }
+};
+
 export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   substations = CANONICAL_SUBSTATIONS,
   lines = CANONICAL_LINES,
   selectedAssetId,
   onSelectAsset,
+  focusSignal = 0,
   visibleLayers,
   onToggleLayer,
   viewMode = 'NORMAL',
@@ -274,15 +285,25 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
 
         try {
           mapRef.current = new google.maps.Map(mapContainerRef.current, {
-            zoom: 6,
-            center: { lat: -0.37, lng: 37.8 },
+            zoom: mapCameraPresets[cameraPreset].zoom,
+            center: mapCameraPresets[cameraPreset].center,
             mapTypeId: 'roadmap',
             disableDefaultUI: false,
             fullscreenControl: true,
             zoomControl: true,
             streetViewControl: false,
             mapTypeControl: false,
+            gestureHandling: 'greedy',
+            keyboardShortcuts: true,
+            clickableIcons: false,
           });
+
+          mapRef.current.addListener('click', () => {
+            if (onSelectAsset) {
+              onSelectAsset(null);
+            }
+          });
+
           setMapState(MapProviderState.READY);
         } catch (err) {
           if (isMounted) {
@@ -313,6 +334,10 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   useEffect(() => {
     if (mapState !== MapProviderState.READY || !mapRef.current) return;
 
+    const currentZoom = mapRef.current.getZoom() ?? mapCameraPresets[cameraPreset].zoom;
+    const mapZoomThreshold = 6.8;
+    const shouldHideDenseMarkers = currentZoom < mapZoomThreshold;
+
     overlaysRef.current.forEach((overlay) => overlay.setMap(null));
     overlaysRef.current.clear();
     polylinesRef.current.forEach((polyline) => polyline.setMap(null));
@@ -323,6 +348,11 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
 
     if (hasSubstations) {
       Object.values(substations).forEach((substation) => {
+        const shouldDisplayMarker = !shouldHideDenseMarkers || Number.isFinite(substation.latitude) && Number.isFinite(substation.longitude);
+        if (!shouldDisplayMarker) {
+          return;
+        }
+
         const overlay = createGridSubstationOverlay({
           substation,
           map: mapRef.current!,
@@ -344,8 +374,8 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
           path: line.pathCoordinates.map(([lng, lat]) => ({ lat, lng })),
           geodesic: true,
           strokeColor: lineColor,
-          strokeOpacity: 0.8,
-          strokeWeight: 2,
+          strokeOpacity: currentZoom < 7 ? 0.45 : 0.8,
+          strokeWeight: currentZoom < 7 ? 1.4 : 2,
           map: mapRef.current!
         });
 
@@ -363,7 +393,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
       substationCount: Object.keys(substations).length,
       lineCount: Object.keys(lines).length
     });
-  }, [mapState, substations, lines, selectedAssetId, resolvedVisibleLayers, onSelectAsset]);
+  }, [mapState, substations, lines, selectedAssetId, resolvedVisibleLayers, onSelectAsset, cameraPreset]);
 
   useEffect(() => {
     if (mapState !== MapProviderState.READY || !mapRef.current) return;
@@ -372,15 +402,38 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
     let hasValidBounds = false;
 
     Object.values(substations).forEach((substation) => {
+      if (!Number.isFinite(substation.latitude) || !Number.isFinite(substation.longitude)) return;
       const latLng = new google.maps.LatLng(substation.latitude, substation.longitude);
       bounds.extend(latLng);
       hasValidBounds = true;
     });
 
     if (hasValidBounds) {
+      if (selectedAssetId) {
+        const selectedAsset = substations[selectedAssetId];
+        if (selectedAsset && Number.isFinite(selectedAsset.latitude) && Number.isFinite(selectedAsset.longitude)) {
+          const target = new google.maps.LatLng(selectedAsset.latitude, selectedAsset.longitude);
+          mapRef.current.panTo(target);
+          mapRef.current.setZoom(Math.max(mapRef.current.getZoom() ?? 6, 8.5));
+          return;
+        }
+      }
+
       mapRef.current.fitBounds(bounds, { top: 80, right: 20, bottom: 20, left: 20 });
     }
-  }, [mapState, substations]);
+  }, [mapState, substations, selectedAssetId]);
+
+  useEffect(() => {
+    if (mapState !== MapProviderState.READY || !mapRef.current || selectedAssetId) return;
+
+    const preset = mapCameraPresets[cameraPreset] ?? mapCameraPresets.NATIONAL;
+    const currentZoom = mapRef.current.getZoom() ?? preset.zoom;
+
+    mapRef.current.panTo(preset.center);
+    if (Math.abs(currentZoom - preset.zoom) > 0.2) {
+      mapRef.current.setZoom(preset.zoom);
+    }
+  }, [mapState, cameraPreset, selectedAssetId]);
 
   const handleSelectAsset = useCallback((assetId: string) => {
     if (onSelectAsset) {

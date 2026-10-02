@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Activity, 
   HardHat, 
@@ -37,7 +37,15 @@ import {
   PROJECT_HEALTH_GENOME,
   PROJECT_DELTA_EVENTS
 } from '../../adapters/fixtures';
-import { fetchProjectSupplySnapshot, getMasterProjectById, type Project360Snapshot, type ProjectSupplySnapshot } from '../../adapters/projectApi';
+import {
+  fetchProjectMilestones,
+  fetchProjectSupplySnapshot,
+  getMasterProjectById,
+  updateProjectMilestoneForecast,
+  type Project360Snapshot,
+  type ProjectSupplySnapshot,
+} from '../../adapters/projectApi';
+import type { ProjectMilestone, ProjectMilestoneUpdatedEvent } from '../../../../../../packages/contracts/project-schedule';
 import { ProjectViewMode, HealthStatus } from '../../types';
 import { NexusEntityDrawer, EntityDrawerData } from '../../shared/NexusEntityDrawer';
 import { isAtlasDemoModeEnabled } from '../../../../../context/TenantContext';
@@ -138,6 +146,19 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
   const [selectedEntity, setSelectedEntity] = useState<EntityDrawerData | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [persistedMilestones, setPersistedMilestones] = useState<ProjectMilestone[]>([]);
+  const [milestoneLoadError, setMilestoneLoadError] = useState<string | null>(null);
+  const [milestoneStreamState, setMilestoneStreamState] = useState<'CONNECTING' | 'CONNECTED' | 'RECONNECTING'>('CONNECTING');
+  const [milestoneTrace, setMilestoneTrace] = useState<{ auditId: string; eventId: string; eventStatus: string } | null>(null);
+  const [forecastEditor, setForecastEditor] = useState<{
+    milestone: ProjectMilestone;
+    forecastDate: string;
+    reason: string;
+    idempotencyKey: string;
+  } | null>(null);
+  const [forecastSubmitting, setForecastSubmitting] = useState(false);
+  const [forecastError, setForecastError] = useState<string | null>(null);
+  const milestoneVersions = useRef(new Map<string, number>());
 
   useEffect(() => {
     let cancelled = false;
@@ -154,6 +175,140 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
       cancelled = true;
     };
   }, [projectId]);
+
+  useEffect(() => {
+    if (isAtlasDemoModeEnabled) return;
+    const controller = new AbortController();
+    let hasConnected = false;
+    let streamBuffer = '';
+
+    const refreshMilestones = async () => {
+      const records = await fetchProjectMilestones(projectId, controller.signal);
+      if (!controller.signal.aborted) {
+        milestoneVersions.current = new Map(records.map(record => [record.id, record.version]));
+        setPersistedMilestones(records);
+        setMilestoneLoadError(null);
+      }
+    };
+
+    const applyEvent = async (event: ProjectMilestoneUpdatedEvent) => {
+      if (event.eventType !== 'ProjectMilestoneUpdated' || event.projectId !== projectId) return;
+      const currentVersion = milestoneVersions.current.get(event.aggregateId);
+      if (currentVersion === undefined || event.version !== currentVersion + 1) {
+        await refreshMilestones();
+        return;
+      }
+      milestoneVersions.current.set(event.aggregateId, event.version);
+      setPersistedMilestones(records => records.map(record =>
+        record.id === event.aggregateId ? event.resultingState : record,
+      ));
+    };
+
+    const consumeBlock = (block: string) => {
+      const data = block.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
+      if (!data) return;
+      try {
+        const event = JSON.parse(data) as Partial<ProjectMilestoneUpdatedEvent>;
+        if (event.eventType === 'ProjectMilestoneUpdated' && event.projectId === projectId) {
+          void applyEvent(event as ProjectMilestoneUpdatedEvent).catch(error => {
+            if (!controller.signal.aborted) {
+              setMilestoneLoadError(error instanceof Error ? error.message : 'Milestone event could not be reconciled.');
+            }
+          });
+        }
+      } catch (error) {
+        console.error('[PROJECT-360] Invalid milestone event payload:', error);
+      }
+    };
+
+    const connect = async () => {
+      while (!controller.signal.aborted) {
+        try {
+          const response = await fetch(`/api/project-supply/projects/${encodeURIComponent(projectId)}/milestones/events`, {
+            headers: { Accept: 'text/event-stream' },
+            signal: controller.signal,
+          });
+          if (!response.ok || !response.body) {
+            throw new Error(`Milestone event stream returned HTTP ${response.status}.`);
+          }
+          if (hasConnected) await refreshMilestones();
+          hasConnected = true;
+          setMilestoneStreamState('CONNECTED');
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          try {
+            while (!controller.signal.aborted) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              streamBuffer += decoder.decode(value, { stream: true });
+              const blocks = streamBuffer.split(/\r?\n\r?\n/);
+              streamBuffer = blocks.pop() || '';
+              blocks.forEach(consumeBlock);
+            }
+          } finally {
+            await reader.cancel().catch(() => undefined);
+          }
+          if (!controller.signal.aborted) throw new Error('Milestone event stream closed.');
+        } catch (error) {
+          if (controller.signal.aborted) return;
+          setMilestoneStreamState('RECONNECTING');
+          setMilestoneLoadError(error instanceof Error ? error.message : 'Milestone event stream disconnected.');
+          try {
+            await refreshMilestones();
+          } catch (refreshError) {
+            if (!controller.signal.aborted) {
+              setMilestoneLoadError(refreshError instanceof Error ? refreshError.message : 'Milestones could not be refreshed.');
+            }
+          }
+          await new Promise(resolve => window.setTimeout(resolve, 2000));
+        }
+      }
+    };
+
+    void refreshMilestones().catch(error => {
+      if (!controller.signal.aborted) {
+        setMilestoneLoadError(error instanceof Error ? error.message : 'Milestones could not be loaded.');
+      }
+    });
+    void connect();
+    return () => controller.abort();
+  }, [projectId]);
+
+  const submitForecastUpdate = async () => {
+    if (!forecastEditor) return;
+    setForecastSubmitting(true);
+    setForecastError(null);
+    try {
+      const result = await updateProjectMilestoneForecast({
+        projectId,
+        milestoneId: forecastEditor.milestone.id,
+        forecastDate: forecastEditor.forecastDate,
+        reason: forecastEditor.reason,
+        expectedVersion: forecastEditor.milestone.version,
+        idempotencyKey: forecastEditor.idempotencyKey,
+      });
+      milestoneVersions.current.set(result.milestone.id, result.milestone.version);
+      setPersistedMilestones(records => records.map(record =>
+        record.id === result.milestone.id && record.version < result.milestone.version
+          ? result.milestone
+          : record,
+      ));
+      setMilestoneTrace({ auditId: result.auditId, eventId: result.eventId, eventStatus: result.eventStatus });
+      setForecastEditor(null);
+    } catch (error) {
+      setForecastError(error instanceof Error ? error.message : 'Milestone update was not confirmed.');
+      const status = (error as Error & { status?: number }).status;
+      if (status === 409) {
+        try {
+          setPersistedMilestones(await fetchProjectMilestones(projectId));
+        } catch (refreshError) {
+          setForecastError(`${error instanceof Error ? error.message : 'Milestone conflict.'} Current state could not be refreshed: ${refreshError instanceof Error ? refreshError.message : 'unknown error'}`);
+        }
+      }
+    } finally {
+      setForecastSubmitting(false);
+    }
+  };
 
   // Filter items for current project
   const packages = MASTER_WORK_PACKAGES.filter((wp) => wp.projectId === currentProject.id);
@@ -773,7 +928,7 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
                 activeTab === 'MILESTONES' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold' : 'text-slate-400 hover:text-white'
               }`}
             >
-              Contract Milestones ({milestones.length})
+              Contract Milestones ({isAtlasDemoModeEnabled ? milestones.length : persistedMilestones.length})
             </button>
             <button
               onClick={() => setActiveTab('DEPENDENCIES')}
@@ -1219,8 +1374,97 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
               </button>
             </div>
 
+            {!isAtlasDemoModeEnabled && (
+              <section className="space-y-3 rounded border border-slate-700 bg-slate-950/70 p-3" aria-label="Persisted milestone schedule control">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                  <div>
+                    <span className="font-bold text-slate-200">Persisted schedule · tenant/project scoped</span>
+                    <span className="ml-3 text-slate-400">Event stream: {milestoneStreamState}</span>
+                  </div>
+                  <span className="text-amber-300">Atlas-persisted; source verification not established</span>
+                </div>
+                {milestoneLoadError && <p role="alert" className="text-xs text-rose-300">{milestoneLoadError}</p>}
+                {milestoneTrace && (
+                  <p className="text-[10px] text-slate-400" role="status">
+                    Confirmed write · audit {milestoneTrace.auditId} · event {milestoneTrace.eventId} · {milestoneTrace.eventStatus}
+                  </p>
+                )}
+                {persistedMilestones.length === 0 && !milestoneLoadError && (
+                  <p className="text-xs text-slate-400">No persisted milestones are available for this project. No fixture schedule is shown as authoritative.</p>
+                )}
+                <div className="space-y-2">
+                  {persistedMilestones.map(milestone => (
+                    <article key={milestone.id} className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-800 bg-slate-900/60 p-3">
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-semibold text-slate-100">{milestone.name}</h4>
+                        <p className="text-[10px] text-slate-400">
+                          {milestone.status.replace('_', ' ')} · forecast {milestone.forecastDate || 'UNAVAILABLE'} · version {milestone.version} · {milestone.authority}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={milestone.status === 'COMPLETED' || Boolean(milestone.actualDate)}
+                        onClick={() => {
+                          setForecastError(null);
+                          setForecastEditor({
+                            milestone,
+                            forecastDate: milestone.forecastDate || milestone.currentDate || '',
+                            reason: '',
+                            idempotencyKey: crypto.randomUUID(),
+                          });
+                        }}
+                        className="rounded border border-cyan-700 px-3 py-1.5 text-xs text-cyan-300 hover:bg-cyan-950 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Update forecast
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {forecastEditor && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="forecast-editor-title">
+                <div className="w-full max-w-lg space-y-4 rounded-lg border border-slate-700 bg-slate-950 p-5">
+                  <h3 id="forecast-editor-title" className="text-sm font-bold text-slate-100">Update forecast · {forecastEditor.milestone.name}</h3>
+                  <label className="block space-y-1 text-xs text-slate-300">
+                    <span>Forecast date</span>
+                    <input
+                      type="date"
+                      value={forecastEditor.forecastDate}
+                      onChange={event => setForecastEditor(editor => editor ? { ...editor, forecastDate: event.target.value } : editor)}
+                      className="w-full rounded border border-slate-700 bg-slate-900 p-2 text-white"
+                    />
+                  </label>
+                  <label className="block space-y-1 text-xs text-slate-300">
+                    <span>Reason (required for audit)</span>
+                    <textarea
+                      value={forecastEditor.reason}
+                      onChange={event => setForecastEditor(editor => editor ? { ...editor, reason: event.target.value } : editor)}
+                      minLength={5}
+                      maxLength={1000}
+                      rows={3}
+                      className="w-full rounded border border-slate-700 bg-slate-900 p-2 text-white"
+                    />
+                  </label>
+                  {forecastError && <p role="alert" className="text-xs text-rose-300">{forecastError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button type="button" disabled={forecastSubmitting} onClick={() => setForecastEditor(null)} className="rounded border border-slate-700 px-3 py-2 text-xs text-slate-300 disabled:opacity-50">Cancel</button>
+                    <button
+                      type="button"
+                      disabled={forecastSubmitting || !forecastEditor.forecastDate || forecastEditor.reason.trim().length < 5}
+                      onClick={() => void submitForecastUpdate()}
+                      className="rounded bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                    >
+                      {forecastSubmitting ? 'Submitting…' : 'Submit forecast update'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
-              {milestones.map((m) => (
+              {isAtlasDemoModeEnabled && milestones.map((m) => (
                 <div
                   key={m.id}
                   onClick={() => handleOpenEntity({

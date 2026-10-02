@@ -11,7 +11,7 @@
     "clean": "rm -rf dist server.js",
     "postinstall": "mkdir -p build/Release && ln -sf ../../node_modules/sqlite3/build/Release/node_sqlite3.node build/Release/node_sqlite3.node && ln -sf ../../node_modules/better-sqlite3/prebuilds/linux-x64.node build/Release/better_sqlite3.node || true",
     "lint": "tsc --noEmit",
-    "test": "tsx backend/tests/run-tests.ts && node --import tsx --test backend/tests/server-config.test.ts backend/evaluation/eval-harness.test.ts backend/digital-twin/engineering-scenario-service.test.ts",
+    "test": "tsx backend/tests/run-tests.ts && node --import tsx --test backend/tests/server-config.test.ts backend/evaluation/eval-harness.test.ts backend/digital-twin/engineering-scenario-service.test.ts backend/tests/project-milestone-service.test.ts",
     "test:agent-control-plane": "tsx backend/tests/agent-control-plane.test.ts",
     "test:logistics-security": "node --import tsx --test backend/tests/logistics-security.integration.test.ts",
     "test:architecture": "tsx backend/evaluation/legal-control-plane/phase4-control-plane.test.ts",

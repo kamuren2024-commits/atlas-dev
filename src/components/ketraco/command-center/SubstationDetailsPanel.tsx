@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, AlertTriangle, X } from 'lucide-react';
+import { Activity, AlertTriangle, MapPin, X } from 'lucide-react';
 import type { GridAlarm, GridAsset, GridEvent, TelemetryPoint, TransmissionLine } from './types';
 
 interface SubstationDetailsPanelProps {
@@ -9,6 +9,7 @@ interface SubstationDetailsPanelProps {
   alarms: GridAlarm[];
   events: GridEvent[];
   onClose: () => void;
+  onFocus?: () => void;
 }
 
 function formatValue(value: string | number | boolean | null | undefined, unit = ''): string {
@@ -64,7 +65,8 @@ export default function SubstationDetailsPanel({
   lines,
   alarms,
   events,
-  onClose
+  onClose,
+  onFocus
 }: SubstationDetailsPanelProps) {
   const connectedLines = substation.connectedLines.map((lineId) => lines[lineId]).filter(Boolean);
   const assetAlarms = alarms.filter((alarm) => alarm.assetId === substation.id);
@@ -90,14 +92,27 @@ export default function SubstationDetailsPanel({
             {substation.code} · {substation.type.replace(/_/g, ' ')}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close substation details"
-          className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {onFocus && (
+            <button
+              type="button"
+              onClick={onFocus}
+              aria-label="Focus substation on map"
+              title="Focus on map"
+              className="rounded border border-cyan-500/40 bg-cyan-500/10 p-1.5 text-cyan-300 hover:bg-cyan-500/20"
+            >
+              <MapPin className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close substation details"
+            className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">

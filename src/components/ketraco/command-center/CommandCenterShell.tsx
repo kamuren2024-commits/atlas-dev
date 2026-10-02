@@ -668,6 +668,11 @@ export default function CommandCenterShell() {
                   alarms={alarms}
                   events={events}
                   onClose={() => setSelectedAssetId(null)}
+                  onFocus={() => {
+                    if (!selectedAssetId) return;
+                    setSelectedAssetId(null);
+                    window.setTimeout(() => setSelectedAssetId(selectedAssetId), 0);
+                  }}
                 />
               ) : (
                 <GridIntelligencePanel

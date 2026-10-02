@@ -8,6 +8,7 @@
 
 import { GridAsset, GridTelemetry } from '../data-fabric/types';
 import type { AtlasEntityRef, AtlasProvenance } from '../../packages/contracts/atlas-fabric';
+import type { ProjectMilestoneUpdatedEvent } from '../../packages/contracts/project-schedule';
 
 export type EventSeverity = 'INFO' | 'WARNING' | 'CRITICAL' | 'ALERT';
 export type EventStatus = 'PENDING' | 'ACKNOWLEDGED' | 'RESOLVED' | 'ESCALATED';
@@ -21,7 +22,8 @@ export type EventCategory =
   | 'OUTAGE'
   | 'FORECAST'
   | 'INCIDENT'
-  | 'ALARM';
+  | 'ALARM'
+  | 'PROJECT';
 
 /**
  * Base Event - All events inherit from this
@@ -37,6 +39,7 @@ export interface BaseEvent {
   correlationId?: string; // Link related events
   /** Additive Atlas fabric metadata for progressive cross-module adoption. */
   tenantId?: string;
+  projectId?: string;
   payloadVersion?: string;
   entity?: AtlasEntityRef;
   provenance?: AtlasProvenance[];
@@ -233,7 +236,8 @@ export type CanonicalEvent =
   | RiskEvent
   | MarketEvent
   | WeatherEvent
-  | IncidentEvent;
+  | IncidentEvent
+  | ProjectMilestoneUpdatedEvent;
 
 /**
  * Event Subscription Filter

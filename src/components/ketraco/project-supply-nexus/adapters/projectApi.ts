@@ -44,6 +44,10 @@ import type {
   ProjectDataSourceState,
   ProjectRecord,
 } from '../../../../../packages/contracts/project360';
+import type {
+  ProjectMilestone,
+  UpdateProjectMilestoneForecastCommand,
+} from '../../../../../packages/contracts/project-schedule';
 
 export type { Project360Snapshot, ProjectDataSourceState };
 export type ProjectEnvelope = ProjectRecord;
@@ -139,6 +143,57 @@ export interface ProjectSupplySnapshot {
   requirements: Array<Record<string, unknown>>;
   supplyPositions: Array<Record<string, unknown>>;
   limitations: string[];
+}
+
+export async function fetchProjectMilestones(projectId: string, signal?: AbortSignal): Promise<ProjectMilestone[]> {
+  const response = await fetch(`/api/project-supply/projects/${encodeURIComponent(projectId)}/milestones?limit=100`, {
+    headers: { Accept: 'application/json' },
+    signal,
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || `Milestone read failed with HTTP ${response.status}.`);
+  }
+  if (!Array.isArray(payload?.data?.milestones)) {
+    throw new Error('Milestone API returned an invalid response.');
+  }
+  return payload.data.milestones as ProjectMilestone[];
+}
+
+export async function updateProjectMilestoneForecast(
+  command: UpdateProjectMilestoneForecastCommand,
+  signal?: AbortSignal,
+): Promise<{ milestone: ProjectMilestone; auditId: string; eventId: string; eventStatus: string; correlationId: string }> {
+  const response = await fetch(
+    `/api/project-supply/projects/${encodeURIComponent(command.projectId)}/milestones/${encodeURIComponent(command.milestoneId)}/forecast`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Idempotency-Key': command.idempotencyKey },
+      body: JSON.stringify({
+        forecastDate: command.forecastDate,
+        reason: command.reason,
+        expectedVersion: command.expectedVersion,
+      }),
+      signal,
+    },
+  );
+  const payload = await response.json();
+  if (!response.ok) {
+    const failure = new Error(payload?.error?.message || `Milestone update failed with HTTP ${response.status}.`) as Error & {
+      status?: number;
+      code?: string;
+      details?: unknown;
+    };
+    failure.status = response.status;
+    failure.code = payload?.error?.code;
+    failure.details = payload?.error?.details;
+    throw failure;
+  }
+  const data = payload?.data;
+  if (!data?.milestone || !data?.eventId || !data?.auditId) {
+    throw new Error('Milestone API did not return confirmed state and trace references.');
+  }
+  return data;
 }
 
 export async function fetchProjectSupplySnapshot(projectId: string): Promise<ProjectSupplySnapshot> {

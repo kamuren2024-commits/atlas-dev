@@ -224,6 +224,7 @@ export const PHASE0_DOMAIN_MODELS = [
 
 export * from './atlas-fabric';
 export * from './project360';
+export * from './project-schedule';
 
 export interface PlatformContractEnvelope<T> {
   status: 'OK' | 'WARN' | 'ERROR';

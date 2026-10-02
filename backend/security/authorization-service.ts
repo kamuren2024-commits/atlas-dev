@@ -45,7 +45,7 @@ export class AuthorizationService {
     ],
     'Driver': ['logistics:read'],
     'Engineer': ['logistics:read', 'logistics:update'],
-    'Project Manager': ['logistics:read'],
+    'Project Manager': ['project:read', 'project:update', 'logistics:read'],
     'Maintenance Manager': ['logistics:read', 'logistics:create', 'logistics:update'],
     'Finance Officer': ['logistics:read'],
     'Procurement Officer': ['logistics:read'],

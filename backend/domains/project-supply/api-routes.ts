@@ -5,6 +5,9 @@ import { AuthorizationService } from '../../security/authorization-service';
 import type { UserIdentity } from '../../security/identity-service';
 import type { AuditLogger } from '../../observability/audit-logger';
 import { ApiGatewayMiddleware } from '../../security/api-gateway-middleware';
+import { EventBus } from '../../event-fabric/event-bus';
+import { SSEHandler } from '../../event-fabric/sse-handler';
+import type { ProjectMilestoneUpdatedEvent, UpdateProjectMilestoneForecastCommand } from '../../../packages/contracts/project-schedule';
 import { calculateSupplyPosition, type ProjectSupplyRequirement, type SupplyPosition } from './intelligence';
 import {
   type Project360Section,
@@ -15,6 +18,7 @@ import {
   type ProjectRecord,
 } from './project-contract';
 import { ProjectService } from './project-service';
+import { ProjectMilestoneCommandError, ProjectMilestoneService } from './project-milestone-service';
 
 export interface ProjectSupplyApiDeps {
   db: DatabaseCore;
@@ -80,24 +84,27 @@ function toRequirement(row: RequirementRow): ProjectSupplyRequirement {
   };
 }
 
-function fail(res: Response, status: number, code: string, message: string) {
-  return res.status(status).json({ ok: false, error: { code, message } });
+function fail(res: Response, status: number, code: string, message: string, details?: unknown) {
+  return res.status(status).json({ ok: false, error: { code, message, ...(details === undefined ? {} : { details }) } });
 }
 
 export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): express.Router {
   const router = express.Router();
   const projectService = ProjectService.create(deps.db);
+  const milestoneService = new ProjectMilestoneService(deps.db);
+  const eventBus = EventBus.getInstance();
+  const sseHandler = SSEHandler.getInstance();
 
   router.use(ApiGatewayMiddleware.correlationId);
   router.use((req, res, next) => {
     void ApiGatewayMiddleware.authenticate(req, res, next).catch(next);
   });
 
-  async function authorizeProject(req: Request, res: Response, projectId: string): Promise<string | null> {
+  async function authorizeProject(req: Request, res: Response, projectId: string, action: 'read' | 'update' = 'read'): Promise<string | null> {
     const user = (req as AuthenticatedRequest).user;
     const tenantId = user?.tenantId;
-    if (!user || !tenantId || !(await deps.authz.check(user.id, 'project', 'read', { tenantId, resourceId: projectId, role: user.role, permissions: user.permissions }))) {
-      fail(res, 403, 'UNAUTHORIZED', 'Not authorized to read project supply data');
+    if (!user || !tenantId || !(await deps.authz.check(user.id, 'project', action, { tenantId, resourceId: projectId, role: user.role, permissions: user.permissions }))) {
+      fail(res, 403, 'UNAUTHORIZED', `Not authorized to ${action} project data`);
       return null;
     }
     const project = deps.kg.nodes.find(node =>
@@ -117,6 +124,55 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
     }
     return tenantId;
   }
+
+  async function publishOutboxEvent(eventId: string): Promise<boolean> {
+    const record = await deps.db.get<{ payload_json: string; published_at: string | null }>(
+      'SELECT payload_json, published_at FROM atlas_outbox_events WHERE event_id = ?',
+      [eventId],
+    );
+    if (!record) {
+      throw new Error(`Durable outbox event ${eventId} is missing.`);
+    }
+    if (record.published_at) return true;
+    const event = JSON.parse(record.payload_json) as ProjectMilestoneUpdatedEvent;
+    try {
+      await eventBus.publishEvent(event);
+      await deps.db.run(
+        `UPDATE atlas_outbox_events
+            SET published_at = ?, publish_attempts = publish_attempts + 1, last_error = NULL
+          WHERE event_id = ? AND published_at IS NULL`,
+        [new Date().toISOString(), eventId],
+      );
+      return true;
+    } catch (error) {
+      await deps.db.run(
+        `UPDATE atlas_outbox_events
+            SET publish_attempts = publish_attempts + 1, last_error = ?
+          WHERE event_id = ? AND published_at IS NULL`,
+        [error instanceof Error ? error.message : 'Unknown event publication failure', eventId],
+      );
+      return false;
+    }
+  }
+
+  async function dispatchPendingOutbox(): Promise<void> {
+    const pending = await deps.db.all<{ event_id: string }>(
+      `SELECT event_id FROM atlas_outbox_events
+        WHERE published_at IS NULL
+        ORDER BY created_at ASC
+        LIMIT 50`,
+    );
+    for (const { event_id: eventId } of pending) {
+      await publishOutboxEvent(eventId);
+    }
+  }
+
+  const outboxRetry = setInterval(() => {
+    void dispatchPendingOutbox().catch(error => {
+      console.error('[PROJECT-SUPPLY] Outbox retry failed:', error);
+    });
+  }, 5000);
+  outboxRetry.unref();
 
   function defaultProvenance(projectId: string, state: ProjectDataSourceState): ProjectProvenance {
     return {
@@ -438,6 +494,110 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
     const project = await projectService.getProject(tenantId, req.params.projectId);
     const outcome = toProjectContract(project, req.params.projectId, requirements);
     return res.json({ ok: true, data: { positions: await getPositions(tenantId, requirements), dataStatus: outcome.dataStatus, provenance: outcome.provenance } });
+  });
+
+  router.get('/projects/:projectId/milestones', async (req, res) => {
+    try {
+      const tenantId = await authorizeProject(req, res, req.params.projectId);
+      if (!tenantId) return;
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+      const offset = Math.max(0, Number(req.query.offset) || 0);
+      const milestones = await milestoneService.list(tenantId, req.params.projectId, limit, offset);
+      return res.json({
+        ok: true,
+        data: {
+          milestones,
+          page: { limit, offset, returned: milestones.length },
+          authority: 'ATLAS_PERSISTED_NOT_VERIFIED',
+          source: 'ATLAS_INTERNAL',
+          retrievedAt: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      console.error('[PROJECT-SUPPLY] Milestone read failed:', error);
+      return fail(res, 500, 'MILESTONE_READ_FAILED', 'Milestones could not be loaded.');
+    }
+  });
+
+  router.get('/projects/:projectId/milestones/events', async (req, res) => {
+    const tenantId = await authorizeProject(req, res, req.params.projectId);
+    if (!tenantId) return;
+    const clientId = sseHandler.handleConnection(res);
+    sseHandler.subscribe(clientId, {
+      eventTypes: ['ProjectMilestoneUpdated'],
+      customFilter: event =>
+        event.eventType === 'ProjectMilestoneUpdated' &&
+        event.tenantId === tenantId &&
+        event.projectId === req.params.projectId,
+    });
+  });
+
+  router.get('/projects/:projectId/milestones/:milestoneId', async (req, res) => {
+    try {
+      const tenantId = await authorizeProject(req, res, req.params.projectId);
+      if (!tenantId) return;
+      const milestone = await milestoneService.get(tenantId, req.params.projectId, req.params.milestoneId);
+      if (!milestone) return fail(res, 404, 'MILESTONE_NOT_FOUND', 'Milestone was not found within this project.');
+      return res.json({
+        ok: true,
+        data: {
+          milestone,
+          provenance: { source: milestone.source, authority: milestone.authority, verificationState: 'NOT_VERIFIED' },
+          retrievedAt: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      console.error('[PROJECT-SUPPLY] Milestone read failed:', error);
+      return fail(res, 500, 'MILESTONE_READ_FAILED', 'Milestone could not be loaded.');
+    }
+  });
+
+  router.patch('/projects/:projectId/milestones/:milestoneId/forecast', async (req, res) => {
+    const user = (req as AuthenticatedRequest).user;
+    const tenantId = await authorizeProject(req, res, req.params.projectId, 'update');
+    if (!tenantId || !user) return;
+    const allowedKeys = ['forecastDate', 'reason', 'expectedVersion', 'idempotencyKey'];
+    if (!req.body || typeof req.body !== 'object' || Object.keys(req.body).some(key => !allowedKeys.includes(key))) {
+      return fail(res, 400, 'INVALID_COMMAND', 'Command must contain only forecastDate, reason, expectedVersion, and idempotencyKey.');
+    }
+    const idempotencyKey = req.get('Idempotency-Key') || req.body.idempotencyKey;
+    const command: UpdateProjectMilestoneForecastCommand = {
+      projectId: req.params.projectId,
+      milestoneId: req.params.milestoneId,
+      forecastDate: req.body.forecastDate,
+      reason: req.body.reason,
+      expectedVersion: req.body.expectedVersion,
+      idempotencyKey,
+    };
+    try {
+      const result = await milestoneService.updateForecast(command, {
+        actorId: user.id,
+        actorRole: user.role,
+        tenantId,
+        correlationId: req.correlationId || '',
+      });
+      const eventPublished = await publishOutboxEvent(result.event.id);
+      return res.status(200).json({
+        ok: true,
+        data: {
+          milestone: result.milestone,
+          auditId: result.auditId,
+          eventId: result.event.id,
+          eventStatus: eventPublished ? 'EVENT_ACCEPTED_BY_IN_PROCESS_BUS' : 'EVENT_QUEUED',
+          correlationId: req.correlationId,
+          replayed: result.replayed,
+        },
+      });
+    } catch (error) {
+      if (error instanceof ProjectMilestoneCommandError) {
+        return fail(res, error.statusCode, error.code, error.message, error.details);
+      }
+      console.error('[PROJECT-SUPPLY] Milestone forecast command failed:', {
+        correlationId: req.correlationId,
+        error,
+      });
+      return fail(res, 500, 'MILESTONE_COMMAND_FAILED', 'Milestone update failed; no confirmed state was returned.');
+    }
   });
 
   return router;
