@@ -255,7 +255,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim();
     if (!apiKey) {
       setMapState(MapProviderState.ERROR_KEY_MISSING);
       return;

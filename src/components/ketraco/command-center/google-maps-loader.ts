@@ -29,9 +29,16 @@ export function loadGoogleMaps(apiKey: string): Promise<google.maps.MapsLibrary>
 export function subscribeToGoogleMapsAuthFailure(listener: () => void): () => void {
   authFailureListeners.add(listener);
 
+  if (typeof window === 'undefined') {
+    return () => authFailureListeners.delete(listener);
+  }
+
+  const previousGmAuthFailure = window.gm_authFailure;
+
   if (!authFailureHandlerInstalled) {
     window.gm_authFailure = () => {
       hasGoogleMapsAuthFailure = true;
+      previousGmAuthFailure?.();
       authFailureListeners.forEach((authFailureListener) => authFailureListener());
     };
     authFailureHandlerInstalled = true;
