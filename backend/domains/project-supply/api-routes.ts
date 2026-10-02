@@ -6,6 +6,8 @@ import type { UserIdentity } from '../../security/identity-service';
 import type { AuditLogger } from '../../observability/audit-logger';
 import { ApiGatewayMiddleware } from '../../security/api-gateway-middleware';
 import { calculateSupplyPosition, type ProjectSupplyRequirement, type SupplyPosition } from './intelligence';
+import { type ProjectDataSourceState, type ProjectProvenance, type ProjectRecord } from './project-contract';
+import { ProjectService } from './project-service';
 
 export interface ProjectSupplyApiDeps {
   db: DatabaseCore;
@@ -77,6 +79,7 @@ function fail(res: Response, status: number, code: string, message: string) {
 
 export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): express.Router {
   const router = express.Router();
+  const projectService = ProjectService.create(deps.db);
 
   router.use(ApiGatewayMiddleware.correlationId);
   router.use((req, res, next) => {
@@ -102,6 +105,39 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
       return null;
     }
     return tenantId;
+  }
+
+  function defaultProvenance(projectId: string, state: ProjectDataSourceState): ProjectProvenance {
+    return {
+      source: 'project_supply_project',
+      authority: state === 'LIVE_AUTHORITATIVE' ? 'AUTHORITATIVE' : state === 'LIVE_NON_AUTHORITATIVE' ? 'NON_AUTHORITATIVE' : 'UNAVAILABLE',
+      freshness: 'UNKNOWN',
+      retrievedAt: new Date().toISOString(),
+      verificationState: state === 'NOT_VERIFIED' || state === 'UNAVAILABLE' || state === 'NOT_CONNECTED' ? 'NOT_VERIFIED' : 'VERIFIED',
+      dataSourceState: state,
+    };
+  }
+
+  function toProjectContract(project: ProjectRecord | null, projectId: string, requirements: ProjectSupplyRequirement[]): { project: ProjectRecord | null; dataStatus: ProjectDataSourceState; provenance: ProjectProvenance } {
+    if (project) {
+      return {
+        project,
+        dataStatus: project.provenance.dataSourceState || 'LIVE_AUTHORITATIVE',
+        provenance: project.provenance,
+      };
+    }
+    if (requirements.length > 0) {
+      return {
+        project: null,
+        dataStatus: 'DERIVED',
+        provenance: defaultProvenance(projectId, 'DERIVED'),
+      };
+    }
+    return {
+      project: null,
+      dataStatus: 'NOT_CONNECTED',
+      provenance: defaultProvenance(projectId, 'NOT_CONNECTED'),
+    };
   }
 
   async function getRequirements(tenantId: string, projectId: string): Promise<ProjectSupplyRequirement[]> {
@@ -170,8 +206,12 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
   router.get('/projects/:projectId', async (req, res) => {
     const tenantId = await authorizeProject(req, res, req.params.projectId);
     if (!tenantId) return;
-    const requirements = await getRequirements(tenantId, req.params.projectId);
+    const [requirements, project] = await Promise.all([
+      getRequirements(tenantId, req.params.projectId),
+      projectService.getProject(tenantId, req.params.projectId),
+    ]);
     const positions = await getPositions(tenantId, requirements);
+    const projectState = toProjectContract(project, req.params.projectId, requirements);
     const relatedIds = new Set([req.params.projectId]);
     deps.kg.edges.forEach(edge => {
       if (edge.source === req.params.projectId) relatedIds.add(edge.target);
@@ -221,20 +261,22 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
       resourceType: 'project',
       resourceId: req.params.projectId,
       status: 'completed',
-      metadata: { tenantId, requirementCount: requirements.length },
+      metadata: { tenantId, requirementCount: requirements.length, dataStatus: projectState.dataStatus },
     });
     return res.json({
       ok: true,
       data: {
         projectId: req.params.projectId,
+        project: projectState.project,
         requirements,
         supplyPositions: positions,
         graph: {
           nodes: [...graph.nodes, ...requirementNodes],
           edges: [...graph.edges, ...requirementEdges],
         },
-        dataStatus: requirements.length ? 'DERIVED' : 'UNAVAILABLE',
-        limitations: requirements.length ? [] : ['No persisted project requirements are linked to this project'],
+        dataStatus: projectState.dataStatus,
+        provenance: projectState.provenance,
+        limitations: requirements.length ? [] : ['No persisted project requirements are linked to this project.'],
       },
     });
   });
@@ -242,14 +284,19 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
   router.get('/projects/:projectId/requirements', async (req, res) => {
     const tenantId = await authorizeProject(req, res, req.params.projectId);
     if (!tenantId) return;
-    return res.json({ ok: true, data: { requirements: await getRequirements(tenantId, req.params.projectId) } });
+    const requirements = await getRequirements(tenantId, req.params.projectId);
+    const project = await projectService.getProject(tenantId, req.params.projectId);
+    const outcome = toProjectContract(project, req.params.projectId, requirements);
+    return res.json({ ok: true, data: { requirements, dataStatus: outcome.dataStatus, provenance: outcome.provenance } });
   });
 
   router.get('/projects/:projectId/supply-position', async (req, res) => {
     const tenantId = await authorizeProject(req, res, req.params.projectId);
     if (!tenantId) return;
     const requirements = await getRequirements(tenantId, req.params.projectId);
-    return res.json({ ok: true, data: { positions: await getPositions(tenantId, requirements), dataStatus: requirements.length ? 'DERIVED' : 'UNAVAILABLE' } });
+    const project = await projectService.getProject(tenantId, req.params.projectId);
+    const outcome = toProjectContract(project, req.params.projectId, requirements);
+    return res.json({ ok: true, data: { positions: await getPositions(tenantId, requirements), dataStatus: outcome.dataStatus, provenance: outcome.provenance } });
   });
 
   return router;

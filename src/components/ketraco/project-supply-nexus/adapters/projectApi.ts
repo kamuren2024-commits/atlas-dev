@@ -40,8 +40,19 @@ import {
 import { MasterProjectSummary } from '../types';
 import { isAtlasDemoModeEnabled } from '../../../../context/TenantContext';
 
+export type ProjectDataSourceState =
+  | 'LIVE_AUTHORITATIVE'
+  | 'LIVE_NON_AUTHORITATIVE'
+  | 'HISTORICAL'
+  | 'DERIVED'
+  | 'SIMULATED'
+  | 'PREDICTED'
+  | 'UNAVAILABLE'
+  | 'NOT_CONNECTED'
+  | 'NOT_VERIFIED';
+
 export interface ProjectTelemetryState {
-  status: 'LIVE' | 'SIMULATED' | 'DEGRADED' | 'STALE' | 'INITIALIZING' | 'UNAVAILABLE';
+  status: ProjectDataSourceState | 'LIVE' | 'SIMULATED' | 'DEGRADED' | 'STALE' | 'INITIALIZING';
   lastUpdated: string;
   dataFreshnessSeconds: number;
   kpis: typeof PRIMARY_KPIS;
@@ -53,6 +64,35 @@ export interface ProjectTelemetryState {
   materials: typeof SUPPLY_MATERIALS;
   deltas: typeof PROJECT_DELTA_EVENTS;
   layers: typeof MAP_LAYERS;
+}
+
+export interface ProjectEnvelope {
+  id: string;
+  projectCode?: string | null;
+  name?: string | null;
+  description?: string | null;
+  projectType?: string | null;
+  category?: string | null;
+  lifecycleStage?: string | null;
+  status?: string | null;
+  owner?: string | null;
+  projectManager?: string | null;
+  location?: string | null;
+  plannedStart?: string | null;
+  plannedCompletion?: string | null;
+  forecastCompletion?: string | null;
+  actualCompletion?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  version?: number | null;
+  provenance?: {
+    source?: string;
+    authority?: string;
+    freshness?: string;
+    retrievedAt?: string;
+    verificationState?: string;
+    dataSourceState?: ProjectDataSourceState;
+  };
 }
 
 export async function fetchProjectTelemetry(): Promise<ProjectTelemetryState> {
@@ -100,7 +140,7 @@ export async function fetchProjectTelemetry(): Promise<ProjectTelemetryState> {
       const payload = await res.json();
       const data = payload?.data ?? payload;
       return {
-        status: ['UNAVAILABLE', 'LIVE', 'SIMULATED', 'DEGRADED', 'STALE', 'INITIALIZING'].includes(data.status)
+        status: ['UNAVAILABLE', 'NOT_CONNECTED', 'NOT_VERIFIED', 'LIVE_AUTHORITATIVE', 'LIVE_NON_AUTHORITATIVE', 'HISTORICAL', 'DERIVED', 'SIMULATED', 'PREDICTED', 'LIVE', 'DEGRADED', 'STALE', 'INITIALIZING'].includes(data.status)
           ? data.status
           : 'UNAVAILABLE',
         lastUpdated: data.lastUpdated || new Date().toISOString(),
@@ -125,7 +165,8 @@ export async function fetchProjectTelemetry(): Promise<ProjectTelemetryState> {
 
 export interface ProjectSupplySnapshot {
   projectId: string;
-  dataStatus: 'DERIVED' | 'UNAVAILABLE' | 'LIVE' | 'DEGRADED';
+  dataStatus: ProjectDataSourceState | 'LIVE' | 'DEGRADED';
+  project?: ProjectEnvelope | null;
   requirements: Array<Record<string, unknown>>;
   supplyPositions: Array<Record<string, unknown>>;
   limitations: string[];
@@ -137,11 +178,24 @@ export async function fetchProjectSupplySnapshot(projectId: string): Promise<Pro
     return {
       projectId: '',
       dataStatus: 'UNAVAILABLE',
+      project: null,
       requirements: [],
       supplyPositions: [],
       limitations: ['A project ID is required to load project supply evidence.'],
     };
   }
+
+  const fallbackStatus: ProjectDataSourceState = isAtlasDemoModeEnabled ? 'SIMULATED' : 'UNAVAILABLE';
+  const fallback: ProjectSupplySnapshot = {
+    projectId: selectedProjectId,
+    dataStatus: fallbackStatus,
+    project: null,
+    requirements: [],
+    supplyPositions: [],
+    limitations: isAtlasDemoModeEnabled
+      ? ['Demo mode is active; project-supply data is simulated and non-authoritative.']
+      : ['Project supply data is unavailable because the authoritative backend is not connected or verified.'],
+  };
 
   try {
     const res = await fetch(`/api/project-supply/projects/${encodeURIComponent(selectedProjectId)}`, {
@@ -149,44 +203,31 @@ export async function fetchProjectSupplySnapshot(projectId: string): Promise<Pro
       signal: AbortSignal.timeout(1500)
     });
     if (!res.ok) {
-      return {
-        projectId: selectedProjectId,
-        dataStatus: 'UNAVAILABLE',
-        requirements: [],
-        supplyPositions: [],
-        limitations: [`Project supply API returned HTTP ${res.status}; no fallback project data was loaded.`],
-      };
+      return fallback;
     }
 
     const payload = await res.json();
     const data = payload?.data ?? payload;
     if (!data || typeof data !== 'object' || data.projectId !== selectedProjectId) {
-      return {
-        projectId: selectedProjectId,
-        dataStatus: 'UNAVAILABLE',
-        requirements: [],
-        supplyPositions: [],
-        limitations: ['Project supply API returned a malformed response or a different project; no fallback data was loaded.'],
-      };
+      return fallback;
     }
+
+    const nextStatus = data.dataStatus && typeof data.dataStatus === 'string'
+      ? data.dataStatus
+      : fallback.dataStatus;
 
     return {
       projectId: selectedProjectId,
-      dataStatus: data.dataStatus === 'DERIVED' || data.dataStatus === 'UNAVAILABLE' || data.dataStatus === 'LIVE' || data.dataStatus === 'DEGRADED'
-        ? data.dataStatus
-        : 'UNAVAILABLE',
+      dataStatus: ['LIVE_AUTHORITATIVE', 'LIVE_NON_AUTHORITATIVE', 'HISTORICAL', 'DERIVED', 'SIMULATED', 'PREDICTED', 'UNAVAILABLE', 'NOT_CONNECTED', 'NOT_VERIFIED', 'LIVE', 'DEGRADED'].includes(nextStatus)
+        ? nextStatus as ProjectSupplySnapshot['dataStatus']
+        : fallback.dataStatus,
+      project: data.project ?? null,
       requirements: Array.isArray(data.requirements) ? data.requirements : [],
       supplyPositions: Array.isArray(data.supplyPositions) ? data.supplyPositions : [],
       limitations: Array.isArray(data.limitations) ? data.limitations : ['No persisted project requirements are linked to this project.'],
     };
   } catch {
-    return {
-      projectId: selectedProjectId,
-      dataStatus: 'UNAVAILABLE',
-      requirements: [],
-      supplyPositions: [],
-      limitations: ['Project supply API is unavailable; no fallback project data was loaded.'],
-    };
+    return fallback;
   }
 }
 
