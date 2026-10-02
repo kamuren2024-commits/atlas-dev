@@ -4,6 +4,7 @@ import type { KnowledgeGraph } from '../../evaluation/knowledge-graph';
 import { AuthorizationService } from '../../security/authorization-service';
 import type { UserIdentity } from '../../security/identity-service';
 import type { AuditLogger } from '../../observability/audit-logger';
+import { ApiGatewayMiddleware } from '../../security/api-gateway-middleware';
 import { calculateSupplyPosition, type ProjectSupplyRequirement, type SupplyPosition } from './intelligence';
 
 export interface ProjectSupplyApiDeps {
@@ -77,10 +78,15 @@ function fail(res: Response, status: number, code: string, message: string) {
 export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): express.Router {
   const router = express.Router();
 
+  router.use(ApiGatewayMiddleware.correlationId);
+  router.use((req, res, next) => {
+    void ApiGatewayMiddleware.authenticate(req, res, next).catch(next);
+  });
+
   async function authorizeProject(req: Request, res: Response, projectId: string): Promise<string | null> {
     const user = (req as AuthenticatedRequest).user;
-    const tenantId = user?.tenantId || 'ketraco';
-    if (!user || !(await deps.authz.check(user.id, 'project', 'read', { tenantId, resourceId: projectId, role: user.role, permissions: user.permissions }))) {
+    const tenantId = user?.tenantId;
+    if (!user || !tenantId || !(await deps.authz.check(user.id, 'project', 'read', { tenantId, resourceId: projectId, role: user.role, permissions: user.permissions }))) {
       fail(res, 403, 'UNAUTHORIZED', 'Not authorized to read project supply data');
       return null;
     }

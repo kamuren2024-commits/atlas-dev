@@ -47,8 +47,8 @@ export const ProgressEVMView: React.FC<ProgressEVMViewProps> = ({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const evm = PROGRESS_EVM_METRICS;
 
-  const packages = MASTER_WORK_PACKAGES.filter(wp => wp.projectId === currentProject.id || wp.projectId === 'mombasa');
-  const milestones = MASTER_MILESTONES.filter(m => m.projectId === currentProject.id || m.projectId === 'mombasa');
+  const packages = MASTER_WORK_PACKAGES.filter(wp => wp.projectId === currentProject.id);
+  const milestones = MASTER_MILESTONES.filter(m => m.projectId === currentProject.id);
 
   const handleOpenEntity = (data: EntityDrawerData) => {
     setSelectedEntity(data);

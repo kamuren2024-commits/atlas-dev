@@ -52,14 +52,15 @@ const LogisticsShell: React.FC<LogisticsShellProps> = ({
         </span>
         {NAV_ITEMS.map(item => {
           const isActive = normalizeLogisticsViewId(activeView) === item.id;
+          const label = LOGISTICS_VIEW_LABELS[item.id];
           return (
             <motion.button
               type="button"
               key={item.id}
               onClick={() => onViewChange(item.id)}
               aria-current={isActive ? 'page' : undefined}
-              aria-label={item.label}
-              title={item.label}
+              aria-label={label}
+              title={label}
               whileHover={{ y: -1 }}
               className="logistics-tab flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap cursor-pointer transition-all flex-shrink-0"
               style={{

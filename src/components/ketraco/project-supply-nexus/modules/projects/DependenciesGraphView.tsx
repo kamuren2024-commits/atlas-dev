@@ -41,7 +41,7 @@ export const DependenciesGraphView: React.FC<DependenciesGraphViewProps> = ({
   const [selectedEntity, setSelectedEntity] = useState<EntityDrawerData | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const dependencies = MASTER_DEPENDENCIES.filter((d) => d.projectId === currentProject.id || d.projectId === 'mombasa');
+  const dependencies = MASTER_DEPENDENCIES.filter((d) => d.projectId === currentProject.id);
 
   const filteredDependencies = dependencies.filter((d) => {
     if (filterCriticality !== 'ALL' && d.criticality !== filterCriticality) return false;

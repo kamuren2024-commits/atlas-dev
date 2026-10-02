@@ -43,7 +43,7 @@ export const MilestonesRoadmapView: React.FC<MilestonesRoadmapViewProps> = ({
   const [selectedEntity, setSelectedEntity] = useState<EntityDrawerData | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const milestones = MASTER_MILESTONES.filter((m) => m.projectId === currentProject.id || m.projectId === 'mombasa');
+  const milestones = MASTER_MILESTONES.filter((m) => m.projectId === currentProject.id);
 
   const filteredMilestones = milestones.filter((m) => {
     if (filterStatus !== 'ALL' && m.status !== filterStatus) return false;

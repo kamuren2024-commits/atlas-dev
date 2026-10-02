@@ -132,51 +132,62 @@ export interface ProjectSupplySnapshot {
 }
 
 export async function fetchProjectSupplySnapshot(projectId: string): Promise<ProjectSupplySnapshot> {
-  const selectedProjectId = projectId || 'mombasa';
-  const candidates = [
-    `/api/project-supply/projects/${encodeURIComponent(selectedProjectId)}`,
-    '/api/project-supply/projects/project-suswa-04',
-    '/api/project-supply/projects/mombasa'
-  ];
-
-  for (const url of candidates) {
-    try {
-      const res = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(1500)
-      });
-
-      if (!res.ok) {
-        continue;
-      }
-
-      const payload = await res.json();
-      const data = payload?.data ?? payload;
-      if (!data || typeof data !== 'object') {
-        continue;
-      }
-
-      return {
-        projectId: String(data.projectId || selectedProjectId),
-        dataStatus: data.dataStatus === 'DERIVED' || data.dataStatus === 'UNAVAILABLE' || data.dataStatus === 'LIVE' || data.dataStatus === 'DEGRADED'
-          ? data.dataStatus
-          : 'UNAVAILABLE',
-        requirements: Array.isArray(data.requirements) ? data.requirements : [],
-        supplyPositions: Array.isArray(data.supplyPositions) ? data.supplyPositions : [],
-        limitations: Array.isArray(data.limitations) ? data.limitations : ['No persisted project requirements are linked to this project.'],
-      };
-    } catch {
-      continue;
-    }
+  const selectedProjectId = projectId.trim();
+  if (!selectedProjectId) {
+    return {
+      projectId: '',
+      dataStatus: 'UNAVAILABLE',
+      requirements: [],
+      supplyPositions: [],
+      limitations: ['A project ID is required to load project supply evidence.'],
+    };
   }
 
-  return {
-    projectId: selectedProjectId,
-    dataStatus: 'UNAVAILABLE',
-    requirements: [],
-    supplyPositions: [],
-    limitations: ['Project requirement evidence is not persisted for this tenant scope yet.']
-  };
+  try {
+    const res = await fetch(`/api/project-supply/projects/${encodeURIComponent(selectedProjectId)}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(1500)
+    });
+    if (!res.ok) {
+      return {
+        projectId: selectedProjectId,
+        dataStatus: 'UNAVAILABLE',
+        requirements: [],
+        supplyPositions: [],
+        limitations: [`Project supply API returned HTTP ${res.status}; no fallback project data was loaded.`],
+      };
+    }
+
+    const payload = await res.json();
+    const data = payload?.data ?? payload;
+    if (!data || typeof data !== 'object' || data.projectId !== selectedProjectId) {
+      return {
+        projectId: selectedProjectId,
+        dataStatus: 'UNAVAILABLE',
+        requirements: [],
+        supplyPositions: [],
+        limitations: ['Project supply API returned a malformed response or a different project; no fallback data was loaded.'],
+      };
+    }
+
+    return {
+      projectId: selectedProjectId,
+      dataStatus: data.dataStatus === 'DERIVED' || data.dataStatus === 'UNAVAILABLE' || data.dataStatus === 'LIVE' || data.dataStatus === 'DEGRADED'
+        ? data.dataStatus
+        : 'UNAVAILABLE',
+      requirements: Array.isArray(data.requirements) ? data.requirements : [],
+      supplyPositions: Array.isArray(data.supplyPositions) ? data.supplyPositions : [],
+      limitations: Array.isArray(data.limitations) ? data.limitations : ['No persisted project requirements are linked to this project.'],
+    };
+  } catch {
+    return {
+      projectId: selectedProjectId,
+      dataStatus: 'UNAVAILABLE',
+      requirements: [],
+      supplyPositions: [],
+      limitations: ['Project supply API is unavailable; no fallback project data was loaded.'],
+    };
+  }
 }
 
 // Master Project Lookup Helper

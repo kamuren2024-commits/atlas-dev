@@ -48,7 +48,7 @@ export const WorkPackagesBreakdownView: React.FC<WorkPackagesBreakdownViewProps>
   const [selectedEntity, setSelectedEntity] = useState<EntityDrawerData | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const packages = MASTER_WORK_PACKAGES.filter((wp) => wp.projectId === currentProject.id || wp.projectId === 'mombasa');
+  const packages = MASTER_WORK_PACKAGES.filter((wp) => wp.projectId === currentProject.id);
 
   const filteredPackages = packages.filter((wp) => {
     if (filterStatus !== 'ALL' && wp.status !== filterStatus) return false;

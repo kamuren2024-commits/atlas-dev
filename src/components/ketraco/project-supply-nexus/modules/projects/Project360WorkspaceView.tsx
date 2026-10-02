@@ -155,9 +155,9 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
   }, [projectId]);
 
   // Filter items for current project
-  const packages = MASTER_WORK_PACKAGES.filter((wp) => wp.projectId === currentProject.id || wp.projectId === 'mombasa');
-  const milestones = MASTER_MILESTONES.filter((m) => m.projectId === currentProject.id || m.projectId === 'mombasa');
-  const dependencies = MASTER_DEPENDENCIES.filter((d) => d.projectId === currentProject.id || d.projectId === 'mombasa');
+  const packages = MASTER_WORK_PACKAGES.filter((wp) => wp.projectId === currentProject.id);
+  const milestones = MASTER_MILESTONES.filter((m) => m.projectId === currentProject.id);
+  const dependencies = MASTER_DEPENDENCIES.filter((d) => d.projectId === currentProject.id);
 
   // 10-Dimension Project Health Genome
   const healthGenome: GenomeDimensionItem[] = [
