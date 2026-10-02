@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Activity, 
   HardHat, 
@@ -37,7 +37,7 @@ import {
   PROJECT_HEALTH_GENOME,
   PROJECT_DELTA_EVENTS
 } from '../../adapters/fixtures';
-import { getMasterProjectById } from '../../adapters/projectApi';
+import { fetchProjectSupplySnapshot, getMasterProjectById, type ProjectSupplySnapshot } from '../../adapters/projectApi';
 import { ProjectViewMode, HealthStatus } from '../../types';
 import { NexusEntityDrawer, EntityDrawerData } from '../../shared/NexusEntityDrawer';
 
@@ -69,6 +69,29 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
   const [selectedEntity, setSelectedEntity] = useState<EntityDrawerData | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [supplySnapshot, setSupplySnapshot] = useState<ProjectSupplySnapshot>({
+    projectId,
+    dataStatus: 'UNAVAILABLE',
+    requirements: [],
+    supplyPositions: [],
+    limitations: ['Project requirement evidence is not persisted for this tenant scope yet.']
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSupplySnapshot() {
+      const snapshot = await fetchProjectSupplySnapshot(projectId);
+      if (!cancelled) {
+        setSupplySnapshot(snapshot);
+      }
+    }
+
+    loadSupplySnapshot();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   // Filter items for current project
   const packages = MASTER_WORK_PACKAGES.filter((wp) => wp.projectId === currentProject.id || wp.projectId === 'mombasa');
@@ -170,6 +193,14 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
   ];
 
   // Command Strip Domains configuration
+  const supplyStatusText = supplySnapshot.dataStatus === 'LIVE'
+    ? 'Connected'
+    : supplySnapshot.dataStatus === 'DERIVED'
+      ? 'Derived'
+      : supplySnapshot.dataStatus === 'DEGRADED'
+        ? 'Degraded'
+        : 'Not connected';
+
   const commandStripDomains: {
     domain: CommandDomain;
     label: string;
@@ -200,9 +231,9 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
     {
       domain: 'SUPPLY',
       label: 'SUPPLY',
-      statusText: 'NOT CONNECTED',
-      state: 'NOT_CONNECTED',
-      health: 'UNKNOWN',
+      statusText: supplyStatusText,
+      state: supplySnapshot.dataStatus === 'LIVE' || supplySnapshot.dataStatus === 'DERIVED' ? 'CONNECTED' : 'NOT_CONNECTED',
+      health: supplySnapshot.dataStatus === 'LIVE' ? 'HEALTHY' : supplySnapshot.dataStatus === 'DERIVED' ? 'AT_RISK' : 'UNKNOWN',
       icon: Truck,
       onClick: () => {
         setSelectedEntity({
@@ -210,14 +241,14 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
           id: currentProject.id,
           title: `${currentProject.name} — Supply Domain`,
           code: 'DOMAIN-SUPPLY',
-          status: 'NOT_CONNECTED',
+          status: supplySnapshot.dataStatus === 'LIVE' || supplySnapshot.dataStatus === 'DERIVED' ? 'CONNECTED' : 'NOT_CONNECTED',
           subtitle: 'Supply Chain & Material Telemetry Integration',
           details: [
-            { label: 'Integration Status', value: 'NOT CONNECTED (Phase 2 Roadmap)' },
-            { label: 'Target System', value: 'KETRACO SAP MM / Inventory Management' },
-            { label: 'Authoritative Stream', value: 'Pending API Gateway provisioning' }
+            { label: 'Integration Status', value: supplyStatusText },
+            { label: 'Requirement Evidence', value: `${supplySnapshot.requirements.length} linked requirements` },
+            { label: 'Authoritative Stream', value: supplySnapshot.limitations[0] || 'Atlas project-supply router is authoritative for this project.' }
           ],
-          risks: ['Live warehouse stock feeds are not connected in Part 1B frontend scope.']
+          risks: supplySnapshot.limitations.length > 0 ? supplySnapshot.limitations : ['Project requirement evidence is not yet available for this project.']
         });
         setDrawerOpen(true);
       }

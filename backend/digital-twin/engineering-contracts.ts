@@ -7,12 +7,22 @@ export type EngineeringSourceMode =
   | 'UNAVAILABLE'
   | 'STALE';
 
-export type EngineeringValueState =
-  | 'OBSERVED'
-  | 'DERIVED'
+export type AuthorityClass =
+  | 'LIVE_AUTHORITATIVE'
+  | 'LIVE_NON_AUTHORITATIVE'
+  | 'HISTORICAL'
   | 'SIMULATED'
   | 'PREDICTED'
-  | 'UNAVAILABLE';
+  | 'DERIVED'
+  | 'UNKNOWN';
+
+export type ConfidenceClassification = 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+export type FreshnessClassification = 'FRESH' | 'STALE' | 'UNKNOWN' | 'UNAVAILABLE';
+export type IntegrityStatus = 'VERIFIED' | 'UNVERIFIED' | 'FAILED' | 'TAMPERED';
+export type SourceAvailability = 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE' | 'UNKNOWN';
+export type GridValueSemanticClass = 'OBSERVED' | 'DERIVED' | 'SIMULATED' | 'PREDICTED' | 'UNKNOWN';
+
+export type EngineeringValueState = GridValueSemanticClass | 'UNAVAILABLE';
 
 export type EngineeringSourceState =
   | 'SOURCE_CONFIGURED'
@@ -46,19 +56,184 @@ export interface DataSource {
   errorCode?: string;
 }
 
+export interface SourceProvenance {
+  sourceId: string;
+  sourceType: DataSourceType | 'UNKNOWN';
+  provider: string;
+  tenantId: string;
+  capturedAt?: string;
+  effectiveAt?: string;
+  receivedAt?: string;
+  version?: string;
+  authorityClass: AuthorityClass;
+  freshness: FreshnessClassification;
+  integrityStatus: IntegrityStatus;
+  availability: SourceAvailability;
+  confidenceClass: ConfidenceClassification;
+  sourceSystem?: string;
+  sourceReference?: string;
+  sourceMode?: EngineeringSourceMode;
+}
+
 export interface DataProvenance {
+  sourceId?: string;
   sourceSystem: string;
   sourceType: DataSourceType;
+  provider?: string;
+  tenantId?: string;
   sourceReference?: string;
   retrievedAt?: string;
   observedAt?: string;
-  freshness: 'FRESH' | 'STALE' | 'UNKNOWN' | 'UNAVAILABLE';
+  capturedAt?: string;
+  effectiveAt?: string;
+  receivedAt?: string;
+  version?: string;
+  freshness: FreshnessClassification;
   sourceMode: EngineeringSourceMode;
   transformation?: string[];
   authority: 'AUTHORITATIVE' | 'NON_AUTHORITATIVE' | 'UNKNOWN';
+  authorityClass?: AuthorityClass;
+  integrityStatus?: IntegrityStatus;
+  availability?: SourceAvailability;
   confidenceState: EngineeringValueState;
+  confidenceClass?: ConfidenceClassification;
   sourceState: EngineeringSourceState;
 }
+
+export interface TopologyVersion {
+  topologyVersion: string;
+  topologyId?: string;
+  tenantId: string;
+  createdAt: string;
+  source: SourceProvenance;
+  authoritative: boolean;
+  stale: boolean;
+  simulationOnly: boolean;
+  scenarioId?: string;
+}
+
+export interface EngineeringEvidence {
+  evidenceId: string;
+  tenantId: string;
+  type: 'TOPOLOGY' | 'GRID_STATE' | 'SCENARIO' | 'SIMULATION_RESULT' | 'AUTHORIZATION' | 'HUMAN_APPROVAL';
+  source: SourceProvenance;
+  reference: string;
+  summary: string;
+  capturedAt: string;
+  integrityStatus?: IntegrityStatus;
+}
+
+export interface AuthorityBoundary {
+  tenantId: string;
+  allowedActions: string[];
+  requiredAuthority: AuthorityClass[];
+  approvalRequired: boolean;
+  reason?: string;
+}
+
+export interface EngineeringDecision {
+  decisionId: string;
+  tenantId: string;
+  scenarioId?: string;
+  decisionType: 'RECOMMENDATION' | 'ACTION' | 'APPROVAL' | 'REJECTION' | 'DEFER';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+  confidence: ConfidenceClassification;
+  createdAt: string;
+  summary: string;
+  basis: string[];
+  evidenceIds: string[];
+  authority: AuthorityBoundary;
+}
+
+export interface OperationalRecommendation {
+  recommendationId: string;
+  tenantId: string;
+  scenarioId?: string;
+  title: string;
+  summary: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  confidence: ConfidenceClassification;
+  rationale: string[];
+  supports?: string[];
+  evidenceIds: string[];
+  createdAt: string;
+}
+
+export interface ApprovalRequest {
+  approvalRequestId: string;
+  tenantId: string;
+  actorId: string;
+  resourceType: 'SCENARIO' | 'SIMULATION_RUN' | 'ACTION' | 'RESTORATION_PLAN';
+  resourceId: string;
+  requestedAt: string;
+  requiredAuthority: AuthorityClass[];
+  rationale: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+  approvalId?: string;
+}
+
+export interface EngineeringAction {
+  actionId: string;
+  tenantId: string;
+  scenarioId?: string;
+  type: 'RECONFIGURE' | 'ISOLATE' | 'RESTORE' | 'MONITOR' | 'ESCALATE';
+  targetAssetId?: string;
+  description: string;
+  authority: AuthorityBoundary;
+  createdAt: string;
+  status: 'PENDING' | 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'REJECTED';
+  evidenceIds: string[];
+}
+
+export interface RestorationPlan {
+  planId: string;
+  tenantId: string;
+  scenarioId?: string;
+  name: string;
+  status: 'DRAFT' | 'APPROVED' | 'ACTIVE' | 'COMPLETED' | 'REJECTED';
+  objective: string;
+  milestones: string[];
+  actions: string[];
+  createdAt: string;
+  approvedAt?: string;
+  evidenceIds: string[];
+}
+
+export interface EventEnvelope<TPayload = Record<string, unknown>> {
+  eventId: string;
+  eventType: string;
+  tenantId: string;
+  occurredAt: string;
+  source: string;
+  correlationId?: string;
+  payload: TPayload;
+  provenance: SourceProvenance;
+}
+
+export interface ReplayCursor {
+  tenantId: string;
+  stream: string;
+  lastEventId?: string;
+  sequenceNumber?: number;
+  timestamp?: string;
+  position?: string;
+}
+
+export interface EngineeringContext {
+  tenant: string;
+  actor: string;
+  gridState?: GridState;
+  topology?: TopologySnapshot;
+  scenario?: EngineeringScenario;
+  evidence: EngineeringEvidence[];
+  provenance: SourceProvenance[];
+  policy?: Record<string, unknown>;
+  authority: AuthorityBoundary;
+}
+
+export type Scenario = EngineeringScenario;
+export type ScenarioRun = SimulationRun;
+export type AnalysisResult = SimulationResult;
 
 export type GridAssetType =
   | 'SUBSTATION'

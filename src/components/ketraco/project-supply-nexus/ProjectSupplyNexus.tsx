@@ -35,7 +35,7 @@ interface ProjectSupplyNexusProps {
 
 export function ProjectSupplyNexus({ onAskCopilot }: ProjectSupplyNexusProps) {
   const { selectEntity } = useAtlasContext();
-  const [activeView, setActiveView] = useState<string>('project-command');
+  const [activeView, setActiveView] = useState<string>('project-360');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('mombasa');
   const [navCollapsed, setNavCollapsed] = useState(true);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -356,10 +356,10 @@ export function ProjectSupplyNexus({ onAskCopilot }: ProjectSupplyNexusProps) {
                   </p>
                 </div>
                 <button
-                  onClick={() => setActiveView('project-command')}
+                  onClick={() => setActiveView('project-360')}
                   className="px-3 py-1 bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-500/40 rounded text-xs font-mono text-cyan-300"
                 >
-                  ← Return to Project Command
+                  ← Return to Project 360
                 </button>
               </div>
 
@@ -368,17 +368,17 @@ export function ProjectSupplyNexus({ onAskCopilot }: ProjectSupplyNexusProps) {
                   <span className="font-mono text-cyan-400 font-bold">2.0</span>
                 </div>
                 <h3 className="text-sm font-mono text-slate-200 uppercase tracking-wider">
-                  {activeView.replace(/-/g, ' ')} Module Reserved
+                  {activeView.replace(/-/g, ' ')} Navigation Placeholder
                 </h3>
                 <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-                  Command, PDS, Projects, and Controls modules are fully operational in Part 1. Supply, Commercial, Delivery, and AI modules are scheduled for the next release tranche.
+                  This domain is reserved for a future module pass. No operational data is displayed here yet.
                 </p>
                 <div className="pt-3">
                   <button
-                    onClick={() => setActiveView('portfolio-view')}
+                    onClick={() => setActiveView('project-360')}
                     className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 rounded text-xs font-mono transition-all"
                   >
-                    Open Portfolio Command
+                    Open Project 360
                   </button>
                 </div>
               </div>

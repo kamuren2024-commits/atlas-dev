@@ -34,6 +34,9 @@ import { resolveHttpServerConfig } from './backend/core/config/http-server-confi
 async function startServer() {
   const app = express();
   const { host: HOST, port: PORT } = resolveHttpServerConfig();
+  const demoTelemetryEnabled =
+    process.env.ATLAS_DEMO_MODE === 'true' &&
+    process.env.CONTEXT !== 'production';
   let databaseStatus = 'INITIALIZING';
   let systemHealth = 'STARTING';
 
@@ -148,9 +151,18 @@ async function startServer() {
   const kgService = KnowledgeGraphService.getInstance();
   const kg = kgService.getGraph();
 
-  app.get('/api/scm/telemetry', (req: Request, res: Response) => {
+  app.get('/api/scm/telemetry', (_req: Request, res: Response) => {
+    if (!demoTelemetryEnabled) {
+      return res.status(503).json({
+        status: 'UNAVAILABLE',
+        sourceMode: 'UNAVAILABLE',
+        error: { code: 'TELEMETRY_UNAVAILABLE', message: 'No live SCM telemetry source is configured.' },
+      });
+    }
+
     res.json({
-      status: 'HEALTHY',
+      status: 'SIMULATED',
+      sourceMode: 'DEMO',
       activeCorridors: 14,
       inspectionsPending: 3,
       gridLoadMw: 2184,
@@ -167,9 +179,18 @@ async function startServer() {
   app.use('/api/logistics', createLogisticsApiRouter({ db, kg: kg as any, authz, audit }));
   app.use('/api/finance', createFinanceApiRouter({ db, kg: kg as any, authz, audit }));
   app.use('/api/project-supply', createProjectSupplyApiRouter({ db, kg: kg as any, authz, audit }));
-  app.get('/api/project-supply/telemetry', async (req: Request, res: Response) => {
+  app.get('/api/project-supply/telemetry', (_req: Request, res: Response) => {
+    if (!demoTelemetryEnabled) {
+      return res.status(503).json({
+        ok: false,
+        dataStatus: 'UNAVAILABLE',
+        error: { code: 'TELEMETRY_UNAVAILABLE', message: 'Project-supply telemetry is not configured.' },
+      });
+    }
+
     const fallback = {
-      status: 'LIVE',
+      status: 'SIMULATED',
+      sourceMode: 'DEMO',
       lastUpdated: new Date().toISOString(),
       dataFreshnessSeconds: 12,
       kpis: [
@@ -189,36 +210,7 @@ async function startServer() {
       layers: []
     };
 
-    const projectId = req.query.projectId || 'project-suswa-04';
-    try {
-      const authHeader = req.get('authorization');
-      const tenantId = req.get('x-tenant-id') || 'ketraco';
-      const isAllowed = !authHeader || authHeader.startsWith('Bearer ') || authHeader.startsWith('bearer ');
-      if (!isAllowed) {
-        return res.status(401).json({ ok: false, error: { code: 'UNAUTHORIZED', message: 'Missing or invalid bearer token' } });
-      }
-
-      const route = createProjectSupplyApiRouter({ db, kg: kg as any, authz, audit }) as any;
-      const routerRes = await new Promise<any>((resolve, reject) => {
-        const reqLike = { params: { projectId }, query: req.query, headers: req.headers, user: { id: 'system', tenantId, role: 'ADMIN', permissions: ['project:read'], email: 'system@atlas.local' } } as any;
-        const resLike = {
-          status(code: number) { this.code = code; return this; },
-          json(payload: any) { resolve({ status: this.code || 200, payload }); return this; },
-          send(payload: any) { resolve({ status: this.code || 200, payload }); return this; },
-        } as any;
-        route.handle(reqLike, resLike, (err?: any) => err ? reject(err) : resolve({ status: 404, payload: { ok: false, error: { code: 'NOT_FOUND', message: 'Telemetry route not implemented' } } }));
-      });
-
-      return res.status(routerRes.status).json(routerRes.payload ?? fallback);
-    } catch (error) {
-      return res.status(200).json({
-        ok: true,
-        source: 'project-supply-telemetry',
-        data: fallback,
-        dataStatus: 'UNAVAILABLE',
-        limitations: ['Project requirement evidence is not persisted for this tenant scope yet.'],
-      });
-    }
+    return res.json({ ok: true, data: fallback, dataStatus: 'SIMULATED' });
   });
   app.use('/api/procurement', createProcurementApiRouter({ db, kg: kg as any, authz, audit }));
   app.use('/api/supplier', createSupplierApiRouter({ db, kg: kg as any, authz, audit }));

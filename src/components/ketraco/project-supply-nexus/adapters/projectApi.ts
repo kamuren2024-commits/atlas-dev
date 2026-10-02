@@ -38,9 +38,10 @@ import {
   CRITICAL_PATH_ACTIVITIES_DATA
 } from './fixtures';
 import { MasterProjectSummary } from '../types';
+import { isAtlasDemoModeEnabled } from '../../../../context/TenantContext';
 
 export interface ProjectTelemetryState {
-  status: 'LIVE' | 'DEGRADED' | 'STALE' | 'INITIALIZING' | 'UNAVAILABLE';
+  status: 'LIVE' | 'SIMULATED' | 'DEGRADED' | 'STALE' | 'INITIALIZING' | 'UNAVAILABLE';
   lastUpdated: string;
   dataFreshnessSeconds: number;
   kpis: typeof PRIMARY_KPIS;
@@ -55,8 +56,8 @@ export interface ProjectTelemetryState {
 }
 
 export async function fetchProjectTelemetry(): Promise<ProjectTelemetryState> {
-  const fallback: ProjectTelemetryState = {
-    status: 'INITIALIZING',
+  const fallback: ProjectTelemetryState = isAtlasDemoModeEnabled ? {
+    status: 'SIMULATED',
     lastUpdated: new Date().toISOString(),
     dataFreshnessSeconds: 0,
     kpis: PRIMARY_KPIS,
@@ -68,6 +69,19 @@ export async function fetchProjectTelemetry(): Promise<ProjectTelemetryState> {
     materials: SUPPLY_MATERIALS,
     deltas: PROJECT_DELTA_EVENTS,
     layers: MAP_LAYERS
+  } : {
+    status: 'UNAVAILABLE',
+    lastUpdated: '',
+    dataFreshnessSeconds: 0,
+    kpis: [],
+    nodes: [],
+    edges: [],
+    exceptions: [],
+    stages: [],
+    genome: [],
+    materials: [],
+    deltas: [],
+    layers: [],
   };
 
   const candidates = ['/api/project-supply/telemetry', '/api/project-supply-nexus/telemetry'];
@@ -86,7 +100,9 @@ export async function fetchProjectTelemetry(): Promise<ProjectTelemetryState> {
       const payload = await res.json();
       const data = payload?.data ?? payload;
       return {
-        status: (data.status === 'UNAVAILABLE' || data.status === 'LIVE' || data.status === 'DEGRADED') ? data.status : 'LIVE',
+        status: ['UNAVAILABLE', 'LIVE', 'SIMULATED', 'DEGRADED', 'STALE', 'INITIALIZING'].includes(data.status)
+          ? data.status
+          : 'UNAVAILABLE',
         lastUpdated: data.lastUpdated || new Date().toISOString(),
         dataFreshnessSeconds: Number.isFinite(data.dataFreshnessSeconds) ? data.dataFreshnessSeconds : 0,
         kpis: Array.isArray(data.kpis) ? data.kpis : fallback.kpis,
