@@ -69,24 +69,40 @@ export function resolveAtlasModuleFromPath(pathname: string): AtlasModuleId {
 }
 
 export const LOGISTICS_VIEW_IDS = [
-  'logistics-command-center',
-  'logistics-shipments',
-  'logistics-fleet',
-  'logistics-warehouses',
-  'logistics-routes',
-  'logistics-deliveries',
-  'logistics-disruptions',
-  'logistics-ai-operations',
-  'logistics-analytics',
+  'command-center',
+  'shipments',
+  'fleet',
+  'warehouses',
+  'routes',
+  'deliveries',
+  'disruptions',
+  'ai-operations',
+  'analytics',
 ] as const;
 
 export type LogisticsViewId = (typeof LOGISTICS_VIEW_IDS)[number];
+
+const LEGACY_LOGISTICS_VIEW_ID_MAP: Record<string, LogisticsViewId> = {
+  'logistics-command-center': 'command-center',
+  'logistics-shipments': 'shipments',
+  'logistics-fleet': 'fleet',
+  'logistics-warehouses': 'warehouses',
+  'logistics-routes': 'routes',
+  'logistics-deliveries': 'deliveries',
+  'logistics-disruptions': 'disruptions',
+  'logistics-ai-operations': 'ai-operations',
+  'logistics-analytics': 'analytics',
+};
 
 export function normalizeLogisticsViewId(value: string | null | undefined): LogisticsViewId | null {
   if (!value) return null;
   const candidate = value.trim();
   if (!candidate) return null;
-  return LOGISTICS_VIEW_IDS.includes(candidate as LogisticsViewId)
-    ? (candidate as LogisticsViewId)
-    : null;
+
+  if (LOGISTICS_VIEW_IDS.includes(candidate as LogisticsViewId)) {
+    return candidate as LogisticsViewId;
+  }
+
+  const legacyId = LEGACY_LOGISTICS_VIEW_ID_MAP[candidate];
+  return legacyId ?? null;
 }

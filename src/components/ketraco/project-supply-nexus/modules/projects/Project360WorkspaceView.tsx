@@ -65,10 +65,43 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
   onNavigateView
 }) => {
   const currentProject = getMasterProjectById(projectId);
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'GENOME' | 'DELTA' | 'PACKAGES' | 'MILESTONES' | 'DEPENDENCIES'>('OVERVIEW');
-  const [selectedEntity, setSelectedEntity] = useState<EntityDrawerData | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const unavailableEvidence = 'UNAVAILABLE / NOT CONNECTED / NOT VERIFIED';
+  const toEvidenceValue = (value: string | null | undefined, fallback = unavailableEvidence) => {
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    if (!normalized || ['N/A', 'NA', 'UNKNOWN'].includes(normalized.toUpperCase())) {
+      return fallback;
+    }
+    return value as string;
+  };
+  const lifecycleStageMap: Record<string, number> = {
+    Need: 0,
+    Concept: 1,
+    Feasibility: 2,
+    'Land/Wayleave': 3,
+    Funding: 4,
+    Approval: 5,
+    Procurement: 6,
+    Design: 7,
+    Construction: 8,
+    Commissioning: 9,
+    Handover: 10,
+    Operations: 11,
+  };
+  const lifecycleStages = [
+    'PROJECT INITIATION',
+    'PROJECT DEFINITION',
+    'ENGINEERING / DESIGN',
+    'PLANNING',
+    'PROCUREMENT',
+    'CONTRACTING',
+    'SUPPLIER DELIVERY',
+    'MATERIAL READINESS',
+    'LOGISTICS',
+    'SITE EXECUTION',
+    'TESTING / COMMISSIONING',
+    'HANDOVER / CLOSEOUT'
+  ];
+  const activeLifecycleStageIndex = Math.max(0, Math.min(lifecycleStages.length - 1, lifecycleStageMap[currentProject.stage] ?? 8));
   const [supplySnapshot, setSupplySnapshot] = useState<ProjectSupplySnapshot>({
     projectId,
     dataStatus: 'UNAVAILABLE',
@@ -76,6 +109,34 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
     supplyPositions: [],
     limitations: ['Project requirement evidence is not persisted for this tenant scope yet.']
   });
+  const projectIdentityFields = [
+    { label: 'Project ID / Code', value: toEvidenceValue(currentProject.code) },
+    { label: 'Project Name', value: toEvidenceValue(currentProject.name) },
+    { label: 'Project Type', value: currentProject.voltage ? `Transmission line & substation (${currentProject.voltage})` : unavailableEvidence },
+    { label: 'Project Category', value: currentProject.priority ? currentProject.priority.replace(/_/g, ' ') : unavailableEvidence },
+    { label: 'Transmission Corridor / Location', value: toEvidenceValue(currentProject.substations, unavailableEvidence) },
+    { label: 'Project Owner', value: unavailableEvidence },
+    { label: 'Responsible Department / Unit', value: unavailableEvidence },
+    { label: 'Project Manager', value: toEvidenceValue(currentProject.pmName, unavailableEvidence) },
+    { label: 'Delivery Status', value: toEvidenceValue(currentProject.status, unavailableEvidence) },
+    { label: 'Lifecycle Stage', value: toEvidenceValue(currentProject.stage, unavailableEvidence) },
+    { label: 'Overall Health', value: toEvidenceValue(currentProject.status, unavailableEvidence) },
+    { label: 'Schedule Status', value: currentProject.delayDays > 0 ? `AT RISK (+${currentProject.delayDays}d slip)` : 'ON PLAN' },
+    { label: 'Cost Status', value: toEvidenceValue(currentProject.varianceEac, unavailableEvidence) },
+    { label: 'Supply Status', value: supplySnapshot.dataStatus === 'LIVE' || supplySnapshot.dataStatus === 'DERIVED' ? supplySnapshot.dataStatus : supplySnapshot.dataStatus === 'DEGRADED' ? 'DEGRADED' : 'NOT CONNECTED' },
+    { label: 'Risk Status', value: currentProject.status === 'CRITICAL' ? 'CRITICAL' : currentProject.status === 'AT_RISK' ? 'AT RISK' : 'MONITORED' },
+    { label: 'Physical Progress', value: `${currentProject.progress}%` },
+    { label: 'Financial Progress', value: `${currentProject.spentBudget} / ${currentProject.approvedBudget}` },
+    { label: 'Planned Completion', value: toEvidenceValue(currentProject.baselineCompletion, unavailableEvidence) },
+    { label: 'Forecast Completion', value: toEvidenceValue(currentProject.forecastCompletion, unavailableEvidence) },
+    { label: 'Critical-Path Indicator', value: currentProject.delayDays > 0 ? `FLOAT EROSION (+${currentProject.delayDays}d)` : 'STABLE / NO ACTIVE CRITICAL PATH THREAT' },
+    { label: 'Last Data Refresh', value: supplySnapshot.dataStatus === 'LIVE' ? 'LIVE FEED' : 'NOT CONNECTED / DEMO FIXTURE STATE' },
+    { label: 'Data Provenance', value: supplySnapshot.dataStatus === 'LIVE' ? 'Authoritative project-supply stream' : 'Project fixture adapter — not authoritative / not connected' }
+  ];
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'GENOME' | 'DELTA' | 'PACKAGES' | 'MILESTONES' | 'DEPENDENCIES'>('OVERVIEW');
+  const [selectedEntity, setSelectedEntity] = useState<EntityDrawerData | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -362,6 +423,48 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
           activeView="project-360"
           onNavigateView={onNavigateView}
         />
+
+        <div className="bg-[#080d17] p-4 rounded-lg border border-slate-800 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400 font-mono">Project identity & lifecycle position</div>
+              <h2 className="text-sm font-bold text-slate-100 mt-1">Project 360 operating identity</h2>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] text-slate-300 font-mono">
+              <span className="px-2 py-1 rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-300">Lifecycle stage: {toEvidenceValue(currentProject.stage, unavailableEvidence)}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2.5">
+            {projectIdentityFields.map((field) => (
+              <div key={field.label} className="rounded-lg border border-slate-800 bg-slate-950/50 p-2.5">
+                <div className="text-[10px] uppercase tracking-wide text-slate-400 font-mono">{field.label}</div>
+                <div className="mt-1 text-xs text-slate-200 font-medium break-words">{field.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-slate-400 font-mono">
+              <span>Project lifecycle</span>
+              <span>Current position: {lifecycleStages[activeLifecycleStageIndex]}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+              {lifecycleStages.map((stage, index) => (
+                <div
+                  key={stage}
+                  className={`rounded border px-2 py-1.5 text-[9px] font-mono uppercase tracking-wide text-left ${index === activeLifecycleStageIndex
+                    ? 'border-cyan-500/60 bg-cyan-500/10 text-cyan-200'
+                    : index < activeLifecycleStageIndex
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                      : 'border-slate-700 bg-slate-900/70 text-slate-400'}`}
+                >
+                  {stage}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
 
         {/* 02 — Project 360 Primary Transmission Operating Header */}
         <div className="bg-[#080d17] p-4 rounded-lg border border-slate-800 space-y-3">

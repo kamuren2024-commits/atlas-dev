@@ -8,9 +8,10 @@ import DeliveryControlTowerView from './views/DeliveryControlTowerView';
 import LogisticsRiskCenterView from './views/LogisticsRiskCenterView';
 import AiOperationsWorkspaceView from './views/AiOperationsWorkspaceView';
 import LogisticsAnalyticsView from './views/LogisticsAnalyticsView';
+import { normalizeLogisticsViewId, type LogisticsViewId } from '../../modules/atlas-module-registry';
 
 export const LogisticsView: React.FC = () => {
-  const [activeView, setActiveView] = useState('command-center');
+  const [activeView, setActiveView] = useState<LogisticsViewId>('command-center');
   const [dataMode, setDataMode] = useState<{ mode: string; label: string; syntheticNotice?: string } | null>(null);
 
   useEffect(() => {
@@ -34,11 +35,12 @@ export const LogisticsView: React.FC = () => {
   }, []);
 
   const handleViewChange = (view: string) => {
-    setActiveView(view);
+    const nextView = normalizeLogisticsViewId(view) ?? 'command-center';
+    setActiveView(nextView);
   };
 
   const renderContent = () => {
-    switch (activeView) {
+    switch (normalizeLogisticsViewId(activeView) ?? 'command-center') {
       case 'command-center':
         return <CommandCenter />;
       case 'shipments':

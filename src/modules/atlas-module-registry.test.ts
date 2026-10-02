@@ -42,6 +42,7 @@ test('Normalized ids reject cross-module values while permitting valid ones', ()
   assert.equal(normalizeAtlasModuleId('logistics'), 'logistics');
   assert.equal(normalizeAtlasModuleId('logistics-command-center'), null);
   assert.equal(normalizeAtlasModuleId('analytics'), null);
-  assert.equal(normalizeLogisticsViewId('logistics-analytics'), 'logistics-analytics');
-  assert.equal(normalizeLogisticsViewId('analytics'), null);
+  assert.equal(normalizeLogisticsViewId('command-center'), 'command-center');
+  assert.equal(normalizeLogisticsViewId('logistics-analytics'), 'analytics');
+  assert.equal(normalizeLogisticsViewId('analytics'), 'analytics');
 });
