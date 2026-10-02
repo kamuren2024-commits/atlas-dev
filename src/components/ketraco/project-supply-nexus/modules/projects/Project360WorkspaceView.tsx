@@ -40,7 +40,7 @@ import {
 import { fetchProjectSupplySnapshot, getMasterProjectById, type Project360Snapshot, type ProjectSupplySnapshot } from '../../adapters/projectApi';
 import { ProjectViewMode, HealthStatus } from '../../types';
 import { NexusEntityDrawer, EntityDrawerData } from '../../shared/NexusEntityDrawer';
-import { isAtlasDemoModeEnabled } from '../../../../../../context/TenantContext';
+import { isAtlasDemoModeEnabled } from '../../../../../context/TenantContext';
 
 interface Project360WorkspaceViewProps {
   projectId: string;
