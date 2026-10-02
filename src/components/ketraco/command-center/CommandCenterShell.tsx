@@ -648,6 +648,7 @@ export default function CommandCenterShell() {
                   lines={lines}
                   selectedAssetId={selectedAssetId}
                   onSelectAsset={handleSelectAsset}
+                  onClearSelection={() => setSelectedAssetId(null)}
                   activeLayers={activeLayers}
                   onToggleLayer={handleToggleLayer}
                   operationalMode={operationalMode}

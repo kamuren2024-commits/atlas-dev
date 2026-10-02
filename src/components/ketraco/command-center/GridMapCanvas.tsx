@@ -147,7 +147,8 @@ interface GridMapCanvasProps {
   substations?: Record<string, GridAsset>;
   lines?: Record<string, TransmissionLine>;
   selectedAssetId?: string | null;
-  onSelectAsset?: (assetId: string | null) => void;
+  onSelectAsset?: (assetId: string) => void;
+  onClearSelection?: () => void;
   focusSignal?: number;
   visibleLayers?: Set<MapLayerKey>;
   onToggleLayer?: (layerKey: MapLayerKey) => void;
@@ -175,6 +176,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   lines = CANONICAL_LINES,
   selectedAssetId,
   onSelectAsset,
+  onClearSelection,
   focusSignal = 0,
   visibleLayers,
   onToggleLayer,
@@ -299,8 +301,8 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
           });
 
           mapRef.current.addListener('click', () => {
-            if (onSelectAsset) {
-              onSelectAsset(null);
+            if (onClearSelection) {
+              onClearSelection();
             }
           });
 
