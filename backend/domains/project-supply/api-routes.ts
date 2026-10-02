@@ -179,7 +179,7 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
     const unavailable = (source: string) =>
       section('NOT_CONNECTED', source, 'UNAVAILABLE', null);
     const materialState: ProjectDataSourceState = requirements.length ? 'DERIVED' : 'NOT_CONNECTED';
-    const connectedGraph = graph.nodes.length > 0 || graph.edges.length > 0;
+    const connectedGraph = graph.edges.length > 0;
     const dimensions: Array<{
       domain: string;
       state: Project360HealthState;

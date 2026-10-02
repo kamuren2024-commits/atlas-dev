@@ -39,17 +39,14 @@ import {
 } from './fixtures';
 import { MasterProjectSummary } from '../types';
 import { isAtlasDemoModeEnabled } from '../../../../context/TenantContext';
+import type {
+  Project360Snapshot,
+  ProjectDataSourceState,
+  ProjectRecord,
+} from '../../../../../packages/contracts/project360';
 
-export type ProjectDataSourceState =
-  | 'LIVE_AUTHORITATIVE'
-  | 'LIVE_NON_AUTHORITATIVE'
-  | 'HISTORICAL'
-  | 'DERIVED'
-  | 'SIMULATED'
-  | 'PREDICTED'
-  | 'UNAVAILABLE'
-  | 'NOT_CONNECTED'
-  | 'NOT_VERIFIED';
+export type { Project360Snapshot, ProjectDataSourceState };
+export type ProjectEnvelope = ProjectRecord;
 
 export interface ProjectTelemetryState {
   status: ProjectDataSourceState | 'LIVE' | 'SIMULATED' | 'DEGRADED' | 'STALE' | 'INITIALIZING';
@@ -64,35 +61,6 @@ export interface ProjectTelemetryState {
   materials: typeof SUPPLY_MATERIALS;
   deltas: typeof PROJECT_DELTA_EVENTS;
   layers: typeof MAP_LAYERS;
-}
-
-export interface ProjectEnvelope {
-  id: string;
-  projectCode?: string | null;
-  name?: string | null;
-  description?: string | null;
-  projectType?: string | null;
-  category?: string | null;
-  lifecycleStage?: string | null;
-  status?: string | null;
-  owner?: string | null;
-  projectManager?: string | null;
-  location?: string | null;
-  plannedStart?: string | null;
-  plannedCompletion?: string | null;
-  forecastCompletion?: string | null;
-  actualCompletion?: string | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-  version?: number | null;
-  provenance?: {
-    source?: string;
-    authority?: string;
-    freshness?: string;
-    retrievedAt?: string;
-    verificationState?: string;
-    dataSourceState?: ProjectDataSourceState;
-  };
 }
 
 export async function fetchProjectTelemetry(): Promise<ProjectTelemetryState> {
@@ -171,46 +139,6 @@ export interface ProjectSupplySnapshot {
   requirements: Array<Record<string, unknown>>;
   supplyPositions: Array<Record<string, unknown>>;
   limitations: string[];
-}
-
-export interface Project360Snapshot {
-  projectId: string;
-  project: {
-    state: ProjectDataSourceState;
-    source: string;
-    authority: string;
-    sourceUpdatedAt: string | null;
-    retrievedAt: string;
-    version: number | null;
-    data: ProjectEnvelope | null;
-  };
-  domains: Record<string, {
-    state: ProjectDataSourceState;
-    source: string;
-    authority: string;
-    sourceUpdatedAt: string | null;
-    retrievedAt: string;
-    version: number | null;
-    data: unknown;
-  }>;
-  health: {
-    state: string;
-    overall: string;
-    dimensions: Array<{
-      domain: string;
-      state: string;
-      source: string;
-      authority: string;
-      sourceUpdatedAt: string | null;
-      evidenceReferences: string[];
-      contributingConditions: string[];
-    }>;
-  };
-  freshness: {
-    snapshotGeneratedAt: string;
-    sourceUpdatedAt: string | null;
-  };
-  version: number | null;
 }
 
 export async function fetchProjectSupplySnapshot(projectId: string): Promise<ProjectSupplySnapshot> {

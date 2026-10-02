@@ -437,7 +437,7 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
       ['Version', authoritative ? String(project?.version ?? unavailable) : unavailable],
     ];
     const domainStatuses = Object.entries(supplySnapshot.snapshot?.domains ?? {}) as Array<
-      [string, Project360Snapshot['domains'][string]]
+      [keyof Project360Snapshot['domains'], Project360Snapshot['domains']['schedule']]
     >;
     return (
       <UIStateContainer moduleName="Project 360 Workspace">

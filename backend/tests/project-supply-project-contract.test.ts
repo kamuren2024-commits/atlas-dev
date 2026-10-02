@@ -97,6 +97,7 @@ test('Project supply project contract exposes explicit disconnected state instea
   assert.equal(body.data.snapshot.health.overall, 'UNKNOWN');
   assert.equal(body.data.snapshot.domains.schedule.state, 'NOT_CONNECTED');
   assert.equal(body.data.snapshot.domains.materials.state, 'NOT_CONNECTED');
+  assert.equal(body.data.snapshot.domains.dependencies.state, 'NOT_CONNECTED');
   assert.ok(body.data.snapshot.freshness.snapshotGeneratedAt);
   assert.equal(body.data.snapshot.freshness.sourceUpdatedAt, null);
   assert.ok(queries.some(query => query.sql.includes('project_supply_project')));

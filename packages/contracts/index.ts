@@ -223,6 +223,7 @@ export const PHASE0_DOMAIN_MODELS = [
 ] as const;
 
 export * from './atlas-fabric';
+export * from './project360';
 
 export interface PlatformContractEnvelope<T> {
   status: 'OK' | 'WARN' | 'ERROR';
