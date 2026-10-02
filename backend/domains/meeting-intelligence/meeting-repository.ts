@@ -30,6 +30,7 @@ import {
   ReviewStatus,
   DecisionStatus,
   ActionStatus,
+  RecordingSession,
 } from './types';
 import { MeetingGraphAdapter } from './graph-adapter';
 import { ClosedLoopAutomationEngine } from './closed-loop-automation';
@@ -1247,6 +1248,72 @@ export class MeetingIntelligenceRepository {
       console.warn(`[MEETING-REPO] Failed to get lifecycle events for ${meetingId}:`, e);
       return [];
     }
+  }
+
+  public async getRecordingSessions(meetingId: string): Promise<RecordingSession[]> {
+    try {
+      const rows = await this.db.all<any>(
+        `SELECT * FROM meeting_recording_sessions WHERE meeting_id = ? ORDER BY created_at DESC`,
+        [meetingId]
+      );
+      return rows.map(r => ({
+        id: r.id,
+        meetingId: r.meeting_id,
+        tenantId: r.tenant_id,
+        status: r.status,
+        startedAt: r.started_at,
+        endedAt: r.ended_at,
+        durationMs: Number(r.duration_ms || 0),
+        mediaType: (r.media_type || 'audio/webm') as RecordingSession['mediaType'],
+        codec: r.codec || undefined,
+        storageRef: r.storage_ref || undefined,
+        checksum: r.checksum || undefined,
+        size: Number(r.size_bytes || 0),
+        createdBy: r.created_by || undefined,
+        version: r.version || '1.0'
+      }));
+    } catch (e) {
+      console.warn(`[MEETING-REPO] Failed to load recording sessions for ${meetingId}:`, e);
+      return [];
+    }
+  }
+
+  public async saveRecordingSession(session: Partial<RecordingSession>): Promise<RecordingSession> {
+    const id = session.id || `REC_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const now = new Date().toISOString();
+    const record: RecordingSession = {
+      id,
+      meetingId: session.meetingId || 'MEETING_SCM_TRANSFORMATION_REVIEW',
+      tenantId: session.tenantId || 'ketraco',
+      status: session.status || 'IDLE',
+      startedAt: session.startedAt || now,
+      endedAt: session.endedAt || now,
+      durationMs: session.durationMs || 0,
+      mediaType: session.mediaType || 'audio/webm',
+      codec: session.codec || 'opus',
+      storageRef: session.storageRef || undefined,
+      checksum: session.checksum || undefined,
+      size: session.size || 0,
+      createdBy: session.createdBy || 'browser-recorder',
+      version: session.version || '1.0'
+    };
+
+    try {
+      await this.db.run(
+        `INSERT INTO meeting_recording_sessions (id, meeting_id, tenant_id, status, started_at, ended_at, duration_ms, media_type, codec, storage_ref, checksum, size_bytes, created_by, version, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          record.id, record.meetingId, record.tenantId, record.status, record.startedAt || now,
+          record.endedAt || now, record.durationMs || 0, record.mediaType, record.codec || 'opus',
+          record.storageRef || null, record.checksum || null, record.size || 0, record.createdBy || 'browser-recorder',
+          record.version || '1.0', now, now
+        ]
+      );
+    } catch (e) {
+      console.warn('[MEETING-REPO] Failed to save recording session:', e);
+    }
+
+    return record;
   }
 
   // --- TRANSCRIPTS ---

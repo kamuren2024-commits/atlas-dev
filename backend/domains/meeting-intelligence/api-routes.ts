@@ -4,6 +4,8 @@
  * human governance, decisions, actions, commitments, risks, minutes, reports, and search.
  */
 
+import fs from 'fs';
+import path from 'path';
 import { Router, Request, Response } from 'express';
 import { MeetingIntelligenceRepository } from './meeting-repository';
 import { MeetingCopilotService } from './copilot-service';
@@ -370,6 +372,70 @@ export function createMeetingIntelligenceApiRouter(): Router {
     }
   });
 
+  // --- RECORDING BOUNDARY ---
+  router.get('/meetings/:id/recordings', async (req: Request, res: Response) => {
+    try {
+      const recordings = await repo.getRecordingSessions(req.params.id);
+      res.json(recordings);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Error fetching recordings', details: err?.message });
+    }
+  });
+
+  router.post('/meetings/:id/recordings', async (req: Request, res: Response) => {
+    try {
+      const { status, startedAt, endedAt, durationMs, mediaType, codec, storageRef, checksum, size, createdBy, tenantId } = req.body;
+      const session = await repo.saveRecordingSession({
+        meetingId: req.params.id,
+        tenantId: tenantId || 'ketraco',
+        status: status || 'READY',
+        startedAt: startedAt || new Date().toISOString(),
+        endedAt: endedAt || null,
+        durationMs: durationMs || 0,
+        mediaType: mediaType || 'audio/webm',
+        codec,
+        storageRef,
+        checksum,
+        size,
+        createdBy: createdBy || 'browser-recorder',
+        version: '1.0'
+      });
+      broadcastSse('recording_session_updated', { meetingId: req.params.id, session });
+      res.status(201).json(session);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Error saving recording session', details: err?.message });
+    }
+  });
+
+  router.post('/meetings/:id/recordings/upload', async (req: Request, res: Response) => {
+    try {
+      const { storageRef, checksum, size } = req.body;
+      if (!storageRef) {
+        return res.status(400).json({ error: 'storageRef is required' });
+      }
+      const targetDir = path.resolve(process.cwd(), 'data', 'meeting-media');
+      fs.mkdirSync(targetDir, { recursive: true });
+      const finalPath = path.join(targetDir, path.basename(storageRef));
+      if (req.body.data) {
+        fs.writeFileSync(finalPath, Buffer.from(req.body.data, 'base64'));
+      }
+      const session = await repo.saveRecordingSession({
+        meetingId: req.params.id,
+        tenantId: req.body.tenantId || 'ketraco',
+        status: 'STORED',
+        storageRef: finalPath,
+        checksum: checksum || undefined,
+        size: size || 0,
+        createdBy: req.body.createdBy || 'browser-recorder',
+        version: '1.0'
+      });
+      broadcastSse('recording_stored', { meetingId: req.params.id, session });
+      res.status(201).json({ success: true, session });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Error storing recording', details: err?.message });
+    }
+  });
+
   // --- TRANSCRIPTS & LIVE AUDIO ---
   router.get('/meetings/:id/transcripts', async (req: Request, res: Response) => {
     try {
@@ -387,6 +453,17 @@ export function createMeetingIntelligenceApiRouter(): Router {
       res.status(201).json(segment);
     } catch (err: any) {
       res.status(500).json({ error: 'Error saving transcript segment', details: err?.message });
+    }
+  });
+
+  router.get('/ai-context', async (req: Request, res: Response) => {
+    try {
+      const meetingId = (req.query.meetingId as string) || 'MEETING_SCM_TRANSFORMATION_REVIEW';
+      const tenantId = (req.query.tenantId as string) || 'ketraco';
+      const context = aiService.getProviderStatus(meetingId, tenantId);
+      res.json(context);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to resolve AI context', details: err?.message });
     }
   });
 

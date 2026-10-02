@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Play, 
   RotateCcw, 
@@ -27,6 +27,7 @@ import {
 } from './types';
 import { GridScenarioEngine } from './scenario-engine';
 import { GridAsset, TransmissionLine } from '../types';
+import { fetchEngineeringRuntime, type EngineeringRuntimeStatus, requestEngineeringSimulation } from './runtime';
 
 interface ScenarioLabProps {
   substations: Record<string, GridAsset>;
@@ -41,7 +42,15 @@ export default function ScenarioLab({
   onSelectAsset,
   preselectedScenarioId
 }: ScenarioLabProps) {
-  const [scenarios] = useState<ScenarioDefinition[]>(GridScenarioEngine.STANDARD_SCENARIOS || []);
+  const [runtimeStatus, setRuntimeStatus] = useState<EngineeringRuntimeStatus>({
+    state: 'LOADING',
+    message: 'Checking engineering runtime availability…',
+  });
+  const [remoteScenarios, setRemoteScenarios] = useState<ScenarioDefinition[]>([]);
+  const scenarios = useMemo(
+    () => (remoteScenarios.length ? remoteScenarios : GridScenarioEngine.STANDARD_SCENARIOS || []),
+    [remoteScenarios]
+  );
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>(
     preselectedScenarioId || GridScenarioEngine.STANDARD_SCENARIOS?.[0]?.id || 'SCEN_SUSWA_T1_TRIP'
   );
@@ -51,6 +60,55 @@ export default function ScenarioLab({
     return GridScenarioEngine.compareScenarioWithRemediations(defaultScen, substations, lines);
   });
   const [selectedRemedialId, setSelectedRemedialId] = useState<string>('ACTION_OPT_A_REDISPATCH');
+
+  useEffect(() => {
+    let isMounted = true;
+    void fetchEngineeringRuntime().then(result => {
+      if (!isMounted) return;
+      setRuntimeStatus(result);
+
+      if (result.state === 'READY') {
+        const mapped = (Array.isArray(result.scenarios) ? result.scenarios : [])
+          .map((scenario: any) => {
+            const scenarioId = typeof scenario?.id === 'string' ? scenario.id : scenario?.scenarioId;
+            if (!scenarioId) return null;
+            return {
+              id: scenarioId,
+              name: typeof scenario?.name === 'string' ? scenario.name : `Runtime scenario ${scenarioId}`,
+              type: typeof scenario?.scenarioClass === 'string' ? scenario.scenarioClass : 'CUSTOM',
+              description: typeof scenario?.description === 'string'
+                ? scenario.description
+                : 'Engineering runtime scenario loaded from the backend.',
+              primaryAssetId: typeof scenario?.primaryAssetId === 'string' ? scenario.primaryAssetId : undefined,
+              primaryAssetName: typeof scenario?.primaryAssetName === 'string' ? scenario.primaryAssetName : undefined,
+              contingentAssetId: typeof scenario?.primaryAssetId === 'string' ? scenario.primaryAssetId : undefined,
+              lossMW: typeof scenario?.lossMW === 'number' ? scenario.lossMW : 0,
+              lossMVAr: typeof scenario?.lossMVAr === 'number' ? scenario.lossMVAr : 0,
+              probability: typeof scenario?.probability === 'number' ? scenario.probability : 0.01,
+              defaultSeverity: 'MODERATE',
+            } as ScenarioDefinition;
+          })
+          .filter(Boolean) as ScenarioDefinition[];
+
+        if (mapped.length > 0) {
+          setRemoteScenarios(mapped);
+          if (!preselectedScenarioId) {
+            setSelectedScenarioId(mapped[0].id);
+          }
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [preselectedScenarioId]);
+
+  useEffect(() => {
+    if (!scenarios.some(s => s.id === selectedScenarioId) && scenarios.length > 0) {
+      setSelectedScenarioId(scenarios[0].id);
+    }
+  }, [scenarios, selectedScenarioId]);
 
   const activeScenario = scenarios.find(s => s.id === selectedScenarioId) || scenarios[0] || ({
     id: 'SCEN_SUSWA_T1_TRIP',
@@ -63,9 +121,27 @@ export default function ScenarioLab({
     probability: 0.042
   } as unknown as ScenarioDefinition);
 
-  const handleRunSimulation = (scenId: string) => {
+  const handleRunSimulation = async (scenId: string) => {
     setIsSimulating(true);
     setSelectedScenarioId(scenId);
+
+    if (runtimeStatus.state === 'READY') {
+      const simulationResult = await requestEngineeringSimulation(scenId).catch(() => ({
+        ok: false,
+        status: 503,
+        message: 'Simulation not available from the engineering runtime.',
+        data: null,
+      }));
+
+      if (simulationResult.ok) {
+        setRuntimeStatus(current => ({
+          ...current,
+          state: 'READY',
+          message: 'Engineering runtime accepted the simulation request.'
+        }));
+      }
+    }
+
     setTimeout(() => {
       const scen = scenarios.find(s => s.id === scenId) || scenarios[0];
       const result = GridScenarioEngine.compareScenarioWithRemediations(scen, substations, lines);
@@ -136,12 +212,26 @@ export default function ScenarioLab({
           </div>
         </div>
 
-        {/* Safety Boundary Notice */}
-        <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center gap-2 text-[11px] text-amber-300/90 bg-amber-500/10 px-3 py-1.5 rounded border border-amber-500/20">
-          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
-          <span>
-            <strong>SAFETY BOUNDARY ENFORCED:</strong> Decision support tool only. The system does not automatically dispatch generation, trip breakers, or modify topology. Operator manual authorization is strictly mandatory.
-          </span>
+        <div className="mt-3 grid gap-3 md:grid-cols-[1.5fr_1fr]">
+          <div className={`pt-3 border-t border-slate-800/80 flex items-center gap-2 text-[11px] px-3 py-1.5 rounded border ${
+            runtimeStatus.state === 'READY'
+              ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20'
+              : runtimeStatus.state === 'UNAUTHENTICATED' || runtimeStatus.state === 'FORBIDDEN'
+                ? 'text-amber-300 bg-amber-500/10 border-amber-500/20'
+                : 'text-slate-300 bg-slate-800/60 border-slate-700'
+          }`}>
+            <Activity className="w-4 h-4 shrink-0" />
+            <span>
+              <strong>ENGINEERING RUNTIME:</strong> {runtimeStatus.message}
+            </span>
+          </div>
+
+          <div className="pt-3 border-t border-slate-800/80 flex items-center gap-2 text-[11px] text-amber-300/90 bg-amber-500/10 px-3 py-1.5 rounded border border-amber-500/20">
+            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>SAFETY BOUNDARY ENFORCED:</strong> Decision support tool only.
+            </span>
+          </div>
         </div>
       </div>
 

@@ -38,6 +38,20 @@ export class MeetingCopilotService {
       selectedEvidence?: string;
     }
   ): Promise<CopilotMessage> {
+    const client = this.initClient();
+    if (!client || !process.env.GEMINI_API_KEY) {
+      return {
+        id: `msg_${Date.now()}`,
+        sender: 'COPILOT',
+        text: 'AI_PROVIDER_NOT_CONFIGURED: The Meeting Intelligence AI provider is not configured. Meeting records remain available, but live AI analysis is unavailable until a valid provider key is configured.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        confidence: 0,
+        sources: [],
+        suggested_actions: ['Configure AI provider', 'Review transcript ledger', 'Manual decision review'],
+        evidence_ref: 'AI Provider Unavailable',
+      };
+    }
+
     const meetingContext = `
 Enterprise Context:
 Tenant: KETRACO (Kenya Electricity Transmission Company Limited)
@@ -61,9 +75,8 @@ Active Risks:
 - KRA verification dependency delaying procurement cycle (Confidence 89%)
 `;
 
-    const client = this.initClient();
+    // Robust model fallback sequence in case of temporary high-demand spikes (503/429)
     if (client && process.env.GEMINI_API_KEY) {
-      // Robust model fallback sequence in case of temporary high-demand spikes (503/429)
       const candidateModels = [
         process.env.GEMINI_MODEL || 'gemini-3.8-flash',
         'gemini-flash-latest',

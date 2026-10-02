@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Radio,
   Play,
@@ -29,7 +29,8 @@ import type {
   ReviewStatus,
   AttendanceStatus,
   MeetingDocument,
-  AgendaItem
+  AgendaItem,
+  MeetingRecordingStatus
 } from '../../../../backend/domains/meeting-intelligence/types';
 
 interface Props {
@@ -81,6 +82,11 @@ export const LiveMeetingWorkspaceView: React.FC<Props> = ({
   const [docCategory, setDocCategory] = useState('TECHNICAL_SPEC');
   const [docSummary, setDocSummary] = useState('');
   const [activeTabSub, setActiveTabSub] = useState<'AGENDA' | 'PARTICIPANTS' | 'DOCS'>('AGENDA');
+  const [recordingStatus, setRecordingStatus] = useState<MeetingRecordingStatus>('IDLE');
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const startedAtRef = useRef<string | null>(null);
 
   // Elapsed Session Timer
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(meeting.elapsed_seconds || 0);
@@ -123,6 +129,131 @@ export const LiveMeetingWorkspaceView: React.FC<Props> = ({
     const seconds = totalSeconds % 60;
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!('MediaRecorder' in window) || !navigator.mediaDevices?.getUserMedia) {
+      setRecordingStatus('UNAVAILABLE');
+    }
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, []);
+
+  const persistRecordingMetadata = async (nextStatus: MeetingRecordingStatus, extra?: Record<string, any>) => {
+    try {
+      await fetch(`/api/meeting-intelligence/meetings/${meeting.id}/recordings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: nextStatus,
+          startedAt: startedAtRef.current || new Date().toISOString(),
+          endedAt: nextStatus === 'STORED' || nextStatus === 'FAILED' ? new Date().toISOString() : null,
+          durationMs: elapsedSeconds * 1000,
+          mediaType: 'audio/webm',
+          codec: 'opus',
+          ...extra
+        })
+      });
+    } catch (error) {
+      console.warn('[MEETING-RECORDING] Failed to persist recording metadata', error);
+    }
+  };
+
+  const handleRecordingToggle = async () => {
+    if (recordingStatus === 'UNAVAILABLE') {
+      return;
+    }
+
+    if (!mediaRecorderRef.current) {
+      try {
+        setRecordingStatus('REQUESTING_PERMISSION');
+        await persistRecordingMetadata('REQUESTING_PERMISSION');
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setRecordingStatus('UNAVAILABLE');
+          return;
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        mediaRecorderRef.current = recorder;
+        recordingChunksRef.current = [];
+        startedAtRef.current = new Date().toISOString();
+
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+        };
+
+        recorder.onstop = async () => {
+          setRecordingStatus('UPLOADING');
+          await persistRecordingMetadata('UPLOADING');
+          const blob = new Blob(recordingChunksRef.current, { type: mimeType || 'audio/webm' });
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+            const base64 = (reader.result as string).split(',')[1] || '';
+            try {
+              const payload = new Uint8Array(await blob.arrayBuffer());
+              const checksum = 'sha256:' + btoa(String.fromCharCode(...payload.slice(0, 32)));
+              const res = await fetch(`/api/meeting-intelligence/meetings/${meeting.id}/recordings/upload`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  data: base64,
+                  storageRef: `recording_${meeting.id}_${Date.now()}.webm`,
+                  checksum,
+                  size: blob.size,
+                  createdBy: 'browser-recorder',
+                  tenantId: meeting.tenant_id || 'ketraco'
+                })
+              });
+              if (res.ok) {
+                setRecordingStatus('STORED');
+                await persistRecordingMetadata('STORED');
+              } else {
+                setRecordingStatus('FAILED');
+                await persistRecordingMetadata('FAILED');
+              }
+            } catch (error) {
+              setRecordingStatus('FAILED');
+              await persistRecordingMetadata('FAILED');
+            }
+          };
+          reader.readAsDataURL(blob);
+        };
+
+        setRecordingStatus('READY');
+        await persistRecordingMetadata('READY');
+        return;
+      } catch (error) {
+        console.warn('[MEETING-RECORDING] unable to access microphone', error);
+        setRecordingStatus('FAILED');
+        return;
+      }
+    }
+
+    if (recordingStatus === 'READY') {
+      mediaRecorderRef.current.start();
+      setRecordingStatus('RECORDING');
+      await persistRecordingMetadata('RECORDING');
+      return;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      setRecordingStatus('STOPPING');
+      await persistRecordingMetadata('STOPPING');
+      mediaRecorderRef.current.stop();
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+      mediaRecorderRef.current = null;
+    }
   };
 
   const handleSendTranscript = async () => {
@@ -293,6 +424,22 @@ export const LiveMeetingWorkspaceView: React.FC<Props> = ({
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           )}
+
+          {/* Browser Recording Boundary */}
+          <button
+            onClick={handleRecordingToggle}
+            disabled={recordingStatus === 'REQUESTING_PERMISSION' || recordingStatus === 'UPLOADING' || recordingStatus === 'STOPPING'}
+            className={`px-4 py-1.5 rounded-lg font-semibold text-xs flex items-center gap-2 border transition-all cursor-pointer disabled:opacity-50 ${
+              recordingStatus === 'RECORDING' || recordingStatus === 'PAUSED'
+                ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
+                : recordingStatus === 'UNAVAILABLE'
+                  ? 'bg-slate-800 border-slate-700 text-slate-500'
+                  : 'bg-slate-900 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10'
+            }`}
+          >
+            <Radio className={`w-3.5 h-3.5 ${recordingStatus === 'RECORDING' ? 'animate-pulse' : ''}`} />
+            {recordingStatus === 'RECORDING' ? 'Stop Recording' : recordingStatus === 'REQUESTING_PERMISSION' ? 'Requesting Mic...' : recordingStatus === 'UPLOADING' ? 'Uploading...' : recordingStatus === 'STORED' ? 'Stored' : recordingStatus === 'UNAVAILABLE' ? 'Mic Unavailable' : 'Start Recording'}
+          </button>
 
           {/* AI Trigger */}
           <button

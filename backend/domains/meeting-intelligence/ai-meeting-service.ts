@@ -10,7 +10,8 @@ import {
   DetectedIntelligenceItem,
   MeetingMinutes,
   MeetingEntity,
-  DetectedItemType
+  DetectedItemType,
+  MeetingAIContextContract
 } from './types';
 
 export class AiMeetingService {
@@ -36,10 +37,26 @@ export class AiMeetingService {
    * Extracts intelligence items (Decisions, Actions, Risks, Commitments, Questions, Escalations)
    * from a transcript or set of segments.
    */
+  public getProviderStatus(meetingId: string, tenantId = 'ketraco'): MeetingAIContextContract {
+    const providerState = this.client ? 'READY' : 'AI_PROVIDER_NOT_CONFIGURED';
+    return {
+      contextId: `ctx_${meetingId}_${Date.now()}`,
+      meetingId,
+      tenantId,
+      providerState,
+      groundedContext: [],
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
   public async extractIntelligenceItems(
     meeting: MeetingEntity,
     segments: TranscriptSegment[]
   ): Promise<DetectedIntelligenceItem[]> {
+    if (!this.client) {
+      return [];
+    }
+
     const transcriptText = segments
       .map(s => `[${s.timestamp_label}] ${s.speaker} (${s.speaker_role || 'Participant'}): "${s.text}"`)
       .join('\n');
