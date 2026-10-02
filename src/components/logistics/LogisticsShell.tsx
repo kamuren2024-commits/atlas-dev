@@ -4,7 +4,11 @@ import {
   Package, Truck, MapPin, AlertTriangle, Zap, Bot, BarChart3, Settings
 } from 'lucide-react';
 import { colors } from '../../design-system/tokens';
-import { normalizeLogisticsViewId, type LogisticsViewId } from '../../modules/atlas-module-registry';
+import {
+  LOGISTICS_VIEW_LABELS,
+  normalizeLogisticsViewId,
+  type LogisticsViewId,
+} from '../../modules/atlas-module-registry';
 
 interface LogisticsShellProps {
   children: React.ReactNode;
@@ -13,16 +17,16 @@ interface LogisticsShellProps {
 }
 
 const NAV_ITEMS = [
-  { id: 'command-center', icon: Zap, label: 'Command Center' },
-  { id: 'shipments', icon: Package, label: 'Shipments' },
-  { id: 'fleet', icon: Truck, label: 'Fleet Telematics' },
-  { id: 'warehouses', icon: MapPin, label: 'Warehouses' },
-  { id: 'routes', icon: Settings, label: 'Corridors' },
-  { id: 'deliveries', icon: BarChart3, label: 'Deliveries & e-PoD' },
-  { id: 'disruptions', icon: AlertTriangle, label: 'Risk Center' },
-  { id: 'ai-operations', icon: Bot, label: 'AI Ops' },
-  { id: 'analytics', icon: BarChart3, label: 'Analytics' },
-] as const satisfies ReadonlyArray<{ id: LogisticsViewId; icon: typeof Zap; label: string }>;
+  { id: 'command-center', icon: Zap },
+  { id: 'shipments', icon: Package },
+  { id: 'fleet', icon: Truck },
+  { id: 'warehouses', icon: MapPin },
+  { id: 'routes', icon: Settings },
+  { id: 'deliveries', icon: BarChart3 },
+  { id: 'disruptions', icon: AlertTriangle },
+  { id: 'ai-operations', icon: Bot },
+  { id: 'analytics', icon: BarChart3 },
+] as const satisfies ReadonlyArray<{ id: LogisticsViewId; icon: typeof Zap }>;
 
 const LogisticsShell: React.FC<LogisticsShellProps> = ({
   children,
@@ -65,7 +69,7 @@ const LogisticsShell: React.FC<LogisticsShellProps> = ({
               }}
             >
               <item.icon size={13} />
-              {item.label}
+              {LOGISTICS_VIEW_LABELS[item.id]}
             </motion.button>
           );
         })}

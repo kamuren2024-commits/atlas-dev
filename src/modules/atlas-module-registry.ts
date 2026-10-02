@@ -81,6 +81,19 @@ export const LOGISTICS_VIEW_IDS = [
 ] as const;
 
 export type LogisticsViewId = (typeof LOGISTICS_VIEW_IDS)[number];
+export type LogisticsWorkspace = LogisticsViewId;
+
+export const LOGISTICS_VIEW_LABELS: Record<LogisticsViewId, string> = {
+  'command-center': 'Command Center',
+  shipments: 'Shipments',
+  fleet: 'Fleet Telematics',
+  warehouses: 'Warehouses',
+  routes: 'Corridors',
+  deliveries: 'Deliveries & e-PoD',
+  disruptions: 'Risk Center',
+  'ai-operations': 'AI Ops',
+  analytics: 'Analytics',
+};
 
 const LEGACY_LOGISTICS_VIEW_ID_MAP: Record<string, LogisticsViewId> = {
   'logistics-command-center': 'command-center',
