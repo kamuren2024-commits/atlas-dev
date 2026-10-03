@@ -606,3 +606,109 @@ export interface MeetingIntelligenceOverview {
   };
   copilot_thread: CopilotMessage[];
 }
+
+/**
+ * AI EXECUTION ENVELOPE - Traceable AI execution metadata
+ * Every AI request/response through MeetingAiGatewayAdapter produces one
+ */
+export interface MeetingAIExecutionEnvelope {
+  envelopeId: string;
+  requestId: string;
+  meetingId: string;
+  tenantId: string;
+  contextVersion: string;
+  taskType: 'DECISIONS' | 'ACTIONS' | 'RISKS' | 'COMMITMENTS' | 'QUESTIONS' | 'ESCALATIONS';
+  providerId: string;
+  modelId: string;
+  capabilities: string[];
+  startedAt: string;
+  completedAt: string;
+  latencyMs: number;
+  outputStatus: 'SUCCESS' | 'FAILED' | 'TIMEOUT' | 'INVALID_RESPONSE';
+  validationStatus: 'VALID' | 'PARTIAL_VALID' | 'INVALID';
+  validationErrors: Array<{ index: number; errors: string[] }>;
+  proposalCount: number;
+  authorizationBasis: string;
+  contextAssembledAt: string;
+}
+
+/**
+ * AI OUTPUT VALIDATION RESULT
+ */
+export interface AIOutputValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings?: string[];
+}
+
+/**
+ * DECISION CANDIDATE - AI-proposed decision requiring human confirmation
+ */
+export interface DecisionCandidate {
+  candidateId: string;
+  envelopeId: string;
+  meetingId: string;
+  tenantId: string;
+  title: string;
+  description: string;
+  authority: string;
+  linkedEntity?: string;
+  evidence: Array<{ quote: string; sourceRef: string; timestamp?: string }>;
+  confidence: number;
+  modelId: string;
+  providerId: string;
+  status: 'PROPOSED' | 'APPROVED' | 'EDITED' | 'REJECTED';
+  approvedBy?: string;
+  approvedAt?: string;
+  editedData?: Record<string, any>;
+  proposedAt: string;
+}
+
+/**
+ * ACTION CANDIDATE - AI-proposed action requiring human confirmation
+ */
+export interface ActionCandidate {
+  candidateId: string;
+  envelopeId: string;
+  meetingId: string;
+  tenantId: string;
+  title: string;
+  description: string;
+  owner: string;
+  dueDate: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  linkedEntity?: string;
+  evidence: Array<{ quote: string; sourceRef: string; timestamp?: string }>;
+  confidence: number;
+  modelId: string;
+  providerId: string;
+  status: 'PROPOSED' | 'APPROVED' | 'EDITED' | 'REJECTED';
+  approvedBy?: string;
+  approvedAt?: string;
+  editedData?: Record<string, any>;
+  proposedAt: string;
+}
+
+/**
+ * RISK CANDIDATE - AI-proposed risk requiring human confirmation
+ */
+export interface RiskCandidate {
+  candidateId: string;
+  envelopeId: string;
+  meetingId: string;
+  tenantId: string;
+  title: string;
+  description: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  linkedEntity?: string;
+  mitigationPlan?: string;
+  evidence: Array<{ quote: string; sourceRef: string; timestamp?: string }>;
+  confidence: number;
+  modelId: string;
+  providerId: string;
+  status: 'PROPOSED' | 'APPROVED' | 'EDITED' | 'REJECTED';
+  approvedBy?: string;
+  approvedAt?: string;
+  editedData?: Record<string, any>;
+  proposedAt: string;
+}

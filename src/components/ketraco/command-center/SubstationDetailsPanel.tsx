@@ -10,6 +10,10 @@ interface SubstationDetailsPanelProps {
   events: GridEvent[];
   onClose: () => void;
   onFocus?: () => void;
+  onOpenDigitalTwin?: () => void;
+  onViewTelemetry?: () => void;
+  onViewEvents?: () => void;
+  onBackToGrid?: () => void;
 }
 
 function formatValue(value: string | number | boolean | null | undefined, unit = ''): string {
@@ -66,7 +70,11 @@ export default function SubstationDetailsPanel({
   alarms,
   events,
   onClose,
-  onFocus
+  onFocus,
+  onOpenDigitalTwin,
+  onViewTelemetry,
+  onViewEvents,
+  onBackToGrid
 }: SubstationDetailsPanelProps) {
   const connectedLines = substation.connectedLines.map((lineId) => lines[lineId]).filter(Boolean);
   const assetAlarms = alarms.filter((alarm) => alarm.assetId === substation.id);
@@ -116,6 +124,29 @@ export default function SubstationDetailsPanel({
       </header>
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
+        <div className="grid grid-cols-2 gap-2">
+          {onBackToGrid && (
+            <button type="button" onClick={onBackToGrid} className="rounded border border-slate-700 bg-slate-800/80 px-2 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-200 hover:border-cyan-500/60 hover:text-cyan-200">
+              Back to grid
+            </button>
+          )}
+          {onOpenDigitalTwin && (
+            <button type="button" onClick={onOpenDigitalTwin} className="rounded border border-cyan-500/40 bg-cyan-500/10 px-2 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-cyan-200 hover:bg-cyan-500/20">
+              Open Digital Twin
+            </button>
+          )}
+          {onViewTelemetry && (
+            <button type="button" onClick={onViewTelemetry} className="rounded border border-slate-700 bg-slate-800/80 px-2 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-200 hover:border-violet-500/60 hover:text-violet-200">
+              View telemetry
+            </button>
+          )}
+          {onViewEvents && (
+            <button type="button" onClick={onViewEvents} className="rounded border border-slate-700 bg-slate-800/80 px-2 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-200 hover:border-amber-500/60 hover:text-amber-200">
+              View events
+            </button>
+          )}
+        </div>
+
         <DetailSection title="Substation overview">
           <DetailRow label="Operational status" value={formatValue(substation.state)} />
           <DetailRow label="Availability" value="Data unavailable" />
@@ -199,17 +230,21 @@ export default function SubstationDetailsPanel({
           )) : <DetailRow label="Events" value="No matching events" />}
         </DetailSection>
 
-        <DetailSection title="Maintenance and data">
-          <DetailRow label="Maintenance status" value={formatValue(maintenanceStatus)} />
-          <DetailRow label="Maintenance forecast" value={formatValue(substation.maintenanceForecast)} />
-          <DetailRow label="Data sources" value={formatList(substation.sources)} />
-          <DetailRow label="Connection status" value="Data unavailable" />
+        <DetailSection title="Provenance and authority">
+          <DetailRow label="Data source" value={formatList(substation.sources)} />
+          <DetailRow label="Data confidence" value={formatValue(substation.confidence, '%')} />
+          <DetailRow label="Reconciliation status" value={formatValue(substation.reconciliationStatus)} />
           <DetailRow label="SCADA ID" value={formatValue(substation.scadaId)} />
           <DetailRow label="GIS ID" value={formatValue(substation.gisId)} />
           <DetailRow label="EAM ID" value={formatValue(substation.eamId)} />
+          <DetailRow label="Engineering ID" value={formatValue(substation.engineeringId)} />
           <DetailRow label="Last asset update" value={formatValue(substation.lastUpdated)} />
-          <DetailRow label="Data confidence" value={formatValue(substation.confidence, '%')} />
-          <DetailRow label="Reconciliation status" value={formatValue(substation.reconciliationStatus)} />
+        </DetailSection>
+
+        <DetailSection title="Maintenance and data">
+          <DetailRow label="Maintenance status" value={formatValue(maintenanceStatus)} />
+          <DetailRow label="Maintenance forecast" value={formatValue(substation.maintenanceForecast)} />
+          <DetailRow label="Connection status" value="Data unavailable" />
           <DetailRow label="Health score" value={formatValue(substation.healthScore, '/100')} />
           <DetailRow label="Risk score" value={formatValue(substation.riskScore, '/100')} />
           <DetailRow label="N-1 redundancy" value={formatValue(substation.nMinusOneRedundant)} />

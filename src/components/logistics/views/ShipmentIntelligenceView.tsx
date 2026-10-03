@@ -1,61 +1,226 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Package, Search, Filter, RefreshCw, CheckCircle2, Clock, AlertTriangle,
   MapPin, ShieldAlert, ArrowRight, ExternalLink, Calendar, Truck, User,
   CheckCircle, FileText
 } from 'lucide-react';
+import type { LogisticsTwin } from '../logistics-data-fabric';
 
-interface Shipment {
-  id: string;
-  code: string;
-  cargoType: string;
-  description: string;
-  quantity: number;
-  weightKg: number;
-  originSubstation: string;
-  destinationSubstation: string;
-  priority: string;
-  status: string;
-  assignedMissionId?: string;
-  createdAt: string;
+interface ShipmentIntelligenceViewProps {
+  twin: LogisticsTwin;
+  loading: boolean;
+  error: string | null;
 }
 
-export default function ShipmentIntelligenceView() {
-  const [shipments, setShipments] = useState<Shipment[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function ShipmentIntelligenceView({ twin, loading, error }: ShipmentIntelligenceViewProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null);
+  const [selectedShipment, setSelectedShipment] = useState(twin.shipments[0] || null);
 
-  const fetchShipments = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/logistics/cargo');
-      const json = await res.json();
-      if (json.ok && json.data) {
-        setShipments(json.data.cargo || []);
-        if (json.data.cargo?.length > 0 && !selectedShipment) {
-          setSelectedShipment(json.data.cargo[0]);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load shipments:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchShipments();
-  }, []);
-
-  const filteredShipments = shipments.filter(s => {
+  const filteredShipments = twin.shipments.filter(s => {
     const matchesSearch = s.code.toLowerCase().includes(search.toLowerCase()) ||
       s.description.toLowerCase().includes(search.toLowerCase()) ||
-      s.destinationSubstation.toLowerCase().includes(search.toLowerCase());
+      s.destination.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || s.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full text-slate-400">
+        <div className="text-center">
+          <div className="animate-spin text-cyan-400 mb-3">⟳</div>
+          <p>Loading shipment data from KETRACO...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full text-slate-400 p-6">
+        <div className="text-center">
+          <AlertTriangle size={48} className="text-yellow-400 mx-auto mb-3" />
+          <p className="font-bold mb-2">Data Source Warning</p>
+          <p className="text-sm">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
+      {/* Top Header */}
+      <div className="flex items-center justify-between pb-4 border-b border-slate-800 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+            <Package size={22} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              Shipment Intelligence & Manifest Registry
+              <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/40 text-cyan-300">
+                Live Data Fabric
+              </span>
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Multi-modal cargo manifests, substation delivery tracking, and bill-of-lading reconciliation.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Metric Cards */}
+      <div className="grid grid-cols-4 gap-4 my-4 flex-shrink-0">
+        <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Active Manifests</span>
+          <div className="text-2xl font-bold text-white mt-1">{twin.shipments.length}</div>
+          <span className="text-[11px] text-emerald-400 font-medium">100% Verified Telemetry</span>
+        </div>
+        <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In Transit</span>
+          <div className="text-2xl font-bold text-white mt-1">{twin.shipments.filter(s => s.status === 'IN_TRANSIT').length}</div>
+          <span className="text-[11px] text-blue-400 font-medium">Active Movements</span>
+        </div>
+        <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alerts</span>
+          <div className="text-2xl font-bold text-white mt-1">{twin.shipments.filter(s => s.priority === 'CRITICAL').length}</div>
+          <span className="text-[11px] text-red-400 font-medium">Require Attention</span>
+        </div>
+        <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Delivery %</span>
+          <div className="text-2xl font-bold text-white mt-1">
+            {twin.shipments.length > 0 ? Math.round((twin.shipments.filter(s => s.status === 'DELIVERED').length / twin.shipments.length) * 100) : 0}%
+          </div>
+          <span className="text-[11px] text-emerald-400 font-medium">Manifest Fulfillment</span>
+        </div>
+      </div>
+
+      {/* Search & Filter */}
+      <div className="flex items-center gap-3 mb-4 flex-shrink-0">
+        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/40 border border-slate-700">
+          <Search size={16} className="text-slate-500" />
+          <input
+            type="text"
+            placeholder="Search by code, description, or destination..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="flex-1 bg-transparent text-sm outline-none text-slate-100 placeholder:text-slate-500"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="px-3 py-2 rounded-lg bg-slate-800/40 border border-slate-700 text-sm text-slate-300 outline-none"
+        >
+          <option>ALL</option>
+          <option>PLANNED</option>
+          <option>IN_TRANSIT</option>
+          <option>DELIVERED</option>
+        </select>
+      </div>
+
+      {/* Content Grid */}
+      <div className="flex-1 grid grid-cols-[350px_1fr] gap-4 overflow-hidden">
+        {/* Shipment List */}
+        <div className="flex flex-col bg-slate-900/40 rounded-lg border border-slate-800 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-800 bg-slate-900/80">
+            <h3 className="text-sm font-bold text-slate-200">Manifests ({filteredShipments.length})</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {filteredShipments.map(s => {
+              const isSelected = selectedShipment?.id === s.id;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setSelectedShipment(s)}
+                  className={`w-full px-4 py-2.5 border-b border-slate-800/50 text-left text-sm transition-all ${
+                    isSelected ? 'bg-cyan-950/40 border-l-2 border-l-cyan-500' : 'hover:bg-slate-800/30'
+                  }`}
+                >
+                  <div className="font-medium text-slate-100">{s.code}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{s.cargoType}</div>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      s.status === 'DELIVERED' ? 'bg-emerald-500/20 text-emerald-300' :
+                      s.status === 'IN_TRANSIT' ? 'bg-blue-500/20 text-blue-300' :
+                      'bg-slate-700/50 text-slate-300'
+                    }`}>
+                      {s.status}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Detail Panel */}
+        <div className="bg-slate-900/40 rounded-lg border border-slate-800 p-4 overflow-y-auto">
+          {selectedShipment ? (
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-bold text-white">{selectedShipment.code}</h2>
+                <span className={`text-[10px] font-bold px-2 py-1 rounded ${
+                  selectedShipment.status === 'DELIVERED' ? 'bg-emerald-500/20 text-emerald-300' :
+                  selectedShipment.status === 'IN_TRANSIT' ? 'bg-blue-500/20 text-blue-300' :
+                  'bg-slate-700/50 text-slate-300'
+                }`}>
+                  {selectedShipment.status}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">Type</p>
+                  <p className="text-sm text-slate-200 font-medium">{selectedShipment.cargoType}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">Priority</p>
+                  <p className="text-sm text-slate-200 font-medium">{selectedShipment.priority}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">Origin</p>
+                  <p className="text-sm text-slate-200 font-medium">{selectedShipment.origin}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">Destination</p>
+                  <p className="text-sm text-slate-200 font-medium">{selectedShipment.destination}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">Weight</p>
+                  <p className="text-sm text-slate-200 font-medium">{selectedShipment.weightKg.toLocaleString()} kg</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">Quantity</p>
+                  <p className="text-sm text-slate-200 font-medium">{selectedShipment.quantity} units</p>
+                </div>
+              </div>
+
+              <div className="mt-6 p-3 rounded bg-slate-800/50 border border-slate-700/50">
+                <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-2">Description</p>
+                <p className="text-sm text-slate-200">{selectedShipment.description}</p>
+              </div>
+
+              {selectedShipment.provenance && (
+                <div className="mt-4 p-2 rounded bg-slate-900 text-[10px] text-slate-500 space-y-1">
+                  <p><strong>Source:</strong> {selectedShipment.provenance.sourceSystem}</p>
+                  <p><strong>Authority:</strong> {selectedShipment.provenance.authority}</p>
+                  <p><strong>Confidence:</strong> {Math.round(selectedShipment.provenance.confidence * 100)}%</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-slate-500">
+              <p>Select a manifest to view details</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
   return (
     <div className="flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">

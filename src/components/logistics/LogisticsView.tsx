@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { LogisticsShell, CommandCenter } from './index';
 import ShipmentIntelligenceView from './views/ShipmentIntelligenceView';
 import FleetIntelligenceView from './views/FleetIntelligenceView';
@@ -9,10 +9,12 @@ import LogisticsRiskCenterView from './views/LogisticsRiskCenterView';
 import AiOperationsWorkspaceView from './views/AiOperationsWorkspaceView';
 import LogisticsAnalyticsView from './views/LogisticsAnalyticsView';
 import { normalizeLogisticsViewId, type LogisticsViewId } from '../../modules/atlas-module-registry';
+import { useLogisticsUnifiedData } from './logistics-unified-data-layer';
 
 export const LogisticsView: React.FC = () => {
   const [activeView, setActiveView] = useState<LogisticsViewId>('command-center');
   const [dataMode, setDataMode] = useState<{ mode: string; label: string; syntheticNotice?: string } | null>(null);
+  const { twin, loading, error } = useLogisticsUnifiedData();
 
   useEffect(() => {
     const loadDataMode = async () => {
@@ -22,17 +24,21 @@ export const LogisticsView: React.FC = () => {
         if (json.ok && json.data) {
           setDataMode({
             mode: json.data.mode,
-            label: json.data.label || '● SYNTHETIC DEMO',
+            label: json.data.label || (twin.source.mode === 'SYNTHETIC' ? '● SYNTHETIC DEMO' : '● LIVE KETRACO'),
             syntheticNotice: json.data.provider?.syntheticNotice || json.data.description,
           });
         }
       } catch {
-        setDataMode({ mode: 'SYNTHETIC', label: '● SYNTHETIC DEMO', syntheticNotice: 'SYNTHETIC DEMONSTRATION DATA ONLY. Not connected to production KETRACO telematics.' });
+        setDataMode({ 
+          mode: twin.source.mode, 
+          label: twin.source.label, 
+          syntheticNotice: twin.source.notice 
+        });
       }
     };
 
     void loadDataMode();
-  }, []);
+  }, [twin.source.mode, twin.source.label, twin.source.notice]);
 
   const handleViewChange = (view: string) => {
     const nextView = normalizeLogisticsViewId(view) ?? 'command-center';
@@ -44,21 +50,21 @@ export const LogisticsView: React.FC = () => {
       case 'command-center':
         return <CommandCenter />;
       case 'shipments':
-        return <ShipmentIntelligenceView />;
+        return <ShipmentIntelligenceView twin={twin} loading={loading} error={error} />;
       case 'fleet':
-        return <FleetIntelligenceView />;
+        return <FleetIntelligenceView twin={twin} loading={loading} error={error} />;
       case 'warehouses':
-        return <WarehouseIntelligenceView />;
+        return <WarehouseIntelligenceView twin={twin} loading={loading} error={error} />;
       case 'routes':
-        return <RouteIntelligenceView />;
+        return <RouteIntelligenceView twin={twin} loading={loading} error={error} />;
       case 'deliveries':
-        return <DeliveryControlTowerView />;
+        return <DeliveryControlTowerView twin={twin} loading={loading} error={error} />;
       case 'disruptions':
-        return <LogisticsRiskCenterView />;
+        return <LogisticsRiskCenterView twin={twin} loading={loading} error={error} />;
       case 'ai-operations':
-        return <AiOperationsWorkspaceView />;
+        return <AiOperationsWorkspaceView twin={twin} loading={loading} error={error} />;
       case 'analytics':
-        return <LogisticsAnalyticsView />;
+        return <LogisticsAnalyticsView twin={twin} loading={loading} error={error} />;
       default:
         return <CommandCenter />;
     }
@@ -67,7 +73,7 @@ export const LogisticsView: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-shrink-0 border-b border-cyan-500/20 bg-slate-950/70 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300 flex items-center justify-between gap-3">
-        <span>{dataMode?.label || '● SYNTHETIC DEMO'}</span>
+        <span>{dataMode?.label || (loading ? '● LOADING LOGISTICS TWIN' : (error ? '● DATA SOURCE WARNING' : twin.source.label))}</span>
         {dataMode?.syntheticNotice ? (
           <span className="text-[9px] tracking-[0.12em] text-slate-400 normal-case font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[60%]">
             {dataMode.syntheticNotice}
@@ -85,3 +91,4 @@ export const LogisticsView: React.FC = () => {
 };
 
 export default LogisticsView;
+

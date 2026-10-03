@@ -60,22 +60,28 @@ interface GridSubstationOverlayProps {
   map: google.maps.Map;
   onSelect: (assetId: string) => void;
   isSelected: boolean;
+  isConnected: boolean;
+  isNeighbor: boolean;
 }
 
 function createGridSubstationOverlay(
-  { substation, map, onSelect, isSelected }: GridSubstationOverlayProps
+  { substation, map, onSelect, isSelected, isConnected, isNeighbor }: GridSubstationOverlayProps
 ): google.maps.OverlayView {
   class GridSubstationOverlay extends google.maps.OverlayView {
     private substation: GridAsset;
     private div: HTMLDivElement | null = null;
     private onSelect: (assetId: string) => void;
     private isSelected: boolean;
+    private isConnected: boolean;
+    private isNeighbor: boolean;
 
     constructor(props: GridSubstationOverlayProps) {
       super();
       this.substation = props.substation;
       this.onSelect = props.onSelect;
       this.isSelected = props.isSelected;
+      this.isConnected = props.isConnected;
+      this.isNeighbor = props.isNeighbor;
       this.setMap(props.map);
     }
 
@@ -88,14 +94,15 @@ function createGridSubstationOverlay(
       button.className = `substation-marker ${this.isSelected ? 'selected' : ''}`;
       button.title = this.substation.name;
       button.innerHTML = '●';
-      button.style.width = '16px';
-      button.style.height = '16px';
+      button.style.width = this.isSelected ? '18px' : '14px';
+      button.style.height = this.isSelected ? '18px' : '14px';
       button.style.borderRadius = '50%';
-      button.style.border = this.isSelected ? '2px solid #FF6B6B' : '1px solid #444';
+      button.style.border = this.isSelected ? '2px solid #FF6B6B' : this.isConnected || this.isNeighbor ? '2px solid #22D3EE' : '1px solid #444';
       button.style.background = this.getVoltageColor(this.substation.voltageLevelKV);
       button.style.padding = '0';
       button.style.cursor = 'pointer';
-      button.style.boxShadow = this.isSelected ? '0 0 8px rgba(255, 107, 107, 0.8)' : 'none';
+      button.style.boxShadow = this.isSelected ? '0 0 10px rgba(255, 107, 107, 0.8)' : this.isConnected || this.isNeighbor ? '0 0 8px rgba(34, 211, 238, 0.5)' : 'none';
+      button.style.opacity = this.isSelected ? '1' : this.isConnected || this.isNeighbor ? '0.95' : '0.6';
 
       button.addEventListener('click', () => {
         this.onSelect(this.substation.id);
@@ -140,7 +147,16 @@ function createGridSubstationOverlay(
     }
   }
 
-  return new GridSubstationOverlay({ substation, map, onSelect, isSelected });
+  const overlayProps: GridSubstationOverlayProps = {
+    substation,
+    map,
+    onSelect,
+    isSelected,
+    isConnected,
+    isNeighbor,
+  };
+
+  return new GridSubstationOverlay(overlayProps);
 }
 
 interface GridMapCanvasProps {
@@ -191,6 +207,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
+  const previousCameraRef = useRef<{ center: google.maps.LatLngLiteral; zoom: number } | null>(null);
   const overlaysRef = useRef<Map<string, google.maps.OverlayView>>(new Map());
   const polylinesRef = useRef<Map<string, google.maps.Polyline>>(new Map());
   const [mapState, setMapState] = useState<MapProviderState>(MapProviderState.LOADING);
@@ -333,6 +350,16 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
     };
   }, []);
 
+  const selectedAsset = selectedAssetId ? substations[selectedAssetId] : null;
+  const selectedConnectedLineIds = useMemo(() => {
+    if (!selectedAsset) return new Set<string>();
+    return new Set<string>(selectedAsset.connectedLines.filter(Boolean));
+  }, [selectedAsset]);
+  const selectedNeighborIds = useMemo(() => {
+    if (!selectedAsset) return new Set<string>();
+    return new Set<string>(selectedAsset.connectedSubstations.filter(Boolean));
+  }, [selectedAsset]);
+
   useEffect(() => {
     if (mapState !== MapProviderState.READY || !mapRef.current) return;
 
@@ -350,6 +377,8 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
 
     if (hasSubstations) {
       Object.values(substations).forEach((substation) => {
+        const isSelected = selectedAssetId === substation.id;
+        const isConnected = selectedAssetId ? selectedConnectedLineIds.has(substation.id) || selectedNeighborIds.has(substation.id) : false;
         const shouldDisplayMarker = !shouldHideDenseMarkers || Number.isFinite(substation.latitude) && Number.isFinite(substation.longitude);
         if (!shouldDisplayMarker) {
           return;
@@ -359,7 +388,9 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
           substation,
           map: mapRef.current!,
           onSelect: onSelectAsset || (() => {}),
-          isSelected: selectedAssetId === substation.id
+          isSelected,
+          isConnected,
+          isNeighbor: selectedNeighborIds.has(substation.id)
         });
         overlaysRef.current.set(substation.id, overlay);
       });
@@ -372,12 +403,19 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
         }
 
         const lineColor = getLineColor(line.voltageKV);
+        const isLocalLine = selectedAssetId
+          ? line.id === selectedAssetId
+            || selectedConnectedLineIds.has(line.id)
+            || line.fromSubstationId === selectedAssetId
+            || line.toSubstationId === selectedAssetId
+          : false;
+
         const polyline = new google.maps.Polyline({
           path: line.pathCoordinates.map(([lng, lat]) => ({ lat, lng })),
           geodesic: true,
           strokeColor: lineColor,
-          strokeOpacity: currentZoom < 7 ? 0.45 : 0.8,
-          strokeWeight: currentZoom < 7 ? 1.4 : 2,
+          strokeOpacity: isLocalLine ? 1 : currentZoom < 7 ? 0.45 : 0.8,
+          strokeWeight: isLocalLine ? 4 : currentZoom < 7 ? 1.4 : 2,
           map: mapRef.current!
         });
 
@@ -395,7 +433,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
       substationCount: Object.keys(substations).length,
       lineCount: Object.keys(lines).length
     });
-  }, [mapState, substations, lines, selectedAssetId, resolvedVisibleLayers, onSelectAsset, cameraPreset]);
+  }, [mapState, substations, lines, selectedAssetId, resolvedVisibleLayers, onSelectAsset, cameraPreset, selectedConnectedLineIds, selectedNeighborIds]);
 
   useEffect(() => {
     if (mapState !== MapProviderState.READY || !mapRef.current) return;
@@ -442,6 +480,34 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
       onSelectAsset(assetId);
     }
   }, [onSelectAsset]);
+
+  useEffect(() => {
+    if (mapState !== MapProviderState.READY || !mapRef.current) return;
+
+    if (!selectedAssetId || !selectedAsset) {
+      if (selectedAssetId === null || selectedAssetId === undefined) {
+        if (previousCameraRef.current && mapRef.current) {
+          mapRef.current.panTo(previousCameraRef.current.center);
+          mapRef.current.setZoom(previousCameraRef.current.zoom);
+          previousCameraRef.current = null;
+        }
+      }
+      return;
+    }
+
+    if (!Number.isFinite(selectedAsset.latitude) || !Number.isFinite(selectedAsset.longitude)) return;
+
+    const target = new google.maps.LatLng(selectedAsset.latitude, selectedAsset.longitude);
+    if (!previousCameraRef.current) {
+      previousCameraRef.current = {
+        center: mapRef.current.getCenter()?.toJSON() ?? mapCameraPresets[cameraPreset].center,
+        zoom: mapRef.current.getZoom() ?? mapCameraPresets[cameraPreset].zoom
+      };
+    }
+
+    mapRef.current.panTo(target);
+    mapRef.current.setZoom(Math.max(mapRef.current.getZoom() ?? 8, 8.5));
+  }, [mapState, cameraPreset, selectedAssetId, selectedAsset]);
 
   const statusDetail = MAP_STATUS_DETAILS[mapState];
 

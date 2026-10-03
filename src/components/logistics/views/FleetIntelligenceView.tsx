@@ -1,4 +1,4 @@
-﻿/**
+/**
  * KETRACO Logistics Intelligence - Fleet Telematics & Heavy Transport Registry
  * Fully operationalized per Master Enactment 02 directives.
  * Deeply connected to backend telemetry pipeline, route optimization, and GIS providers.
@@ -10,22 +10,27 @@ import {
   BatteryCharging, Wrench, Fuel, MapPin, Activity, CheckCircle2,
   Clock, ArrowRight, Gauge, Radio, Send, Navigation, Layers, Cpu, Compass
 } from 'lucide-react';
+import type { LogisticsTwin } from '../logistics-data-fabric';
 import type { VehicleOperationalState } from '../../../../backend/domains/logistics/providers/types';
 import { FleetMap } from '../fleet/FleetMap';
 import { DispatchModal } from '../fleet/DispatchModal';
 import { TelemetrySimulatorModal } from '../fleet/TelemetrySimulatorModal';
 import { RouteOptimizationModal } from '../fleet/RouteOptimizationModal';
 
-export default function FleetIntelligenceView() {
-  const [fleetStates, setFleetStates] = useState<VehicleOperationalState[]>([]);
+interface FleetIntelligenceViewProps {
+  twin: LogisticsTwin;
+  loading: boolean;
+  error: string | null;
+}
+
+export default function FleetIntelligenceView({ twin, loading, error }: FleetIntelligenceViewProps) {
   const [substations, setSubstations] = useState<any[]>([]);
   const [bottlenecks, setBottlenecks] = useState<any[]>([]);
   const [providerMetadata, setProviderMetadata] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [regionFilter, setRegionFilter] = useState('ALL');
-  const [selectedVehicle, setSelectedVehicle] = useState<VehicleOperationalState | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState(twin.vehicles[0] || null);
   const [viewMode, setViewMode] = useState<'LIST' | 'MAP'>('LIST');
 
   // Modals state
@@ -34,70 +39,53 @@ export default function FleetIntelligenceView() {
   const [isRouteCalcOpen, setIsRouteCalcOpen] = useState(false);
   const [lastNotification, setLastNotification] = useState<string | null>(null);
 
-  const fetchOperationalData = async () => {
-    setLoading(true);
-    try {
-      // 1. Fetch Fleet Operational States
-      const statesRes = await fetch('/api/logistics/fleet/states');
-      const statesJson = await statesRes.json();
-      if (statesJson.ok && statesJson.data?.states) {
-        setFleetStates(statesJson.data.states);
-        if (statesJson.data.states.length > 0 && !selectedVehicle) {
-          setSelectedVehicle(statesJson.data.states[0]);
-        }
-      }
-
-      // 2. Fetch Substations
-      const substationsRes = await fetch('/api/logistics/substations');
-      const substationsJson = await substationsRes.json();
-      if (substationsJson.ok && substationsJson.data) {
-        setSubstations(substationsJson.data.substations || []);
-      }
-
-      // 3. Fetch Corridor Bottlenecks
-      const bottlenecksRes = await fetch('/api/logistics/corridors/bottlenecks');
-      const bottlenecksJson = await bottlenecksRes.json();
-      if (bottlenecksJson.ok && bottlenecksJson.data) {
-        setBottlenecks(bottlenecksJson.data.bottlenecks || []);
-      }
-
-      // 4. Fetch Provider Status
-      const providerRes = await fetch('/api/logistics/providers/status');
-      const providerJson = await providerRes.json();
-      if (providerJson.ok && providerJson.data) {
-        setProviderMetadata(providerJson.data.googleMaps);
-      }
-    } catch (e) {
-      console.error('Failed to load operational fleet data:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchOperationalData();
-    // Auto-refresh telemetry states every 30 seconds
-    const interval = setInterval(fetchOperationalData, 30000);
-    return () => clearInterval(interval);
+    const fetchStaticData = async () => {
+      try {
+        // Fetch Substations
+        const substationsRes = await fetch('/api/logistics/substations');
+        const substationsJson = await substationsRes.json();
+        if (substationsJson.ok && substationsJson.data) {
+          setSubstations(substationsJson.data.substations || []);
+        }
+
+        // Fetch Corridor Bottlenecks
+        const bottlenecksRes = await fetch('/api/logistics/corridors/bottlenecks');
+        const bottlenecksJson = await bottlenecksRes.json();
+        if (bottlenecksJson.ok && bottlenecksJson.data) {
+          setBottlenecks(bottlenecksJson.data.bottlenecks || []);
+        }
+
+        // Fetch Provider Status
+        const providerRes = await fetch('/api/logistics/providers/status');
+        const providerJson = await providerRes.json();
+        if (providerJson.ok && providerJson.data) {
+          setProviderMetadata(providerJson.data.googleMaps);
+        }
+      } catch (e) {
+        console.error('Failed to load operational fleet data:', e);
+      }
+    };
+
+    void fetchStaticData();
   }, []);
 
   const handleDispatchSuccess = (missionData: any) => {
     setLastNotification(`Mission ${missionData.missionCode} authorized! Vehicle assigned and dispatched.`);
-    fetchOperationalData();
     setTimeout(() => setLastNotification(null), 6000);
   };
 
   const handleTelemetryIngested = (result: any) => {
     setLastNotification(`Telemetry packet ingested: ${result.vehicleId} updated on ${result.locationName || 'highway corridor'}.`);
-    fetchOperationalData();
     setTimeout(() => setLastNotification(null), 6000);
   };
 
-  const filteredFleet = fleetStates.filter(v => {
+  const filteredFleet = twin.vehicles.filter(v => {
     const matchesSearch =
       v.code.toLowerCase().includes(search.toLowerCase()) ||
-      v.name.toLowerCase().includes(search.toLowerCase()) ||
-      v.licensePlate.toLowerCase().includes(search.toLowerCase()) ||
+      v.name.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === 'ALL' || v.status === statusFilter;
+    const matchesRegion = regionFilter === 'ALL' || v.region === regionFilter;
       v.vehicleType.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || v.status === statusFilter;
     const matchesRegion = regionFilter === 'ALL' || v.region === regionFilter;
