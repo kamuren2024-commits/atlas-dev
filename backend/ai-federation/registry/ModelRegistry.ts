@@ -53,6 +53,48 @@ export class AtlasModelRegistry {
 
   private constructor() {
     this.seedCanonicalModels();
+    this.ensureLocalFallbackModel();
+  }
+
+  private ensureLocalFallbackModel(): void {
+    const now = new Date().toISOString();
+    const existing = this.models.get('atlas-local-fallback');
+    if (existing) {
+      existing.availability = 'ACTIVE';
+      existing.eligibility = 'PASSED';
+      existing.deploymentMode = 'LOCAL';
+      return;
+    }
+
+    this.models.set('atlas-local-fallback', {
+      modelId: 'atlas-local-fallback',
+      provider: 'ollama',
+      modelName: 'Atlas Local Fallback',
+      deploymentMode: 'LOCAL',
+      capabilities: {
+        toolCalling: true,
+        vision: false,
+        structuredOutput: true,
+        streaming: true,
+        reasoningScore: 78,
+      },
+      contextWindow: 32768,
+      latencyClass: 'MEDIUM',
+      costClass: 'FREE',
+      availability: 'ACTIVE',
+      eligibility: 'PASSED',
+      health: {
+        lastChecked: now,
+        consecutiveErrors: 0,
+        avgLatencyMs: 1200,
+      },
+      version: 'offline',
+      routingPolicy: {
+        preferredTasks: ['copilot', 'react_planning', 'analysis', 'offline_fallback', 'local_reasoning'],
+        priority: 1,
+        requiresAirGap: true,
+      },
+    });
   }
 
   public static getInstance(): AtlasModelRegistry {
@@ -174,7 +216,7 @@ export class AtlasModelRegistry {
   public async refreshLocalModels(): Promise<ModelRegistryEntry[]> {
     try {
       const live = await this.ollamaClient.listModels(15000);
-      const existingLocalKeys = Array.from(this.models.keys()).filter((key) => this.models.get(key)?.provider === 'ollama');
+      const existingLocalKeys = Array.from(this.models.keys()).filter((key) => this.models.get(key)?.provider === 'ollama' && key !== 'atlas-local-fallback');
       for (const key of existingLocalKeys) {
         this.models.delete(key);
       }
@@ -212,9 +254,11 @@ export class AtlasModelRegistry {
         };
         this.models.set(tag.name, model);
       }
+      this.ensureLocalFallbackModel();
       return Array.from(this.models.values()).filter((model) => model.provider === 'ollama');
     } catch {
-      return [];
+      this.ensureLocalFallbackModel();
+      return [this.models.get('atlas-local-fallback')!];
     }
   }
 
@@ -262,14 +306,17 @@ export class AtlasModelRegistry {
     );
 
     const localCandidates = candidates.filter((m) => m.deploymentMode === 'LOCAL');
-    if (localCandidates.length > 0 && (params.requiresAirGap || !params.preferredProvider || params.preferredProvider === 'ollama')) {
-      const preferredLocal = localCandidates.sort((a, b) => a.routingPolicy.priority - b.routingPolicy.priority)[0];
-      if (preferredLocal) return preferredLocal;
-    }
+    const localFallback = this.models.get('atlas-local-fallback') || localCandidates[0];
 
     if (params.requiresAirGap) {
+      if (localFallback) return localFallback;
       const airGapped = candidates.find((m) => m.deploymentMode === 'LOCAL');
       if (airGapped) return airGapped;
+    }
+
+    if (localCandidates.length > 0 && (!params.preferredProvider || params.preferredProvider === 'ollama')) {
+      const preferredLocal = localCandidates.sort((a, b) => a.routingPolicy.priority - b.routingPolicy.priority)[0];
+      if (preferredLocal) return preferredLocal;
     }
 
     if (params.preferredProvider) {

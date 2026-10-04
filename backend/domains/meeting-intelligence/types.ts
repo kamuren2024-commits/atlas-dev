@@ -350,7 +350,11 @@ export interface DecisionRecord {
   implementation_notes?: string;
   approved_by?: string;
   approved_at?: string;
-  audit_trail: Array<{ action: string; user: string; timestamp: string; note?: string }>;
+  version?: number;
+  supersedesDecisionId?: string;
+  sourceMeetingId?: string;
+  sourceEvidence?: Array<{ quote: string; sourceRef: string; timestamp?: string }>;
+  audit_trail: Array<{ action: string; user: string; timestamp: string; note?: string; version?: number; supersedesDecisionId?: string }>; 
   created_at: string;
   updated_at?: string;
 }
@@ -384,6 +388,10 @@ export interface ActionControlItem {
   verification_notes?: string;
   verified_by?: string;
   completed_at?: string;
+  version?: number;
+  supersedesActionId?: string;
+  sourceDecisionId?: string;
+  sourceEvidence?: Array<{ quote: string; sourceRef: string; timestamp?: string }>;
   escalation_level: number;
   escalated_to?: string;
   last_notified_at?: string;

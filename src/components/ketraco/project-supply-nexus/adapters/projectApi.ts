@@ -52,6 +52,17 @@ import type {
 export type { Project360Snapshot, ProjectDataSourceState };
 export type ProjectEnvelope = ProjectRecord;
 
+export function projectSupplyHeaders(init: HeadersInit = {}): Headers {
+  const headers = new Headers(init);
+  if (typeof window !== 'undefined') {
+    const token = window.localStorage.getItem('atlas_access_token');
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+  }
+  return headers;
+}
+
 export interface ProjectTelemetryState {
   status: ProjectDataSourceState | 'LIVE' | 'SIMULATED' | 'DEGRADED' | 'STALE' | 'INITIALIZING';
   lastUpdated: string;
@@ -101,7 +112,7 @@ export async function fetchProjectTelemetry(): Promise<ProjectTelemetryState> {
   for (const url of candidates) {
     try {
       const res = await fetch(url, {
-        headers: { Accept: 'application/json' },
+        headers: projectSupplyHeaders({ Accept: 'application/json' }),
         signal: AbortSignal.timeout(1200)
       });
 
@@ -147,7 +158,7 @@ export interface ProjectSupplySnapshot {
 
 export async function fetchProjectMilestones(projectId: string, signal?: AbortSignal): Promise<ProjectMilestone[]> {
   const response = await fetch(`/api/project-supply/projects/${encodeURIComponent(projectId)}/milestones?limit=100`, {
-    headers: { Accept: 'application/json' },
+    headers: projectSupplyHeaders({ Accept: 'application/json' }),
     signal,
   });
   const payload = await response.json();
@@ -168,7 +179,11 @@ export async function updateProjectMilestoneForecast(
     `/api/project-supply/projects/${encodeURIComponent(command.projectId)}/milestones/${encodeURIComponent(command.milestoneId)}/forecast`,
     {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Idempotency-Key': command.idempotencyKey },
+      headers: projectSupplyHeaders({
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'Idempotency-Key': command.idempotencyKey,
+      }),
       body: JSON.stringify({
         forecastDate: command.forecastDate,
         reason: command.reason,
@@ -223,7 +238,7 @@ export async function fetchProjectSupplySnapshot(projectId: string): Promise<Pro
 
   try {
     const res = await fetch(`/api/project-supply/projects/${encodeURIComponent(selectedProjectId)}`, {
-      headers: { Accept: 'application/json' },
+      headers: projectSupplyHeaders({ Accept: 'application/json' }),
       signal: AbortSignal.timeout(1500)
     });
     if (!res.ok) {

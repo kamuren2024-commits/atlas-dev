@@ -44,10 +44,14 @@ export function validateMeetingTransition(from: MeetingStatus, to: MeetingStatus
 
   const validTransitions: Record<string, string[]> = {
     'DRAFT': ['SCHEDULED', 'CANCELLED'],
-    'SCHEDULED': ['LIVE', 'DRAFT', 'CANCELLED'],
-    'LIVE': ['PAUSED', 'COMPLETED'],
-    'PAUSED': ['LIVE', 'COMPLETED'],
-    'COMPLETED': ['ARCHIVED'],
+    'SCHEDULED': ['READY', 'LIVE', 'DRAFT', 'CANCELLED'],
+    'READY': ['LIVE', 'CANCELLED'],
+    'LIVE': ['PAUSED', 'PROCESSING', 'COMPLETED'],
+    'PAUSED': ['LIVE', 'PROCESSING', 'COMPLETED'],
+    'PROCESSING': ['REVIEW', 'LIVE', 'COMPLETED'],
+    'REVIEW': ['PUBLISHED', 'COMPLETED'],
+    'COMPLETED': ['REVIEW', 'ARCHIVED'],
+    'PUBLISHED': ['ARCHIVED'],
     'CANCELLED': ['ARCHIVED'],
     'ARCHIVED': []
   };
@@ -61,6 +65,35 @@ export function validateMeetingTransition(from: MeetingStatus, to: MeetingStatus
   }
 
   return { valid: true };
+}
+
+function normalizeDecisionMetadata(decision: Partial<DecisionRecord>): { version: number; supersedesDecisionId?: string; sourceEvidence?: Array<{ quote: string; sourceRef: string; timestamp?: string }> } {
+  const version = typeof decision.version === 'number' ? decision.version : 1;
+  const evidence = decision.sourceEvidence || (
+    decision.evidence_text
+      ? [{ quote: decision.evidence_text, sourceRef: decision.meeting_id || 'meeting-proceedings', timestamp: new Date().toISOString() }]
+      : []
+  );
+  return {
+    version,
+    supersedesDecisionId: decision.supersedesDecisionId,
+    sourceEvidence: evidence,
+  };
+}
+
+function normalizeActionMetadata(action: Partial<ActionControlItem>): { version: number; supersedesActionId?: string; sourceDecisionId?: string; sourceEvidence?: Array<{ quote: string; sourceRef: string; timestamp?: string }> } {
+  const version = typeof action.version === 'number' ? action.version : 1;
+  const evidence = action.sourceEvidence || (
+    action.evidence_text
+      ? [{ quote: action.evidence_text, sourceRef: action.source_meeting_id || 'meeting-proceedings', timestamp: new Date().toISOString() }]
+      : []
+  );
+  return {
+    version,
+    supersedesActionId: action.supersedesActionId,
+    sourceDecisionId: action.sourceDecisionId,
+    sourceEvidence: evidence,
+  };
 }
 
 export class MeetingIntelligenceRepository {
@@ -1560,6 +1593,10 @@ export class MeetingIntelligenceRepository {
     const id = decision.id || `DEC_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
     const code = decision.code || `D-0${Math.floor(240 + Math.random() * 50)}`;
     const now = new Date().toISOString();
+    const metadata = normalizeDecisionMetadata(decision);
+    const initialAuditTrail = (decision.audit_trail && decision.audit_trail.length > 0 ? decision.audit_trail : [
+      { action: 'CREATED', user: 'Operator', timestamp: now, note: 'Decision drafted for committee', version: metadata.version }
+    ]);
 
     const record: DecisionRecord = {
       id,
@@ -1577,12 +1614,18 @@ export class MeetingIntelligenceRepository {
       confidence: decision.confidence || 90,
       requires_human_approval: decision.requires_human_approval !== false,
       evidence_text: decision.evidence_text,
-      implementation_notes: decision.implementation_notes,
+      implementation_notes: decision.implementation_notes || (metadata.sourceEvidence && metadata.sourceEvidence.length ? JSON.stringify({ version: metadata.version, supersedesDecisionId: metadata.supersedesDecisionId, evidence: metadata.sourceEvidence }) : undefined),
       approved_by: decision.approved_by,
       approved_at: decision.approved_at,
-      audit_trail: decision.audit_trail || [
-        { action: 'CREATED', user: 'Operator', timestamp: now, note: 'Decision drafted for committee' }
-      ],
+      version: metadata.version,
+      supersedesDecisionId: metadata.supersedesDecisionId,
+      sourceMeetingId: decision.sourceMeetingId || decision.meeting_id,
+      sourceEvidence: metadata.sourceEvidence,
+      audit_trail: initialAuditTrail.map(entry => ({
+        ...entry,
+        version: entry.version ?? metadata.version,
+        supersedesDecisionId: entry.supersedesDecisionId ?? metadata.supersedesDecisionId,
+      })),
       created_at: now,
       updated_at: now
     };
@@ -1617,13 +1660,19 @@ export class MeetingIntelligenceRepository {
       const row = await this.db.get<any>(`SELECT * FROM meeting_decisions WHERE id = ? OR code = ?`, [id, id]);
       if (!row) return false;
 
+      const allowedStates = ['AWAITING_APPROVAL', 'PROPOSED', 'DEFERRED'];
+      if (!allowedStates.includes(row.status)) {
+        return false;
+      }
+
       const auditTrail = JSON.parse(row.audit_trail_json || '[]');
       const approvedAt = new Date().toISOString();
       auditTrail.push({
         action: 'APPROVED_BY_CHAIR',
         user: actor,
         timestamp: approvedAt,
-        note: 'Statutory verification complete under PPADA §71'
+        note: 'Statutory verification complete under PPADA §71',
+        version: Number(row.audit_trail_json && JSON.parse(row.audit_trail_json || '[]').at(-1)?.version || 1)
       });
 
       await this.db.run(
@@ -1653,11 +1702,13 @@ export class MeetingIntelligenceRepository {
 
       const auditTrail = JSON.parse(row.audit_trail_json || '[]');
       const timestamp = new Date().toISOString();
+      const nextVersion = Number((auditTrail.at(-1)?.version || 1)) + 1;
       auditTrail.push({
         action: `STATUS_CHANGE_TO_${status}`,
         user: actor,
         timestamp,
-        note: notes || 'Status updated via Decision Register'
+        note: notes || 'Status updated via Decision Register',
+        version: nextVersion
       });
 
       await this.db.run(
@@ -1666,6 +1717,13 @@ export class MeetingIntelligenceRepository {
          WHERE id = ?`,
         [status, JSON.stringify(auditTrail), timestamp, row.id]
       );
+
+      if (status === 'APPROVED' && !row.approved_by) {
+        await this.db.run(
+          `UPDATE meeting_decisions SET approved_by = ?, approved_at = ? WHERE id = ?`,
+          [actor, timestamp, row.id]
+        );
+      }
 
       await this.logAudit('EDIT', 'DECISION', row.id, actor, { newStatus: status, notes });
       return true;
@@ -1702,7 +1760,7 @@ export class MeetingIntelligenceRepository {
   public async createAction(action: Partial<ActionControlItem>): Promise<ActionControlItem> {
     const id = action.id || `ACT_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
     const now = new Date().toISOString();
-
+    const metadata = normalizeActionMetadata(action);
     const record: ActionControlItem = {
       id,
       action_title: action.action_title || 'Governance Action Item',
@@ -1718,6 +1776,12 @@ export class MeetingIntelligenceRepository {
       evidence_text: action.evidence_text,
       dependencies: action.dependencies || [],
       linked_entities: action.linked_entities || [],
+      verification_notes: action.verification_notes || (metadata.sourceEvidence.length ? JSON.stringify({ version: metadata.version, supersedesActionId: metadata.supersedesActionId, sourceDecisionId: metadata.sourceDecisionId, sourceEvidence: metadata.sourceEvidence }) : undefined),
+      verified_by: action.verified_by,
+      version: metadata.version,
+      supersedesActionId: metadata.supersedesActionId,
+      sourceDecisionId: metadata.sourceDecisionId,
+      sourceEvidence: metadata.sourceEvidence,
       escalation_level: 0,
       workflow_triggered: false,
       created_at: now,

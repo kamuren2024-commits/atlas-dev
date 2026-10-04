@@ -1,44 +1,56 @@
-Selected Phase:
-Phase II — Explicit Enterprise Mission State Machine and Ledger Enforcement
+Phase:
+Enactment Evaluation Control Plane
 
-Primary Capability:
-Agent runtime state-validation and mission lifecycle integrity
+Objective:
+Make cumulative evaluation, evidence collection, regression detection, trust gating, and next-phase selection executable platform behavior.
 
-Benchmark Evidence:
-- `docs/agentic-ai/AGENT-STATE-MACHINE.md` states that the runtime uses a cognitive loop but does not implement the enterprise lifecycle required by the Phase II contract.
-- `docs/tevv/agent-test-results.json` records the result: "The lifecycle is not the explicit enterprise state machine required by the Phase II contract."
-- `docs/architecture/ATLAS-KERNEL.md` confirms that mission transitions are required by the canonical kernel boundary, while durable execution and evidence tracking remain partial.
+Prerequisites:
+- Mission state machine
+- Mission ledger
+- Durable execution
+- Existing evaluation/TEVV infrastructure
 
 Repository Evidence:
-- `backend/ai-federation/agents/AgentRuntime.ts` defines the enterprise mission states (`CREATED`, `OBSERVING`, `UNDERSTANDING`, `PLANNING`, `POLICY_CHECK`, `WAITING_APPROVAL`, `EXECUTING`, `VERIFYING`, `REFLECTING`, `REPLANNING`, `COMPLETED`, `FAILED`, `ESCALATED`, `CANCELLED`, `TIMED_OUT`, `BUDGET_EXCEEDED`) but never enforces them.
-- The runtime calls `recordTransition(...)` at several points without a concrete implementation, leaving the ledger and transition validation absent.
-- `platform/kernel/contracts.ts` already defines the canonical mission transition map and `assertMissionTransition` contract, so the missing work is an adapter-layer enforcement gap rather than a redesign.
+- `backend/evaluation/ENACTMENT_EVALUATION_ENGINE.ts` already implements a cumulative enactment inventory and evaluation summaries.
+- `backend/evaluation/eval-harness.ts` implements executable evaluation suites for agents, gateway, ontology, and tools.
+- `platform/kernel/contracts.ts` defines canonical mission and enactment status vocabularies and transition guards.
+- `backend/ai-federation/agents/AgentControlPlane.ts` defines `EvalSuite`, `EvalCase`, `EvalRun`, and assertion-oriented evaluation primitives.
+- `backend/ai-federation/agents/AgentRuntime.ts` now enforces mission transition validation and retains a mission ledger.
+- `docs/tevv/ATLAS-PLATFORM-EVALUATION.md` documents the evaluation model as PARTIAL/IMPLEMENTED/UNVERIFIED rather than a fully trusted runtime boundary.
 
-Why This Is the Next Dependency:
-This is the highest-priority dependency because it gates auditability, safe execution, and approval semantics. Without a strict state machine, the runtime can reach success or failure without durable evidence, invalid mission transitions remain silent, and downstream features such as approval, replay, retry, and evidence chaining cannot be trusted.
+Implementation Status:
+- Real: evaluation inventory engine, TEVV harness, kernel mission contract, runtime transition enforcement
+- Partial: dependency-aware invalidation, immutable historical runs, trust gate propagation, CLI/API exposure, and structured evaluation registry
+- Unverified: full enactment registry integration, regression detection persistence, adversarial security evaluations, and next-phase recommendation automation
+
+Why This Phase Is Required:
+The repository has multiple evaluation artifacts and contracts, but they remain fragmented across engines, harnesses, registry interfaces, and runtime code. The next dependency is to make evaluation a mandatory control plane that is actually wired into enactment registration, dependency invalidation, trust gating, and evidence-backed status updates rather than allowing unverified or ad hoc evaluations.
 
 Dependencies:
-- `platform/kernel/contracts.ts` canonical mission statuses and transition assertions
-- `backend/ai-federation/agents/AgentRuntime.ts` runtime mission ledger and execution loop
-- event/audit adapters already present in the kernel and mission architecture
+- `platform/kernel/contracts.ts`
+- `backend/ai-federation/agents/AgentRuntime.ts`
+- `backend/evaluation/ENACTMENT_EVALUATION_ENGINE.ts`
+- `backend/evaluation/eval-harness.ts`
+- `backend/ai-federation/agents/AgentControlPlane.ts`
+- `docs/tevv/`
 
 Consumers:
-- Agent orchestration and execution loops
-- Approval and policy workflows
-- Audit and evidence capture paths
-- Recovery, replay, and re-planning flows
+- Future enactments and platform capabilities
+- Model, agent, skill, tool, mission, workflow, and policy evaluation paths
+- Trust and eligibility checks for autonomous execution
+- Next-phase dependency recommendation and regression tracking
 
 Security Impact:
-Medium to high. The runtime must fail closed when mission state transitions are invalid, preventing silent success and unverified execution. This strengthens the trust boundary by making every mission path auditable and policy-aware.
+Medium. The evaluation control plane must enforce evidence-before-pass and trust-gate logic without becoming an authorization bypass. This closes a major gap by preventing unverified or stale capabilities from being treated as trusted.
 
 Agentic Capabilities Unlocked:
-- Safe mission transitions and replay
-- Trustworthy approval gating
-- Evidence-backed verification and audit trails
-- Recovery and re-planning without invalid terminal states
+- Mandatory evaluation for future enactments
+- Trust-gated eligibility updates
+- Dependency-aware invalidation and regression identification
+- Evidence-backed next-phase selection
 
 Explicitly Deferred Capabilities:
-- Full durable workflow checkpointing across process restarts
-- Cross-tenant residency enforcement and production identity hardening
-- Full government-grade audit retention and hash-chained evidence storage
-- Broad multi-agent orchestration and tool security hardening beyond the state-machine contract
+- Full production-quality durable TEVV persistence under governance-grade retention rules
+- Complete adversarial suite coverage for every runtime subject type
+- Broad API/CLI parity beyond the core evaluation interface
+- Full global-scale autonomous deployment trust gating

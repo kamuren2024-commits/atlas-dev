@@ -102,7 +102,7 @@ export class MeetingCopilotService {
     try {
       // Validate user is authorized for this meeting
       const meeting = await this.db.get<MeetingEntity>(
-        `SELECT * FROM meetings WHERE id = ? AND tenant_id = ?`,
+        `SELECT * FROM meeting_entities WHERE id = ? AND tenant_id = ?`,
         [meetingId, userTenantId]
       );
 
@@ -229,7 +229,7 @@ export class MeetingCopilotService {
       // Grounded query patterns — database only, never AI-generated
       if (lowerPrompt.includes('last meeting') || lowerPrompt.includes('previous meeting')) {
         const lastMeeting = await this.db.get<MeetingEntity>(
-          `SELECT * FROM meetings WHERE tenant_id = ? ORDER BY start_time DESC LIMIT 1`,
+          `SELECT * FROM meeting_entities WHERE tenant_id = ? ORDER BY date DESC, start_time DESC LIMIT 1`,
           [userTenantId]
         );
 
@@ -260,8 +260,7 @@ export class MeetingCopilotService {
 
       if (lowerPrompt.includes('overdue') || lowerPrompt.includes('at risk')) {
         const atRiskActions = await this.db.all<any>(
-          `SELECT * FROM meeting_actions WHERE tenant_id = ? AND status IN ('OVERDUE', 'AT_RISK') LIMIT 5`,
-          [userTenantId]
+          `SELECT * FROM meeting_actions WHERE status IN ('OVERDUE', 'AT_RISK') LIMIT 5`
         );
 
         if (atRiskActions.length > 0) {

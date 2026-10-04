@@ -859,10 +859,14 @@ export function createMeetingIntelligenceApiRouter(): Router {
   // --- COPILOT ---
   router.post('/copilot/ask', async (req: Request, res: Response) => {
     try {
-      const { prompt, context } = req.body || {};
+      const { prompt, context, userId, tenantId, userRole } = req.body || {};
       if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
-      const reply = await copilot.ask(prompt, context);
+      const authenticatedUserId = userId || (req.headers['x-user-id'] as string) || 'operator';
+      const userTenantId = tenantId || (req.headers['x-tenant-id'] as string) || 'ketraco';
+      const role = userRole || (req.headers['x-user-role'] as string) || 'CHAIR';
+
+      const reply = await copilot.ask(prompt, authenticatedUserId, userTenantId, role, context || {});
       res.json(reply);
     } catch (err: any) {
       console.error('[API] Copilot ask error:', err);

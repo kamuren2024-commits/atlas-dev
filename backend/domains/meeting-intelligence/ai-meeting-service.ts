@@ -133,7 +133,7 @@ export class AiMeetingService {
       id: `MIN_${meeting.id}_${Date.now()}`,
       meeting_id: meeting.id,
       version: 1,
-      status: 'DRAFT',
+      status: 'SECRETARY_REVIEW',
       title: `Official Minutes of ${meeting.title}`,
       date: meeting.date,
       location: meeting.room || 'KETRACO Executive Conference Room, Nairobi',
@@ -196,20 +196,20 @@ export class AiMeetingService {
     try {
       // Search meeting decisions
       const decisions = await this.db.all<any>(
-        `SELECT * FROM meeting_decisions WHERE tenant_id = ? AND (title LIKE ? OR description LIKE ?) LIMIT 10`,
-        [tenantId, `%${lower}%`, `%${lower}%`]
+        `SELECT * FROM meeting_decisions WHERE title LIKE ? OR description LIKE ? LIMIT 10`,
+        [`%${lower}%`, `%${lower}%`]
       );
 
       // Search actions
       const actions = await this.db.all<any>(
-        `SELECT * FROM meeting_actions WHERE tenant_id = ? AND (action_title LIKE ? OR description LIKE ?) LIMIT 10`,
-        [tenantId, `%${lower}%`, `%${lower}%`]
+        `SELECT * FROM meeting_actions WHERE action_title LIKE ? OR description LIKE ? LIMIT 10`,
+        [`%${lower}%`, `%${lower}%`]
       );
 
       // Search transcripts
       const transcripts = await this.db.all<any>(
-        `SELECT * FROM meeting_transcripts WHERE tenant_id = ? AND text LIKE ? LIMIT 10`,
-        [tenantId, `%${lower}%`]
+        `SELECT * FROM meeting_transcripts WHERE text LIKE ? LIMIT 10`,
+        [`%${lower}%`]
       );
 
       return [

@@ -379,6 +379,66 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
     });
   }
 
+  router.get('/telemetry', async (req, res) => {
+    const user = (req as AuthenticatedRequest).user;
+    const tenantId = user?.tenantId;
+    if (!user || !tenantId) {
+      return fail(res, 403, 'UNAUTHORIZED', 'Not authorized to read project telemetry');
+    }
+
+    const allowed = await deps.authz.check(user.id, 'project', 'read', {
+      tenantId,
+      resourceId: 'project-supply-telemetry',
+      role: user.role,
+      permissions: user.permissions,
+    });
+    if (!allowed) {
+      return fail(res, 403, 'UNAUTHORIZED', 'Not authorized to read project telemetry');
+    }
+
+    try {
+      const [projectRecord, requirementRecord] = await Promise.all([
+        deps.db.get<{ count: number }>('SELECT COUNT(*) AS count FROM project_supply_project WHERE tenant_id = ?', [tenantId]),
+        deps.db.get<{ count: number }>('SELECT COUNT(*) AS count FROM project_supply_requirement WHERE tenant_id = ?', [tenantId]),
+      ]);
+      const projectCount = Number(projectRecord?.count || 0);
+      const requirementCount = Number(requirementRecord?.count || 0);
+      const status: ProjectDataSourceState = requirementCount > 0 ? 'DERIVED' : projectCount > 0 ? 'NOT_CONNECTED' : 'NOT_CONNECTED';
+      const payload = {
+        status,
+        lastUpdated: new Date().toISOString(),
+        dataFreshnessSeconds: 0,
+        kpis: [
+          {
+            id: 'project-coverage',
+            label: 'Project coverage',
+            value: String(projectCount),
+            delta: requirementCount > 0 ? `${requirementCount} linked requirements` : 'No linked requirement evidence',
+            trend: requirementCount > 0 ? 'up' : 'flat',
+            status: requirementCount > 0 ? 'HEALTHY' : 'WATCH',
+            trendPositive: requirementCount > 0,
+            freshness: 'just now',
+            contributingFactors: requirementCount > 0
+              ? ['Project requirement records are linked to this tenant scope.']
+              : ['No authoritative project requirement evidence is connected for this tenant.'],
+          },
+        ],
+        nodes: [],
+        edges: [],
+        exceptions: [],
+        stages: [],
+        genome: [],
+        materials: [],
+        deltas: [],
+        layers: [],
+      };
+      return res.json({ ok: true, data: payload });
+    } catch (error) {
+      console.error('[PROJECT-SUPPLY] Telemetry read failed:', error);
+      return fail(res, 500, 'TELEMETRY_READ_FAILED', 'Project telemetry could not be loaded.');
+    }
+  });
+
   router.get('/projects/:projectId', async (req, res) => {
     const tenantId = await authorizeProject(req, res, req.params.projectId);
     if (!tenantId) return;

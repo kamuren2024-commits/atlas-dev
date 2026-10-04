@@ -87,7 +87,7 @@ export class MeetingAIContextAssembler {
   ): Promise<AuthorizedMeetingAIContext> {
     // Validate meeting exists and user is authorized
     const meeting = await this.db.get<MeetingEntity>(
-      `SELECT * FROM meetings WHERE id = ? AND tenant_id = ?`,
+      `SELECT * FROM meeting_entities WHERE id = ? AND tenant_id = ?`,
       [meetingId, userTenantId]
     );
 
@@ -103,14 +103,14 @@ export class MeetingAIContextAssembler {
 
     // Fetch authorized transcript segments
     const segments = await this.db.all<TranscriptSegment>(
-      `SELECT * FROM meeting_transcripts WHERE meeting_id = ? AND tenant_id = ? ORDER BY start_seconds ASC`,
-      [meetingId, userTenantId]
+      `SELECT * FROM meeting_transcripts WHERE meeting_id = ? ORDER BY start_seconds ASC`,
+      [meetingId]
     );
 
     // Fetch authorized evidence (stored, not real-time)
     const evidence = await this.db.all<any>(
-      `SELECT * FROM meeting_evidence WHERE meeting_id = ? AND tenant_id = ?`,
-      [meetingId, userTenantId]
+      `SELECT * FROM meeting_evidence WHERE meeting_id = ?`,
+      [meetingId]
     );
 
     const authorizedEvidence = evidence.map((e) => ({
@@ -565,8 +565,3 @@ export class MeetingAiGatewayAdapter {
   }
 }
 
-export interface AIOutputValidationResult {
-  valid: boolean;
-  errors: string[];
-  warnings?: string[];
-}

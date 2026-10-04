@@ -41,6 +41,7 @@ import {
   fetchProjectMilestones,
   fetchProjectSupplySnapshot,
   getMasterProjectById,
+  projectSupplyHeaders,
   updateProjectMilestoneForecast,
   type Project360Snapshot,
   type ProjectSupplySnapshot,
@@ -225,7 +226,7 @@ export const Project360WorkspaceView: React.FC<Project360WorkspaceViewProps> = (
       while (!controller.signal.aborted) {
         try {
           const response = await fetch(`/api/project-supply/projects/${encodeURIComponent(projectId)}/milestones/events`, {
-            headers: { Accept: 'text/event-stream' },
+            headers: projectSupplyHeaders({ Accept: 'text/event-stream' }),
             signal: controller.signal,
           });
           if (!response.ok || !response.body) {

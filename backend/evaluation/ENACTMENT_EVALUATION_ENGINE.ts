@@ -122,15 +122,15 @@ export class EnactmentEvaluationEngine {
     const blockers: Array<{ evaluationId: string; blockers: string[] }> = [];
     const risks: Array<{ evaluationId: string; risks: string[] }> = [];
 
-    for (const eval of evaluations) {
-      byStatus[eval.actualStatus]++;
-      byEligibility[eval.eligibility]++;
+    for (const item of evaluations) {
+      byStatus[item.actualStatus]++;
+      byEligibility[item.eligibility]++;
 
-      if (eval.blockers.length > 0) {
-        blockers.push({ evaluationId: eval.evaluationId, blockers: eval.blockers });
+      if (item.blockers.length > 0) {
+        blockers.push({ evaluationId: item.evaluationId, blockers: item.blockers });
       }
-      if (eval.risks.length > 0) {
-        risks.push({ evaluationId: eval.evaluationId, risks: eval.risks });
+      if (item.risks.length > 0) {
+        risks.push({ evaluationId: item.evaluationId, risks: item.risks });
       }
     }
 
@@ -387,13 +387,13 @@ export class EnactmentEvaluationEngine {
     }
 
     report += `## Detailed Evaluations\n\n`;
-    for (const eval of evaluations) {
-      report += `### ${eval.capabilityId}\n\n`;
-      report += `- **Phase**: ${eval.phaseId}\n`;
-      report += `- **Declared Status**: ${eval.declaredStatus}\n`;
-      report += `- **Actual Status**: ${eval.actualStatus}\n`;
-      report += `- **Eligibility**: ${eval.eligibility}\n`;
-      report += `- **Evidence Refs**: ${eval.artifactRefs.join(', ') || 'None'}\n\n`;
+    for (const item of evaluations) {
+      report += `### ${item.capabilityId}\n\n`;
+      report += `- **Phase**: ${item.phaseId}\n`;
+      report += `- **Declared Status**: ${item.declaredStatus}\n`;
+      report += `- **Actual Status**: ${item.actualStatus}\n`;
+      report += `- **Eligibility**: ${item.eligibility}\n`;
+      report += `- **Evidence Refs**: ${item.artifactRefs.join(', ') || 'None'}\n\n`;
     }
 
     return report;
