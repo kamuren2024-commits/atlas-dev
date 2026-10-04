@@ -144,7 +144,8 @@ describe('Meeting Intelligence operational golden path', () => {
       confidence: 100,
       linked_entity: 'supplier-validation',
       category: 'ACTION',
-      evidence_quote: evidence.quote
+      evidence_quote: evidence.quote,
+      sourceEvidence: [{ quote: evidence.quote, sourceRef: evidence.id, timestamp: transcript.timestamp_label }]
     });
     const review = await repository.reviewDetectedItem(candidate.id, 'ACCEPTED', 'Confirmed in meeting', 'secretary');
     expect(review.success).toBe(true);
@@ -155,11 +156,52 @@ describe('Meeting Intelligence operational golden path', () => {
     const action = (await repository.getActions({ sourceMeetingId: meeting.id }))
       .find(item => item.id === review.promotedEntityId);
     expect(action).toBeDefined();
+    expect(action?.confirmation_actor).toBe('secretary');
+    expect(action?.sourceEvidence?.[0].sourceRef).toBe(evidence.id);
 
-    await repository.updateActionStatus(action!.id, 'IN_PROGRESS', 'action-owner');
-    expect(await repository.verifyAction(action!.id, 'Delivery receipt checked', 'verifier')).toBe(true);
+    expect(await repository.updateActionStatus(action!.id, 'IN_PROGRESS', 'action-owner')).toBe(true);
     expect((await repository.getActions({ sourceMeetingId: meeting.id }))
-      .find(item => item.id === action!.id)?.status).toBe('COMPLETED');
+      .find(item => item.id === action!.id)?.version).toBe(2);
+    expect(await repository.verifyAction(action!.id, 'Delivery receipt checked', 'verifier')).toBe(true);
+    const completedAction = (await repository.getActions({ sourceMeetingId: meeting.id }))
+      .find(item => item.id === action!.id);
+    expect(completedAction?.status).toBe('COMPLETED');
+    expect(completedAction?.version).toBe(3);
+    expect(completedAction?.verified_by).toBe('verifier');
+
+    const decisionCandidate = await repository.addDetectedItem({
+      id: 'SIG_DECISION_GOLDEN_PATH',
+      meeting_id: meeting.id,
+      item_type: 'DECISION',
+      speaker: 'Chair',
+      timestamp_label: transcript.timestamp_label,
+      source_text: 'The committee confirms the supplier validation approach.',
+      suggested_title: 'Confirm supplier validation approach',
+      confidence: 100,
+      linked_entity: 'supplier-validation',
+      category: 'DECISION',
+      evidence_quote: 'The committee confirms the supplier validation approach.',
+      sourceEvidence: [{
+        quote: 'The committee confirms the supplier validation approach.',
+        sourceRef: evidence.id,
+        timestamp: transcript.timestamp_label
+      }]
+    });
+    const decisionReview = await repository.reviewDetectedItem(
+      decisionCandidate.id,
+      'ACCEPTED',
+      'Reviewed against the transcript',
+      'secretary'
+    );
+    expect(decisionReview.success).toBe(true);
+    expect(await repository.approveDecision(decisionReview.promotedEntityId!, 'chair')).toBe(true);
+    const confirmedDecision = (await repository.getDecisions({ meetingId: meeting.id }))
+      .find(item => item.id === decisionReview.promotedEntityId);
+    expect(confirmedDecision?.status).toBe('APPROVED');
+    expect(confirmedDecision?.approved_by).toBe('chair');
+    expect(confirmedDecision?.approved_at).toBeTruthy();
+    expect(confirmedDecision?.version).toBe(2);
+    expect(confirmedDecision?.sourceEvidence?.[0].sourceRef).toBe(evidence.id);
 
     await repository.pauseMeeting(meeting.id, 'chair');
     await repository.resumeMeeting(meeting.id, 'chair');

@@ -151,13 +151,19 @@ export class ClosedLoopAutomationEngine {
    * Submits evidence and transitions action to UNDER_VERIFICATION
    */
   public async submitVerificationEvidence(actionId: string, evidenceText: string, actor: string): Promise<boolean> {
+    if (!actionId || !evidenceText.trim() || !actor.trim()) return false;
+
     try {
-      await this.db.run(
+      const existing = await this.db.get<any>(`SELECT status, version FROM meeting_actions WHERE id = ?`, [actionId]);
+      if (!existing || ['COMPLETED', 'CANCELLED'].includes(existing.status)) return false;
+
+      const update = await this.db.run(
         `UPDATE meeting_actions 
-         SET status = 'UNDER_VERIFICATION', evidence_text = ?, updated_at = ?
-         WHERE id = ?`,
-        [evidenceText, new Date().toISOString(), actionId]
+         SET status = 'UNDER_VERIFICATION', evidence_text = ?, version = ?, updated_at = ?
+         WHERE id = ? AND status = ?`,
+        [evidenceText, Number(existing.version || 1) + 1, new Date().toISOString(), actionId, existing.status]
       );
+      if (update.changes !== 1) return false;
 
       await this.db.run(
         `INSERT INTO meeting_audit_ledger (id, event_type, entity_type, entity_id, actor, details_json, timestamp)
@@ -182,14 +188,20 @@ export class ClosedLoopAutomationEngine {
    * Verifies action completion and promotes to COMPLETED with human verification
    */
   public async verifyAndCompleteAction(actionId: string, verificationNotes: string, verifier: string): Promise<boolean> {
+    if (!actionId || !verificationNotes.trim() || !verifier.trim()) return false;
+
     try {
       const completedAt = new Date().toISOString();
-      await this.db.run(
+      const existing = await this.db.get<any>(`SELECT status, version FROM meeting_actions WHERE id = ?`, [actionId]);
+      if (!existing || ['COMPLETED', 'CANCELLED'].includes(existing.status)) return false;
+
+      const update = await this.db.run(
         `UPDATE meeting_actions 
-         SET status = 'COMPLETED', verification_notes = ?, verified_by = ?, completed_at = ?, updated_at = ?
-         WHERE id = ?`,
-        [verificationNotes, verifier, completedAt, completedAt, actionId]
+         SET status = 'COMPLETED', verification_notes = ?, verified_by = ?, completed_at = ?, version = ?, updated_at = ?
+         WHERE id = ? AND status = ?`,
+        [verificationNotes, verifier, completedAt, Number(existing.version || 1) + 1, completedAt, actionId, existing.status]
       );
+      if (update.changes !== 1) return false;
 
       await this.db.run(
         `INSERT INTO meeting_audit_ledger (id, event_type, entity_type, entity_id, actor, details_json, timestamp)
