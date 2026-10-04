@@ -86,16 +86,18 @@ export type MeetingLoopStage =
 export type MeetingStatus =
   | 'DRAFT'
   | 'SCHEDULED'
+  | 'READY'
   | 'LIVE'
   | 'PAUSED'
-  | 'COMPLETED'
-  | 'CANCELLED'
-  | 'ARCHIVED'
-  | 'CREATED'
-  | 'READY'
   | 'PROCESSING'
   | 'REVIEW'
-  | 'PUBLISHED';
+  | 'COMPLETED'
+  | 'ENDED'
+  | 'PUBLISHED'
+  | 'ARCHIVED'
+  | 'CANCELLED'
+  | 'FAILED'
+  | 'CREATED';
 
 export type ParticipantRole =
   | 'CHAIR'
@@ -354,7 +356,7 @@ export interface DecisionRecord {
   supersedesDecisionId?: string;
   sourceMeetingId?: string;
   sourceEvidence?: Array<{ quote: string; sourceRef: string; timestamp?: string }>;
-  audit_trail: Array<{ action: string; user: string; timestamp: string; note?: string; version?: number; supersedesDecisionId?: string }>; 
+  audit_trail: Array<{ action: string; user: string; timestamp: string; note?: string; version?: number; supersedesDecisionId?: string }>;
   created_at: string;
   updated_at?: string;
 }

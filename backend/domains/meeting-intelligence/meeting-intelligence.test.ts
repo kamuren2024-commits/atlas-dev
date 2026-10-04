@@ -10,7 +10,8 @@
  * 6. Provider configuration is optional
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { validateMeetingTransition, MeetingIntelligenceRepository } from './meeting-repository';
 
 describe('Meeting Intelligence — Provider-Neutral AI Architecture', () => {
   describe('1. MeetingAiGatewayAdapter — Authorization Boundaries', () => {
@@ -425,5 +426,123 @@ describe('End-to-End: No Provider Configured', () => {
     // WHEN: generateStructuredMinutes()
     // THEN: deterministic minutes generated (not AI)
     expect(true).toBe(true); // TODO
+  });
+});
+
+describe('Meeting intelligence domain controls', () => {
+  const createRepoWithStubbedDb = () => {
+    const rows: Record<string, any> = {};
+    const db = {
+      run: async (sql: string, params: any[] = []) => {
+        if (sql.includes('INSERT INTO meeting_decisions')) {
+          const id = params[0];
+          rows[id] = {
+            id,
+            code: params[1],
+            title: params[2],
+            description: params[3],
+            status: params[4],
+            authority: params[5],
+            owner: params[6],
+            meeting_id: params[7],
+            meeting_name: params[8],
+            meeting_date: params[9],
+            project_id: params[10],
+            entity_name: params[11],
+            confidence: params[12],
+            requires_human_approval: Boolean(params[13]),
+            evidence_text: params[14],
+            implementation_notes: params[15],
+            approved_by: params[16],
+            approved_at: params[17],
+            audit_trail_json: params[18],
+            created_at: params[19],
+            updated_at: params[20]
+          };
+        }
+
+        if (sql.includes('UPDATE meeting_decisions')) {
+          const id = params[params.length - 1];
+          const nextRow = { ...rows[id] };
+          if (sql.includes("SET status = 'APPROVED'")) {
+            nextRow.status = 'APPROVED';
+          } else if (sql.includes('SET status = ?')) {
+            nextRow.status = params[0];
+          }
+          nextRow.approved_by = params[0];
+          nextRow.approved_at = params[1];
+          nextRow.audit_trail_json = params[2];
+          nextRow.updated_at = params[3];
+          rows[id] = nextRow;
+        }
+
+        return { lastID: 1, changes: 1 };
+      },
+      get: async (sql: string, params: any[] = []) => {
+        const id = params[0];
+        return rows[id] || undefined;
+      },
+      all: async (sql: string, params: any[] = []) => {
+        const items = Object.values(rows);
+        if (sql.includes('WHERE meeting_id = ?')) {
+          return items.filter((row: any) => row.meeting_id === params[0]);
+        }
+        return items.slice();
+      }
+    } as any;
+
+    const repo = new MeetingIntelligenceRepository(db);
+    return { repo, rows };
+  };
+
+  it('enforces legal lifecycle transitions', () => {
+    expect(validateMeetingTransition('DRAFT', 'SCHEDULED')).toEqual({ valid: true });
+    expect(validateMeetingTransition('LIVE', 'PUBLISHED')).toEqual({
+      valid: false,
+      reason: expect.stringContaining('Invalid state transition')
+    });
+    expect(validateMeetingTransition('LIVE', 'COMPLETED')).toEqual({ valid: true });
+    expect(validateMeetingTransition('SCHEDULED', 'READY')).toEqual({ valid: true });
+  });
+
+  it('keeps decision provenance and version metadata durable', async () => {
+    const { repo } = createRepoWithStubbedDb();
+
+    const decision = await repo.createDecision({
+      title: 'Approve supplier validation',
+      meeting_id: 'MEETING_123',
+      meeting_name: 'Supplier Validation Review',
+      meeting_date: '2025-09-10',
+      authority: 'SCM Committee',
+      owner: 'Chair',
+      evidence_text: 'The board approved the validation path.',
+      status: 'AWAITING_APPROVAL',
+      requires_human_approval: true,
+      sourceMeetingId: 'MEETING_123',
+      supersedesDecisionId: 'DEC_OLD_1',
+      sourceEvidence: [{ quote: 'The board approved the validation path.', sourceRef: 'transcript:10:15' }]
+    });
+
+    expect(decision.version).toBe(1);
+    expect(decision.supersedesDecisionId).toBe('DEC_OLD_1');
+    expect(decision.sourceEvidence).toHaveLength(1);
+    expect(decision.requires_human_approval).toBe(true);
+    expect(decision.status).toBe('AWAITING_APPROVAL');
+  });
+
+  it('requires an authorized human review before approving a decision', async () => {
+    const { repo } = createRepoWithStubbedDb();
+
+    const decision = await repo.createDecision({
+      title: 'Approve contractor mobilization',
+      meeting_id: 'MEETING_456',
+      authority: 'Operations Director',
+      owner: 'John Kamau',
+      requires_human_approval: true,
+      status: 'AWAITING_APPROVAL'
+    });
+
+    expect(await repo.approveDecision(decision.id, '')).toBe(false);
+    expect(await repo.approveDecision(decision.id, 'Chairperson')).toBe(true);
   });
 });
