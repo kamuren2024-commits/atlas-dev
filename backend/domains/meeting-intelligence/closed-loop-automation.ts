@@ -13,9 +13,9 @@ export class ClosedLoopAutomationEngine {
   private db: DatabaseCore;
   private eventBus: EventBus;
 
-  private constructor() {
-    this.db = DatabaseCore.getInstance();
-    this.eventBus = EventBus.getInstance();
+  constructor(db: DatabaseCore = DatabaseCore.getInstance(), eventBus: EventBus = EventBus.getInstance()) {
+    this.db = db;
+    this.eventBus = eventBus;
   }
 
   public static getInstance(): ClosedLoopAutomationEngine {

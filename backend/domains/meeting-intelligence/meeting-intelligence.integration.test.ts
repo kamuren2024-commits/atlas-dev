@@ -1,0 +1,212 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import sqlite3 from 'sqlite3';
+import { MeetingIntelligenceMigration } from '../../database/migration-008-meeting-intelligence';
+import { EventBus } from '../../event-fabric/event-bus';
+import { ClosedLoopAutomationEngine } from './closed-loop-automation';
+import { MeetingIntelligenceRepository } from './meeting-repository';
+import type { EvidenceRecord } from './types';
+
+interface TestDatabase {
+  exec(sql: string): Promise<void>;
+  run(sql: string, params?: unknown[]): Promise<{ lastID: number; changes: number }>;
+  get<T = any>(sql: string, params?: unknown[]): Promise<T | undefined>;
+  all<T = any>(sql: string, params?: unknown[]): Promise<T[]>;
+  withTransaction<T>(work: () => Promise<T>): Promise<T>;
+  close(): Promise<void>;
+}
+
+function createInMemoryDatabase(): Promise<TestDatabase> {
+  return new Promise((resolve, reject) => {
+    const connection = new sqlite3.Database(':memory:', error => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve({
+        exec: sql => new Promise((execResolve, execReject) => {
+          connection.exec(sql, execError => execError ? execReject(execError) : execResolve());
+        }),
+        run: (sql, params = []) => new Promise((runResolve, runReject) => {
+          connection.run(sql, params, function (runError) {
+            if (runError) {
+              runReject(runError);
+              return;
+            }
+            runResolve({ lastID: this.lastID, changes: this.changes });
+          });
+        }),
+        get: <T>(sql: string, params: unknown[] = []) => new Promise<T | undefined>((getResolve, getReject) => {
+          connection.get(sql, params, (getError, row) => getError ? getReject(getError) : getResolve(row as T | undefined));
+        }),
+        all: <T>(sql: string, params: unknown[] = []) => new Promise<T[]>((allResolve, allReject) => {
+          connection.all(sql, params, (allError, rows) => allError ? allReject(allError) : allResolve(rows as T[]));
+        }),
+        withTransaction: async <T>(work: () => Promise<T>) => {
+          await new Promise<void>((beginResolve, beginReject) => {
+            connection.run('BEGIN IMMEDIATE', error => error ? beginReject(error) : beginResolve());
+          });
+          try {
+            const result = await work();
+            await new Promise<void>((commitResolve, commitReject) => {
+              connection.run('COMMIT', error => error ? commitReject(error) : commitResolve());
+            });
+            return result;
+          } catch (error) {
+            await new Promise<void>(rollbackResolve => {
+              connection.run('ROLLBACK', () => rollbackResolve());
+            });
+            throw error;
+          }
+        },
+        close: () => new Promise((closeResolve, closeReject) => {
+          connection.close(closeError => closeError ? closeReject(closeError) : closeResolve());
+        })
+      });
+    });
+  });
+}
+
+describe('Meeting Intelligence operational golden path', () => {
+  let db: TestDatabase;
+  let repository: MeetingIntelligenceRepository;
+  let eventBus: EventBus;
+
+  beforeEach(async () => {
+    db = await createInMemoryDatabase();
+    await MeetingIntelligenceMigration.apply(db as any);
+    eventBus = EventBus.getInstance();
+    await eventBus.initialize();
+    eventBus.clearHistory();
+    const automation = new ClosedLoopAutomationEngine(db as any, eventBus);
+    repository = new MeetingIntelligenceRepository(db as any, { closedLoop: automation });
+  });
+
+  afterEach(async () => {
+    await eventBus.shutdown();
+    await db.close();
+  });
+
+  it('persists a meeting through recording, transcript evidence, human review, and verified action completion', async () => {
+    const meeting = await repository.createMeeting({
+      id: 'MI_GOLDEN_PATH',
+      title: 'Golden path verification',
+      status: 'DRAFT',
+      date: '2026-10-04'
+    }, 'meeting-creator');
+
+    expect((await repository.getMeetingById(meeting.id))?.status).toBe('DRAFT');
+    await repository.updateMeeting(meeting.id, { status: 'SCHEDULED' }, 'scheduler');
+    await repository.startMeeting(meeting.id, 'chair');
+
+    const recording = await repository.saveRecordingSession({
+      id: 'REC_GOLDEN_PATH',
+      meetingId: meeting.id,
+      tenantId: meeting.tenant_id,
+      status: 'STORED',
+      storageRef: 'test-media://golden-path',
+      checksum: 'sha256:test',
+      createdBy: 'recorder'
+    });
+    expect((await repository.getRecordingSessions(meeting.id)).map(session => session.id)).toContain(recording.id);
+
+    const transcript = await repository.addTranscriptSegment({
+      id: 'TR_GOLDEN_PATH',
+      meeting_id: meeting.id,
+      speaker: 'Chair',
+      timestamp_label: '00:30',
+      start_seconds: 30,
+      text: 'Assign the supplier validation report to Jordan by 2026-10-10.',
+      confidence: 100
+    });
+    const evidence: EvidenceRecord = {
+      id: 'EVD_GOLDEN_PATH',
+      meeting_id: meeting.id,
+      evidence_type: 'TRANSCRIPT',
+      title: 'Action assignment evidence',
+      date_label: '00:30',
+      quote: transcript.text,
+      source_ref: transcript.id,
+      entity_tag: 'supplier-validation',
+      category_tag: 'ACTION',
+      confidence: 100
+    };
+    await repository.createEvidence(evidence, 'secretary');
+
+    const candidate = await repository.addDetectedItem({
+      id: 'SIG_GOLDEN_PATH',
+      meeting_id: meeting.id,
+      item_type: 'ACTION',
+      speaker: 'Chair',
+      timestamp_label: transcript.timestamp_label,
+      source_text: transcript.text,
+      suggested_title: 'Complete supplier validation report',
+      confidence: 100,
+      linked_entity: 'supplier-validation',
+      category: 'ACTION',
+      evidence_quote: evidence.quote
+    });
+    const review = await repository.reviewDetectedItem(candidate.id, 'ACCEPTED', 'Confirmed in meeting', 'secretary');
+    expect(review.success).toBe(true);
+    expect(review.promotedEntityId).toBeTruthy();
+
+    const retry = await repository.reviewDetectedItem(candidate.id, 'ACCEPTED', 'Duplicate request', 'secretary');
+    expect(retry.promotedEntityId).toBe(review.promotedEntityId);
+    const action = (await repository.getActions({ sourceMeetingId: meeting.id }))
+      .find(item => item.id === review.promotedEntityId);
+    expect(action).toBeDefined();
+
+    await repository.updateActionStatus(action!.id, 'IN_PROGRESS', 'action-owner');
+    expect(await repository.verifyAction(action!.id, 'Delivery receipt checked', 'verifier')).toBe(true);
+    expect((await repository.getActions({ sourceMeetingId: meeting.id }))
+      .find(item => item.id === action!.id)?.status).toBe('COMPLETED');
+
+    await repository.pauseMeeting(meeting.id, 'chair');
+    await repository.resumeMeeting(meeting.id, 'chair');
+    await repository.endMeeting(meeting.id, 'chair');
+    await repository.updateMeeting(meeting.id, { status: 'REVIEW' }, 'secretary');
+    await repository.updateMeeting(meeting.id, { status: 'PUBLISHED' }, 'chair');
+    await repository.updateMeeting(meeting.id, { status: 'ARCHIVED' }, 'secretary');
+
+    const storedMeeting = await repository.getMeetingById(meeting.id);
+    expect(storedMeeting?.status).toBe('ARCHIVED');
+    expect(await repository.getEvidenceForMeeting(meeting.id)).toEqual([evidence]);
+
+    const lifecycleEvents = await repository.getLifecycleEvents(meeting.id);
+    expect(lifecycleEvents.map(event => event.eventType)).toEqual(expect.arrayContaining([
+      'MEETING_CREATED',
+      'MEETING_STARTED',
+      'MEETING_PAUSED',
+      'MEETING_RESUMED',
+      'MEETING_ENDED'
+    ]));
+    const audit = await repository.getAuditLog(100);
+    expect(audit.some(entry => entry.entity_id === meeting.id && entry.actor === 'meeting-creator')).toBe(true);
+    expect(audit.some(entry => entry.entity_id === 'EVD_GOLDEN_PATH' && entry.actor === 'secretary')).toBe(true);
+    expect(audit.some(entry => entry.entity_id === action!.id && entry.actor === 'verifier')).toBe(true);
+    expect(eventBus.getEventHistory().some(event => event.eventType === 'meeting.action.completed')).toBe(true);
+  });
+
+  it('rejects invalid lifecycle transitions and unlinked transcript evidence', async () => {
+    const meeting = await repository.createMeeting({
+      id: 'MI_INVALID_TRANSITION',
+      title: 'Invalid transition verification',
+      status: 'DRAFT'
+    });
+
+    await expect(repository.updateMeeting(meeting.id, { status: 'PUBLISHED' }, 'actor')).rejects.toThrow('Invalid state transition');
+    await expect(repository.createEvidence({
+      id: 'EVD_UNLINKED',
+      meeting_id: meeting.id,
+      evidence_type: 'TRANSCRIPT',
+      title: 'Missing source',
+      date_label: '',
+      quote: 'Not actually stored',
+      source_ref: 'TR_DOES_NOT_EXIST',
+      entity_tag: '',
+      category_tag: '',
+      confidence: 50
+    })).rejects.toThrow('was not found');
+    expect((await repository.getMeetingById(meeting.id))?.status).toBe('DRAFT');
+  });
+});

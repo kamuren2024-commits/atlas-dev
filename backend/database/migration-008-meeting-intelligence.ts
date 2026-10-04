@@ -109,6 +109,10 @@ export class MeetingIntelligenceMigration {
         approved_by TEXT,
         approved_at TEXT,
         audit_trail_json TEXT NOT NULL DEFAULT '[]',
+        version INTEGER NOT NULL DEFAULT 1,
+        supersedes_decision_id TEXT,
+        source_meeting_id TEXT,
+        source_evidence_json TEXT NOT NULL DEFAULT '[]',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
@@ -136,6 +140,12 @@ export class MeetingIntelligenceMigration {
         last_notified_at TEXT,
         workflow_triggered INTEGER NOT NULL DEFAULT 0,
         workflow_id TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
+        supersedes_action_id TEXT,
+        source_decision_id TEXT,
+        source_evidence_json TEXT NOT NULL DEFAULT '[]',
+        confirmation_actor TEXT,
+        confirmed_at TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
@@ -380,6 +390,10 @@ export class MeetingIntelligenceMigration {
       "ALTER TABLE meeting_decisions ADD COLUMN entity_name TEXT",
       "ALTER TABLE meeting_decisions ADD COLUMN evidence_text TEXT",
       "ALTER TABLE meeting_decisions ADD COLUMN implementation_notes TEXT",
+      "ALTER TABLE meeting_decisions ADD COLUMN version INTEGER NOT NULL DEFAULT 1",
+      "ALTER TABLE meeting_decisions ADD COLUMN supersedes_decision_id TEXT",
+      "ALTER TABLE meeting_decisions ADD COLUMN source_meeting_id TEXT",
+      "ALTER TABLE meeting_decisions ADD COLUMN source_evidence_json TEXT NOT NULL DEFAULT '[]'",
       "ALTER TABLE meeting_decisions ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
       "ALTER TABLE meeting_actions ADD COLUMN description TEXT",
       "ALTER TABLE meeting_actions ADD COLUMN department TEXT DEFAULT 'SCM'",
@@ -396,6 +410,12 @@ export class MeetingIntelligenceMigration {
       "ALTER TABLE meeting_actions ADD COLUMN escalated_to TEXT",
       "ALTER TABLE meeting_actions ADD COLUMN last_notified_at TEXT",
       "ALTER TABLE meeting_actions ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
+      "ALTER TABLE meeting_actions ADD COLUMN version INTEGER NOT NULL DEFAULT 1",
+      "ALTER TABLE meeting_actions ADD COLUMN supersedes_action_id TEXT",
+      "ALTER TABLE meeting_actions ADD COLUMN source_decision_id TEXT",
+      "ALTER TABLE meeting_actions ADD COLUMN source_evidence_json TEXT NOT NULL DEFAULT '[]'",
+      "ALTER TABLE meeting_actions ADD COLUMN confirmation_actor TEXT",
+      "ALTER TABLE meeting_actions ADD COLUMN confirmed_at TEXT",
     ];
 
     for (const q of alterQueries) {

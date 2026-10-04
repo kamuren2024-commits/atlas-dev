@@ -317,6 +317,7 @@ export interface DetectedIntelligenceItem {
   reviewed_at?: string;
   review_notes?: string;
   promoted_entity_id?: string;
+  sourceEvidence?: Array<{ quote: string; sourceRef: string; timestamp?: string }>;
   created_at: string;
 }
 
@@ -394,6 +395,8 @@ export interface ActionControlItem {
   supersedesActionId?: string;
   sourceDecisionId?: string;
   sourceEvidence?: Array<{ quote: string; sourceRef: string; timestamp?: string }>;
+  confirmation_actor?: string;
+  confirmed_at?: string;
   escalation_level: number;
   escalated_to?: string;
   last_notified_at?: string;

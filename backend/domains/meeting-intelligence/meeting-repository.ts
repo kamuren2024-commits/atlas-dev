@@ -128,10 +128,16 @@ export class MeetingIntelligenceRepository {
   private graphAdapter: MeetingGraphAdapter;
   private closedLoop: ClosedLoopAutomationEngine;
 
-  constructor(db?: DatabaseCore) {
+  constructor(
+    db?: DatabaseCore,
+    dependencies?: {
+      graphAdapter?: MeetingGraphAdapter;
+      closedLoop?: ClosedLoopAutomationEngine;
+    }
+  ) {
     this.db = db || DatabaseCore.getInstance();
-    this.graphAdapter = MeetingGraphAdapter.getInstance();
-    this.closedLoop = ClosedLoopAutomationEngine.getInstance();
+    this.graphAdapter = dependencies?.graphAdapter || MeetingGraphAdapter.getInstance();
+    this.closedLoop = dependencies?.closedLoop || ClosedLoopAutomationEngine.getInstance();
   }
 
   // --- MEETINGS ---
@@ -1339,6 +1345,14 @@ export class MeetingIntelligenceRepository {
   }
 
   public async saveRecordingSession(session: Partial<RecordingSession>): Promise<RecordingSession> {
+    if (!session.meetingId) {
+      throw new Error('Meeting ID is required to save a recording session.');
+    }
+    const meeting = await this.getMeetingById(session.meetingId);
+    if (!meeting) {
+      throw new Error(`Meeting ${session.meetingId} not found.`);
+    }
+
     const id = session.id || `REC_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
     const now = new Date().toISOString();
     const record: RecordingSession = {
@@ -1358,20 +1372,16 @@ export class MeetingIntelligenceRepository {
       version: session.version || '1.0'
     };
 
-    try {
-      await this.db.run(
-        `INSERT INTO meeting_recording_sessions (id, meeting_id, tenant_id, status, started_at, ended_at, duration_ms, media_type, codec, storage_ref, checksum, size_bytes, created_by, version, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          record.id, record.meetingId, record.tenantId, record.status, record.startedAt || now,
-          record.endedAt || now, record.durationMs || 0, record.mediaType, record.codec || 'opus',
-          record.storageRef || null, record.checksum || null, record.size || 0, record.createdBy || 'browser-recorder',
-          record.version || '1.0', now, now
-        ]
-      );
-    } catch (e) {
-      console.warn('[MEETING-REPO] Failed to save recording session:', e);
-    }
+    await this.db.run(
+      `INSERT INTO meeting_recording_sessions (id, meeting_id, tenant_id, status, started_at, ended_at, duration_ms, media_type, codec, storage_ref, checksum, size_bytes, created_by, version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        record.id, record.meetingId, record.tenantId, record.status, record.startedAt || now,
+        record.endedAt || now, record.durationMs || 0, record.mediaType, record.codec || 'opus',
+        record.storageRef || null, record.checksum || null, record.size || 0, record.createdBy || 'browser-recorder',
+        record.version || '1.0', now, now
+      ]
+    );
 
     return record;
   }
@@ -1404,6 +1414,17 @@ export class MeetingIntelligenceRepository {
   }
 
   public async addTranscriptSegment(segment: Partial<TranscriptSegment>): Promise<TranscriptSegment> {
+    if (!segment.meeting_id) {
+      throw new Error('Meeting ID is required to save a transcript segment.');
+    }
+    if (!segment.text?.trim()) {
+      throw new Error('Transcript text is required.');
+    }
+    const meeting = await this.getMeetingById(segment.meeting_id);
+    if (!meeting) {
+      throw new Error(`Meeting ${segment.meeting_id} not found.`);
+    }
+
     const id = segment.id || `TR_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
     const newSeg: TranscriptSegment = {
       id,
@@ -1419,21 +1440,73 @@ export class MeetingIntelligenceRepository {
       created_at: new Date().toISOString()
     };
 
-    try {
-      await this.db.run(
-        `INSERT INTO meeting_transcripts (id, meeting_id, speaker, speaker_role, timestamp_label, start_seconds, text, confidence, sentiment, is_key_point, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          newSeg.id, newSeg.meeting_id, newSeg.speaker, newSeg.speaker_role || null,
-          newSeg.timestamp_label, newSeg.start_seconds, newSeg.text, newSeg.confidence,
-          newSeg.sentiment || null, newSeg.is_key_point ? 1 : 0, newSeg.created_at
-        ]
-      );
-    } catch (e) {
-      console.error('[MEETING-REPO] Error inserting transcript segment:', e);
-    }
+    await this.db.run(
+      `INSERT INTO meeting_transcripts (id, meeting_id, speaker, speaker_role, timestamp_label, start_seconds, text, confidence, sentiment, is_key_point, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        newSeg.id, newSeg.meeting_id, newSeg.speaker, newSeg.speaker_role || null,
+        newSeg.timestamp_label, newSeg.start_seconds, newSeg.text, newSeg.confidence,
+        newSeg.sentiment || null, newSeg.is_key_point ? 1 : 0, newSeg.created_at
+      ]
+    );
 
     return newSeg;
+  }
+
+  public async createEvidence(evidence: EvidenceRecord, actor: string = 'Operator'): Promise<EvidenceRecord> {
+    if (!evidence.meeting_id || !evidence.source_ref || !evidence.quote?.trim()) {
+      throw new Error('Meeting, source reference, and evidence quote are required.');
+    }
+    const meeting = await this.getMeetingById(evidence.meeting_id);
+    if (!meeting) {
+      throw new Error(`Meeting ${evidence.meeting_id} not found.`);
+    }
+
+    if (evidence.evidence_type === 'TRANSCRIPT') {
+      const source = await this.db.get<any>(
+        `SELECT id FROM meeting_transcripts WHERE id = ? AND meeting_id = ?`,
+        [evidence.source_ref, evidence.meeting_id]
+      );
+      if (!source) {
+        throw new Error(`Transcript segment ${evidence.source_ref} was not found in meeting ${evidence.meeting_id}.`);
+      }
+    }
+
+    const record = { ...evidence, id: evidence.id || `EVD_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` };
+    await this.db.run(
+      `INSERT INTO meeting_evidence (id, meeting_id, evidence_type, title, date_label, quote, source_ref, entity_tag, category_tag, confidence, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        record.id, record.meeting_id, record.evidence_type, record.title, record.date_label,
+        record.quote, record.source_ref, record.entity_tag, record.category_tag,
+        record.confidence, new Date().toISOString()
+      ]
+    );
+    await this.logAudit('CREATE', 'MEETING', record.id, actor, {
+      action: 'EVIDENCE_CREATED',
+      meetingId: record.meeting_id,
+      sourceRef: record.source_ref
+    });
+    return record;
+  }
+
+  public async getEvidenceForMeeting(meetingId: string): Promise<EvidenceRecord[]> {
+    const rows = await this.db.all<any>(
+      `SELECT * FROM meeting_evidence WHERE meeting_id = ? ORDER BY created_at ASC`,
+      [meetingId]
+    );
+    return rows.map(row => ({
+      id: row.id,
+      meeting_id: row.meeting_id || undefined,
+      evidence_type: row.evidence_type,
+      title: row.title,
+      date_label: row.date_label || '',
+      quote: row.quote,
+      source_ref: row.source_ref,
+      entity_tag: row.entity_tag,
+      category_tag: row.category_tag,
+      confidence: Number(row.confidence)
+    }));
   }
 
   // --- DETECTED INTELLIGENCE ITEMS (SIGNALS) ---
@@ -1470,20 +1543,21 @@ export class MeetingIntelligenceRepository {
       reviewed_at: item.reviewed_at,
       review_notes: item.review_notes,
       promoted_entity_id: item.promoted_entity_id,
+      sourceEvidence: item.sourceEvidence || [],
       created_at: new Date().toISOString()
     };
 
     try {
       await this.db.run(
-        `INSERT INTO meeting_signals (id, meeting_id, signal_type, speaker, timestamp_label, text, suggested_title, confidence, entity_tag, category_tag, evidence_quote, status, reviewed_by, reviewed_at, review_notes, promoted_entity_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO meeting_signals (id, meeting_id, signal_type, speaker, timestamp_label, text, suggested_title, confidence, entity_tag, category_tag, evidence_quote, status, reviewed_by, reviewed_at, review_notes, promoted_entity_id, provenance_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           fullItem.id, fullItem.meeting_id, fullItem.item_type, fullItem.speaker || null,
           fullItem.timestamp_label, fullItem.source_text, fullItem.suggested_title,
           fullItem.confidence, fullItem.linked_entity, fullItem.category,
           fullItem.evidence_quote, fullItem.status, fullItem.reviewed_by || null,
           fullItem.reviewed_at || null, fullItem.review_notes || null,
-          fullItem.promoted_entity_id || null, fullItem.created_at
+          fullItem.promoted_entity_id || null, JSON.stringify(fullItem.sourceEvidence), fullItem.created_at
         ]
       );
     } catch (e) {
@@ -1505,13 +1579,44 @@ export class MeetingIntelligenceRepository {
     reviewer?: string,
     editedValues?: Partial<DetectedIntelligenceItem>
   ): Promise<{ success: boolean; promotedEntityId?: string }> {
+    if (!['ACCEPTED', 'EDITED', 'REJECTED'].includes(status)) {
+      return { success: false };
+    }
+    const actualReviewer = reviewer?.trim();
+    if (!actualReviewer) {
+      return { success: false };
+    }
+
     try {
+      return await this.db.withTransaction(() =>
+        this.reviewDetectedItemInTransaction(id, status, notes, actualReviewer, editedValues)
+      );
+    } catch (e) {
+      console.error('[MEETING-REPO] Error reviewing detected item:', e);
+      return { success: false };
+    }
+  }
+
+  private async reviewDetectedItemInTransaction(
+    id: string,
+    status: ReviewStatus,
+    notes: string | undefined,
+    actualReviewer: string,
+    editedValues?: Partial<DetectedIntelligenceItem>
+  ): Promise<{ success: boolean; promotedEntityId?: string }> {
       const itemRow = await this.db.get<any>(`SELECT * FROM meeting_signals WHERE id = ?`, [id]);
       if (!itemRow) return { success: false };
 
+      if (itemRow.status !== 'PENDING') {
+        const isSameReview = itemRow.status === status;
+        return {
+          success: isSameReview,
+          promotedEntityId: isSameReview ? itemRow.promoted_entity_id || undefined : undefined
+        };
+      }
+
       const item = this.mapDetectedItem(itemRow);
       const reviewedAt = new Date().toISOString();
-      const actualReviewer = reviewer || 'Kamuren Wanjau (Operations Director)';
 
       let promotedId: string | undefined;
 
@@ -1530,6 +1635,11 @@ export class MeetingIntelligenceRepository {
             status: 'AWAITING_APPROVAL',
             confidence: item.confidence,
             evidence_text: item.evidence_quote,
+            sourceEvidence: item.sourceEvidence.length ? item.sourceEvidence : [{
+              quote: item.evidence_quote,
+              sourceRef: item.meeting_id,
+              timestamp: item.timestamp_label
+            }],
             project_id: 'PRJ-SCM-MOD-2025'
           });
           promotedId = dec.id;
@@ -1544,6 +1654,13 @@ export class MeetingIntelligenceRepository {
             status: 'ON_TRACK',
             source_meeting_id: item.meeting_id,
             evidence_text: item.evidence_quote,
+            sourceEvidence: item.sourceEvidence.length ? item.sourceEvidence : [{
+              quote: item.evidence_quote,
+              sourceRef: item.meeting_id,
+              timestamp: item.timestamp_label
+            }],
+            confirmation_actor: actualReviewer,
+            confirmed_at: reviewedAt,
             dependencies: [],
             linked_entities: [item.linked_entity]
           });
@@ -1576,9 +1693,16 @@ export class MeetingIntelligenceRepository {
       await this.db.run(
         `UPDATE meeting_signals 
          SET status = ?, reviewed_by = ?, reviewed_at = ?, review_notes = ?, promoted_entity_id = ?
-         WHERE id = ?`,
+         WHERE id = ? AND status = 'PENDING'`,
         [status, actualReviewer, reviewedAt, notes || null, promotedId || null, id]
       );
+      const updated = await this.db.get<any>(
+        `SELECT status, promoted_entity_id FROM meeting_signals WHERE id = ?`,
+        [id]
+      );
+      if (updated?.status !== status || (promotedId && updated.promoted_entity_id !== promotedId)) {
+        throw new Error(`Detected item ${id} was reviewed concurrently.`);
+      }
 
       await this.logAudit(status === 'ACCEPTED' ? 'APPROVE' : status === 'REJECTED' ? 'REJECT' : 'EDIT', 'SIGNAL', id, actualReviewer, {
         notes,
@@ -1586,10 +1710,6 @@ export class MeetingIntelligenceRepository {
       });
 
       return { success: true, promotedEntityId: promotedId };
-    } catch (e) {
-      console.error('[MEETING-REPO] Error reviewing detected item:', e);
-      return { success: false };
-    }
   }
 
   // --- DECISIONS ---
@@ -1663,14 +1783,17 @@ export class MeetingIntelligenceRepository {
         `INSERT INTO meeting_decisions (
           id, code, title, description, status, authority, owner, meeting_id, meeting_name, meeting_date,
           project_id, entity_name, confidence, requires_human_approval, evidence_text, implementation_notes,
-          approved_by, approved_at, audit_trail_json, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          approved_by, approved_at, audit_trail_json, version, supersedes_decision_id, source_meeting_id,
+          source_evidence_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           record.id, record.code, record.title, record.description || null, record.status, record.authority,
           record.owner, record.meeting_id, record.meeting_name, record.meeting_date, record.project_id || null,
           record.entity_name || null, record.confidence, record.requires_human_approval ? 1 : 0,
           record.evidence_text || null, record.implementation_notes || null, record.approved_by || null,
-          record.approved_at || null, JSON.stringify(record.audit_trail), record.created_at, record.updated_at
+          record.approved_at || null, JSON.stringify(record.audit_trail), record.version,
+          record.supersedesDecisionId || null, record.sourceMeetingId || null,
+          JSON.stringify(record.sourceEvidence || []), record.created_at, record.updated_at
         ]
       );
 
@@ -1678,6 +1801,7 @@ export class MeetingIntelligenceRepository {
       await this.logAudit('CREATE', 'DECISION', record.id, 'Operator', { code: record.code, requiresHumanApproval: requiresHumanApproval, version: record.version });
     } catch (e) {
       console.error('[MEETING-REPO] Error creating decision:', e);
+      throw e;
     }
 
     return record;
@@ -1699,20 +1823,20 @@ export class MeetingIntelligenceRepository {
 
       const auditTrail = JSON.parse(row.audit_trail_json || '[]');
       const approvedAt = new Date().toISOString();
-      const latestVersion = Number((auditTrail.at(-1)?.version || 1));
+      const nextVersion = Number(row.version || 1) + 1;
       auditTrail.push({
         action: 'APPROVED_BY_CHAIR',
         user: actor,
         timestamp: approvedAt,
         note: 'Statutory verification complete under PPADA §71',
-        version: latestVersion + 1
+        version: nextVersion
       });
 
       await this.db.run(
         `UPDATE meeting_decisions 
-         SET status = 'APPROVED', approved_by = ?, approved_at = ?, audit_trail_json = ?, updated_at = ?
+         SET status = 'APPROVED', approved_by = ?, approved_at = ?, audit_trail_json = ?, version = ?, updated_at = ?
          WHERE id = ?`,
-        [actor, approvedAt, JSON.stringify(auditTrail), approvedAt, row.id]
+        [actor, approvedAt, JSON.stringify(auditTrail), nextVersion, approvedAt, row.id]
       );
 
       const updated = await this.getDecisions({ meetingId: row.meeting_id });
@@ -1736,7 +1860,7 @@ export class MeetingIntelligenceRepository {
 
       const auditTrail = JSON.parse(row.audit_trail_json || '[]');
       const timestamp = new Date().toISOString();
-      const nextVersion = Number((auditTrail.at(-1)?.version || 1)) + 1;
+      const nextVersion = Number(row.version || 1) + 1;
       auditTrail.push({
         action: `STATUS_CHANGE_TO_${status}`,
         user: actor,
@@ -1747,9 +1871,9 @@ export class MeetingIntelligenceRepository {
 
       await this.db.run(
         `UPDATE meeting_decisions 
-         SET status = ?, audit_trail_json = ?, updated_at = ?
+         SET status = ?, audit_trail_json = ?, version = ?, updated_at = ?
          WHERE id = ?`,
-        [status, JSON.stringify(auditTrail), timestamp, row.id]
+        [status, JSON.stringify(auditTrail), nextVersion, timestamp, row.id]
       );
 
       if ((status === 'APPROVED' || status === 'IMPLEMENTED' || status === 'SUPERSEDED') && !row.approved_by) {
@@ -1816,6 +1940,8 @@ export class MeetingIntelligenceRepository {
       supersedesActionId: metadata.supersedesActionId,
       sourceDecisionId: metadata.sourceDecisionId,
       sourceEvidence: metadata.sourceEvidence,
+      confirmation_actor: action.confirmation_actor,
+      confirmed_at: action.confirmed_at,
       escalation_level: 0,
       workflow_triggered: false,
       created_at: now,
@@ -1827,14 +1953,17 @@ export class MeetingIntelligenceRepository {
         `INSERT INTO meeting_actions (
           id, action_title, description, owner, department, due_date, priority, status,
           project_id, source_meeting_id, source_meeting_title, evidence_text, dependencies_json,
-          linked_entities_json, escalation_level, workflow_triggered, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          linked_entities_json, escalation_level, workflow_triggered, version, supersedes_action_id,
+          source_decision_id, source_evidence_json, confirmation_actor, confirmed_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           record.id, record.action_title, record.description || null, record.owner, record.department,
           record.due_date, record.priority, record.status, record.project_id || null,
           record.source_meeting_id || null, record.source_meeting_title || null, record.evidence_text || null,
           JSON.stringify(record.dependencies), JSON.stringify(record.linked_entities), record.escalation_level,
-          0, record.created_at, record.updated_at
+          0, record.version, record.supersedesActionId || null, record.sourceDecisionId || null,
+          JSON.stringify(record.sourceEvidence || []), record.confirmation_actor || null,
+          record.confirmed_at || null, record.created_at, record.updated_at
         ]
       );
 
@@ -1843,6 +1972,7 @@ export class MeetingIntelligenceRepository {
       await this.logAudit('ASSIGN', 'ACTION', record.id, 'Operator', { owner: record.owner, version: record.version, sourceDecisionId: record.sourceDecisionId });
     } catch (e) {
       console.error('[MEETING-REPO] Error creating action:', e);
+      throw e;
     }
 
     return record;
@@ -2509,6 +2639,7 @@ export class MeetingIntelligenceRepository {
       reviewed_at: r.reviewed_at || undefined,
       review_notes: r.review_notes || undefined,
       promoted_entity_id: r.promoted_entity_id || undefined,
+      sourceEvidence: parseJsonObject<Array<{ quote: string; sourceRef: string; timestamp?: string }>>(r.provenance_json) || [],
       created_at: r.created_at
     };
   }
@@ -2575,6 +2706,8 @@ export class MeetingIntelligenceRepository {
       supersedesActionId: r.supersedes_action_id || r.supersedesActionId || verificationNotes.supersedesActionId,
       sourceDecisionId: r.source_decision_id || r.sourceDecisionId || verificationNotes.sourceDecisionId,
       sourceEvidence,
+      confirmation_actor: r.confirmation_actor || undefined,
+      confirmed_at: r.confirmed_at || undefined,
       escalation_level: r.escalation_level || 0,
       escalated_to: r.escalated_to || undefined,
       last_notified_at: r.last_notified_at || undefined,
