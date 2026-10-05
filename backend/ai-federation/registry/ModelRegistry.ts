@@ -58,10 +58,13 @@ export class AtlasModelRegistry {
 
   private ensureLocalFallbackModel(): void {
     const now = new Date().toISOString();
+    const localRuntimeEnabled = process.env.OLLAMA_ENABLED === 'true';
+    const fallbackState = localRuntimeEnabled ? 'ACTIVE' : 'DISABLED';
+    const fallbackEligibility = localRuntimeEnabled ? 'PASSED' : 'NOT_APPLICABLE';
     const existing = this.models.get('atlas-local-fallback');
     if (existing) {
-      existing.availability = 'ACTIVE';
-      existing.eligibility = 'PASSED';
+      existing.availability = fallbackState;
+      existing.eligibility = fallbackEligibility;
       existing.deploymentMode = 'LOCAL';
       return;
     }
@@ -81,8 +84,8 @@ export class AtlasModelRegistry {
       contextWindow: 32768,
       latencyClass: 'MEDIUM',
       costClass: 'FREE',
-      availability: 'ACTIVE',
-      eligibility: 'PASSED',
+      availability: fallbackState,
+      eligibility: fallbackEligibility,
       health: {
         lastChecked: now,
         consecutiveErrors: 0,

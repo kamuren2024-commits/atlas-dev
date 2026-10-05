@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CANONICAL_SUBSTATIONS, CANONICAL_LINES } from './grid-canonical-data';
-import { GridAsset, TransmissionLine, MapLayerKey, OperationalViewMode, ViewCameraPreset } from './types';
+import { GridAsset, TransmissionLine, GridAlarm, GridEvent, MapLayerKey, OperationalViewMode, ViewCameraPreset } from './types';
 import { loadGoogleMaps, subscribeToGoogleMapsAuthFailure } from './google-maps-loader';
 import './GridMapCanvas.css';
 
@@ -162,6 +162,8 @@ function createGridSubstationOverlay(
 interface GridMapCanvasProps {
   substations?: Record<string, GridAsset>;
   lines?: Record<string, TransmissionLine>;
+  alarms?: GridAlarm[];
+  events?: GridEvent[];
   selectedAssetId?: string | null;
   onSelectAsset?: (assetId: string) => void;
   onClearSelection?: () => void;
@@ -190,6 +192,8 @@ const mapCameraPresets: Record<ViewCameraPreset, { center: google.maps.LatLngLit
 export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   substations = CANONICAL_SUBSTATIONS,
   lines = CANONICAL_LINES,
+  alarms = [],
+  events = [],
   selectedAssetId,
   onSelectAsset,
   onClearSelection,
@@ -208,7 +212,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const previousCameraRef = useRef<{ center: google.maps.LatLngLiteral; zoom: number } | null>(null);
-  const overlaysRef = useRef<Map<string, google.maps.OverlayView>>(new Map());
+  const overlaysRef = useRef<Map<string, google.maps.OverlayView | google.maps.Marker>>(new Map());
   const polylinesRef = useRef<Map<string, google.maps.Polyline>>(new Map());
   const [mapState, setMapState] = useState<MapProviderState>(MapProviderState.LOADING);
   const [networkStats, setNetworkStats] = useState({ substationCount: 0, lineCount: 0 });
@@ -229,6 +233,63 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
 
     return merged;
   }, [visibleLayers, activeLayers]);
+
+  const mapLayerControls = useMemo(() => [
+    { key: 'SUBSTATIONS' as const, label: 'Substations' },
+    { key: 'TRANSMISSION' as const, label: 'Transmission' },
+    { key: 'OUTAGES' as const, label: 'Outages' },
+    { key: 'ALARMS' as const, label: 'Alarms' },
+    { key: 'RISK' as const, label: 'Risk' },
+    { key: 'ASSET_HEALTH' as const, label: 'Health' },
+    { key: 'PROJECTS' as const, label: 'Projects' }
+  ], []);
+
+  const mapLegend = useMemo(() => {
+    const groups: Array<{ title: string; items: Array<{ color: string; label: string }> }> = [];
+
+    if (resolvedVisibleLayers.has('TRANSMISSION') || resolvedVisibleLayers.has('LINES')) {
+      groups.push({
+        title: 'TRANSMISSION',
+        items: [
+          { color: '#00CCFF', label: '400 kV' },
+          { color: '#AA00FF', label: '220 kV' },
+          { color: '#00AA00', label: '132 kV' }
+        ]
+      });
+    }
+
+    if (resolvedVisibleLayers.has('SUBSTATIONS')) {
+      groups.push({
+        title: 'ASSETS',
+        items: [{ color: '#38bdf8', label: 'Substation' }]
+      });
+    }
+
+    const hasOperationalLayers = [
+      resolvedVisibleLayers.has('OUTAGES'),
+      resolvedVisibleLayers.has('ALARMS'),
+      resolvedVisibleLayers.has('RISK'),
+      resolvedVisibleLayers.has('ASSET_HEALTH')
+    ].some(Boolean);
+
+    if (hasOperationalLayers) {
+      const opsItems: Array<{ color: string; label: string }> = [];
+      if (resolvedVisibleLayers.has('OUTAGES')) opsItems.push({ color: '#ef4444', label: 'Outage' });
+      if (resolvedVisibleLayers.has('ALARMS')) opsItems.push({ color: '#f59e0b', label: 'Warning' });
+      if (resolvedVisibleLayers.has('RISK')) opsItems.push({ color: '#a855f7', label: 'Risk' });
+      if (resolvedVisibleLayers.has('ASSET_HEALTH')) opsItems.push({ color: '#22c55e', label: 'Normal' });
+      groups.push({ title: 'OPERATIONS', items: opsItems });
+    }
+
+    if (resolvedVisibleLayers.has('PROJECTS')) {
+      groups.push({
+        title: 'PROJECTS',
+        items: [{ color: '#fbbf24', label: 'Planned' }]
+      });
+    }
+
+    return groups;
+  }, [resolvedVisibleLayers]);
 
   useEffect(() => {
     onMapProviderStatusChange?.(mapState);
@@ -374,6 +435,10 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
 
     const hasSubstations = resolvedVisibleLayers.has('SUBSTATIONS');
     const hasTransmissionLines = resolvedVisibleLayers.has('TRANSMISSION') || resolvedVisibleLayers.has('LINES');
+    const hasOutages = resolvedVisibleLayers.has('OUTAGES');
+    const hasAlarms = resolvedVisibleLayers.has('ALARMS');
+    const hasRisk = resolvedVisibleLayers.has('RISK');
+    const hasAssetHealth = resolvedVisibleLayers.has('ASSET_HEALTH');
 
     if (hasSubstations) {
       Object.values(substations).forEach((substation) => {
@@ -384,6 +449,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
           return;
         }
 
+        const stateColor = getOperationalBadgeColor(substation.state, substation.riskScore, substation.healthScore);
         const overlay = createGridSubstationOverlay({
           substation,
           map: mapRef.current!,
@@ -393,6 +459,25 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
           isNeighbor: selectedNeighborIds.has(substation.id)
         });
         overlaysRef.current.set(substation.id, overlay);
+
+        if (hasRisk || hasAssetHealth || hasAlarms || hasOutages) {
+          const statusMarker = new google.maps.Marker({
+            position: { lat: substation.latitude, lng: substation.longitude },
+            map: mapRef.current!,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              fillColor: stateColor,
+              fillOpacity: hasOutages && substation.state === 'OUT_OF_SERVICE' ? 1 : 0.9,
+              strokeColor: '#f8fafc',
+              strokeWeight: isSelected ? 2.5 : 1.5,
+              scale: isSelected ? 8 : 6,
+            },
+            title: `${substation.name} — ${substation.state}`,
+            zIndex: isSelected ? 1200 : 1000,
+          });
+          statusMarker.addListener('click', () => onSelectAsset?.(substation.id));
+          overlaysRef.current.set(`status-${substation.id}`, statusMarker as unknown as google.maps.OverlayView);
+        }
       });
     }
 
@@ -403,6 +488,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
         }
 
         const lineColor = getLineColor(line.voltageKV);
+        const strokeColor = getOperationalLineColor(line, alarms, hasOutages, hasAlarms, hasRisk);
         const isLocalLine = selectedAssetId
           ? line.id === selectedAssetId
             || selectedConnectedLineIds.has(line.id)
@@ -413,7 +499,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
         const polyline = new google.maps.Polyline({
           path: line.pathCoordinates.map(([lng, lat]) => ({ lat, lng })),
           geodesic: true,
-          strokeColor: lineColor,
+          strokeColor,
           strokeOpacity: isLocalLine ? 1 : currentZoom < 7 ? 0.45 : 0.8,
           strokeWeight: isLocalLine ? 4 : currentZoom < 7 ? 1.4 : 2,
           map: mapRef.current!
@@ -433,7 +519,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
       substationCount: Object.keys(substations).length,
       lineCount: Object.keys(lines).length
     });
-  }, [mapState, substations, lines, selectedAssetId, resolvedVisibleLayers, onSelectAsset, cameraPreset, selectedConnectedLineIds, selectedNeighborIds]);
+  }, [mapState, substations, lines, alarms, selectedAssetId, resolvedVisibleLayers, onSelectAsset, cameraPreset, selectedConnectedLineIds, selectedNeighborIds]);
 
   useEffect(() => {
     if (mapState !== MapProviderState.READY || !mapRef.current) return;
@@ -537,7 +623,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
               <path
                 key={line.id}
                 d={line.points}
-                stroke={getLineColor(line.voltageKV)}
+                stroke={getOperationalLineColor(line as any, alarms, resolvedVisibleLayers.has('OUTAGES'), resolvedVisibleLayers.has('ALARMS'), resolvedVisibleLayers.has('RISK'))}
                 strokeWidth={line.selected ? 4 : 2.4}
                 fill="none"
                 strokeOpacity={0.9}
@@ -550,7 +636,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
                   cx={asset.x}
                   cy={asset.y}
                   r={asset.isSelected ? 8 : 6}
-                  fill={getVoltageColor(asset.voltageLevelKV)}
+                  fill={getOperationalBadgeColor(asset.state, asset.riskScore, asset.healthScore)}
                   stroke={asset.isSelected ? '#f8fafc' : '#0f172a'}
                   strokeWidth={asset.isSelected ? 2.4 : 1.2}
                   opacity={0.95}
@@ -561,6 +647,38 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
               </g>
             ))}
           </svg>
+        </div>
+      )}
+
+      <div className="map-layer-legend" aria-label="Map legend">
+        {mapLegend.map((group) => (
+          <div key={group.title} className="legend-group">
+            <div className="legend-title">{group.title}</div>
+            <div className="legend-items">
+              {group.items.map((item) => (
+                <div key={`${group.title}-${item.label}`} className="legend-item">
+                  <span className="legend-dot" style={{ background: item.color }} />
+                  <span>{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {onToggleLayer && (
+        <div className="map-layer-controls" aria-label="Operational map layers">
+          {mapLayerControls.map((layer) => { const active = resolvedVisibleLayers.has(layer.key); return (
+            <button
+              key={layer.key}
+              type="button"
+              className={`map-layer-toggle ${active ? 'active' : ''}`}
+              onClick={() => onToggleLayer(layer.key)}
+              title={layer.label}
+            >
+              {layer.label}
+            </button>
+          ); })}
         </div>
       )}
 
@@ -587,6 +705,28 @@ function getVoltageColor(voltageKV: number): string {
   if (voltageKV >= 200) return '#AA00FF';
   if (voltageKV >= 100) return '#00AA00';
   return '#FFAA00';
+}
+
+function getOperationalBadgeColor(state: string, riskScore: number, healthScore: number): string {
+  if (state === 'OUT_OF_SERVICE' || state === 'OFFLINE' || state === 'CRITICAL') return '#ef4444';
+  if (state === 'WARNING' || state === 'CONGESTED' || riskScore > 65) return '#f59e0b';
+  if (state === 'MAINTENANCE') return '#8b5cf6';
+  if (healthScore < 60) return '#ef4444';
+  return '#22c55e';
+}
+
+function getOperationalLineColor(
+  line: Pick<TransmissionLine, 'id' | 'voltageKV' | 'state' | 'loadingPct' | 'nMinusOneRisk'>,
+  alarms: GridAlarm[],
+  hasOutages: boolean,
+  hasAlarms: boolean,
+  hasRisk: boolean
+): string {
+  const alarmed = alarms.some((alarm) => alarm.assetId === line.id || alarm.assetName === line.id || alarm.affectedEquipments.includes(line.id));
+  if (hasOutages && line.state === 'OUT_OF_SERVICE') return '#ef4444';
+  if (hasAlarms && alarmed) return '#f59e0b';
+  if (hasRisk && (line.nMinusOneRisk || line.loadingPct > 75)) return '#a855f7';
+  return getLineColor(line.voltageKV);
 }
 
 export default GridMapCanvas;

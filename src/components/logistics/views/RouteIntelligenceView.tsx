@@ -5,6 +5,7 @@ import {
   Zap, Navigation, ShieldAlert, Cpu, Check, Layers, Sliders, Play
 } from 'lucide-react';
 import { KETRACO_SUBSTATIONS, KETRACO_DEPOTS, CORRIDOR_BOTTLENECKS } from '../../../../backend/domains/logistics/domain-config';
+import type { LogisticsTwin } from '../logistics-data-fabric';
 
 interface RouteEntity {
   id: string;
@@ -21,9 +22,14 @@ interface RouteEntity {
   bridgesCount: number;
 }
 
-export default function RouteIntelligenceView() {
+interface RouteIntelligenceViewProps {
+  twin: LogisticsTwin;
+  loading: boolean;
+  error: string | null;
+}
+
+export default function RouteIntelligenceView({ twin, loading, error }: RouteIntelligenceViewProps) {
   const [routes, setRoutes] = useState<RouteEntity[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedRoute, setSelectedRoute] = useState<RouteEntity | null>(null);
   const [activeTab, setActiveTab] = useState<'CORRIDORS' | 'CALCULATOR' | 'OPTIMIZER'>('CORRIDORS');
@@ -43,27 +49,30 @@ export default function RouteIntelligenceView() {
   const [approvingPlan, setApprovingPlan] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
-  const fetchRoutes = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/logistics/routes');
-      const json = await res.json();
-      if (json.ok && json.data) {
-        setRoutes(json.data.routes || []);
-        if (json.data.routes?.length > 0 && !selectedRoute) {
-          setSelectedRoute(json.data.routes[0]);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load routes:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchRoutes();
-  }, []);
+    const nextRoutes = twin.routes.map((route, index) => ({
+      id: route.id,
+      code: route.code,
+      name: route.name,
+      originSubstation: route.originName || `Route ${index + 1}`,
+      destinationSubstation: route.destinationName || 'Unknown destination',
+      distanceKm: route.distanceKm,
+      estimatedDurationMin: Math.round((route.estimatedDurationHours || 1) * 60),
+      roadCondition: route.roadCondition,
+      riskRating: route.weatherHazardLevel === 'LOW' ? 'LOW' : route.weatherHazardLevel === 'MEDIUM' ? 'MEDIUM' : 'HIGH',
+      status: 'STABLE',
+      tollStationsCount: route.distanceKm > 300 ? 2 : 1,
+      bridgesCount: route.distanceKm > 250 ? 2 : 1,
+    }));
+
+    setRoutes(nextRoutes);
+    setSelectedRoute((current) => {
+      if (current && nextRoutes.some((route) => route.id === current.id)) {
+        return current;
+      }
+      return nextRoutes[0] ?? null;
+    });
+  }, [twin.routes]);
 
   const handleCalculateRoute = async () => {
     setCalcLoading(true);
@@ -144,6 +153,29 @@ export default function RouteIntelligenceView() {
     r.destinationSubstation.toLowerCase().includes(search.toLowerCase())
   );
 
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center text-slate-400">
+        <div className="text-center">
+          <div className="mb-3 animate-spin text-cyan-400">⟳</div>
+          <p>Loading route intelligence...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-slate-400">
+        <div className="text-center">
+          <AlertTriangle size={48} className="mx-auto mb-3 text-yellow-400" />
+          <p className="mb-2 font-bold">Data Source Warning</p>
+          <p className="text-sm">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
       {/* Header */}
@@ -195,7 +227,7 @@ export default function RouteIntelligenceView() {
           </div>
 
           <button
-            onClick={fetchRoutes}
+            onClick={() => setSelectedRoute(routes[0] ?? null)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700/60 transition-all cursor-pointer"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />

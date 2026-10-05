@@ -3,6 +3,7 @@ import {
   AlertTriangle, ShieldAlert, Zap, RefreshCw, CheckCircle2,
   TrendingDown, ArrowRight, Sparkles, Filter, Search, Play, FileText
 } from 'lucide-react';
+import type { LogisticsTwin } from '../logistics-data-fabric';
 
 interface RiskSignal {
   id: string;
@@ -18,34 +19,45 @@ interface RiskSignal {
   escalationStatus: string;
 }
 
-export default function LogisticsRiskCenterView() {
+interface LogisticsRiskCenterViewProps {
+  twin: LogisticsTwin;
+  loading: boolean;
+  error: string | null;
+}
+
+export default function LogisticsRiskCenterView({ twin, loading, error }: LogisticsRiskCenterViewProps) {
   const [risks, setRisks] = useState<RiskSignal[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedRisk, setSelectedRisk] = useState<RiskSignal | null>(null);
   const [executing, setExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState<any | null>(null);
 
-  const fetchRisks = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/logistics/risks');
-      const json = await res.json();
-      if (json.ok && json.data) {
-        setRisks(json.data.risks || []);
-        if (json.data.risks?.length > 0 && !selectedRisk) {
-          setSelectedRisk(json.data.risks[0]);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load logistics risks:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchRisks();
-  }, []);
+    const nextRisks = twin.risks.map((risk) => ({
+      id: risk.id,
+      signal: risk.title,
+      category: risk.entityType,
+      severity: risk.severity,
+      affectedEntity: risk.entityType,
+      affectedEntityId: risk.entityId,
+      evidence: [risk.message],
+      confidence: Number(risk.provenance.confidence ?? 0.8),
+      timestamp: risk.provenance.sourceTimestamp ?? new Date().toISOString(),
+      recommendedAction: risk.message,
+      escalationStatus: risk.severity === 'CRITICAL' ? 'ESCALATED' : 'MONITORING',
+    }));
+
+    setRisks(nextRisks);
+    setSelectedRisk((current) => {
+      if (current && nextRisks.some((risk) => risk.id === current.id)) {
+        return current;
+      }
+      return nextRisks[0] ?? null;
+    });
+  }, [twin.risks]);
+
+  const fetchRisks = () => {
+    setExecutionResult(null);
+  };
 
   const handleExecuteMitigation = async () => {
     if (!selectedRisk) return;
@@ -70,6 +82,29 @@ export default function LogisticsRiskCenterView() {
       setExecuting(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center text-slate-400">
+        <div className="text-center">
+          <div className="mb-3 animate-spin text-rose-400">⟳</div>
+          <p>Loading risk signals...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-slate-400">
+        <div className="text-center">
+          <AlertTriangle size={48} className="mx-auto mb-3 text-yellow-400" />
+          <p className="mb-2 font-bold">Data Source Warning</p>
+          <p className="text-sm">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-[#020b14] text-slate-100 p-6 overflow-hidden">
