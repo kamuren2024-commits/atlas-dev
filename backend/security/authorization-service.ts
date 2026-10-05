@@ -12,7 +12,7 @@ export class AuthorizationService {
   private static ROLE_PERMISSIONS: Record<string, string[]> = {
     'admin': ['*'],
     'Administrator': ['*'],
-    'Demo_User': ['logistics:read'],
+    'Demo_User': ['logistics:read', 'inventory:read'],
     'Director Grid Logistics': [
       'project:read',
       'tender:view', 'procurement:read', 'tender:create', 'tender:edit', 'tender:draft', 'tender:approve_minor',
@@ -23,34 +23,34 @@ export class AuthorizationService {
       'finance_source:view', 'finance_budget:view', 'finance_commitment:view',
       'finance_invoice:view', 'finance_payment:view', 'finance_project:view',
       'finance_quality:view', 'finance_lineage:view',
-      'logistics:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel', 'logistics:admin'
+      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel', 'logistics:admin'
     ],
     'LOGISTICS_OPERATOR': [
-      'logistics:read', 'logistics:create', 'logistics:update'
+      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update'
     ],
     'LOGISTICS_DISPATCHER': [
-      'logistics:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
+      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
     ],
     'LOGISTICS_ADMIN': [
-      'logistics:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel', 'logistics:admin'
+      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel', 'logistics:admin'
     ],
     'System Administrator': ['*'],
-    'Executive': ['logistics:read'],
+    'Executive': ['logistics:read', 'inventory:read'],
     'Logistics Manager': [
-      'logistics:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
+      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
     ],
-    'Fleet Manager': ['logistics:read', 'logistics:create', 'logistics:update'],
+    'Fleet Manager': ['logistics:read', 'inventory:read', 'logistics:create', 'logistics:update'],
     'Dispatcher': [
-      'logistics:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
+      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
     ],
-    'Driver': ['logistics:read'],
-    'Engineer': ['logistics:read', 'logistics:update'],
-    'Project Manager': ['project:read', 'project:update', 'logistics:read'],
-    'Maintenance Manager': ['logistics:read', 'logistics:create', 'logistics:update'],
-    'Finance Officer': ['logistics:read'],
-    'Procurement Officer': ['logistics:read'],
-    'Security Officer': ['logistics:read'],
-    'Auditor': ['logistics:read'],
+    'Driver': ['logistics:read', 'inventory:read'],
+    'Engineer': ['logistics:read', 'inventory:read', 'logistics:update'],
+    'Project Manager': ['project:read', 'project:update', 'logistics:read', 'inventory:read'],
+    'Maintenance Manager': ['logistics:read', 'inventory:read', 'logistics:create', 'logistics:update'],
+    'Finance Officer': ['logistics:read', 'inventory:read'],
+    'Procurement Officer': ['logistics:read', 'inventory:read'],
+    'Security Officer': ['logistics:read', 'inventory:read'],
+    'Auditor': ['logistics:read', 'inventory:read'],
     'Chief Procurement Officer': [
       'project:read',
       'tender:view', 'procurement:read', 'tender:create', 'tender:edit', 'tender:draft', 'tender:approve_minor', 'tender:approve_major',
@@ -61,7 +61,7 @@ export class AuthorizationService {
       'finance_source:view', 'finance_budget:view', 'finance_commitment:view', 'finance_commitment:create',
       'finance_invoice:view', 'finance_payment:view', 'finance_project:view',
       'finance_quality:view', 'finance_lineage:view',
-      'logistics:read'
+      'logistics:read', 'inventory:read'
     ],
     'SCM Intelligence Officer': [
       'project:read',
@@ -73,7 +73,7 @@ export class AuthorizationService {
       'finance_source:view', 'finance_budget:view', 'finance_commitment:view',
       'finance_invoice:view', 'finance_payment:view', 'finance_project:view',
       'finance_quality:view', 'finance_lineage:view',
-      'logistics:read'
+      'logistics:read', 'inventory:read'
     ],
     'Board Director': [
       'project:read',
@@ -86,7 +86,7 @@ export class AuthorizationService {
       'finance_invoice:view', 'finance_payment:view', 'finance_project:view',
       'finance_quality:view', 'finance_report:view', 'finance_forecast:view',
       'finance_risk:view',
-      'logistics:read'
+      'logistics:read', 'inventory:read'
     ],
     'Guest': [
       'tender:view', 'procurement:read',

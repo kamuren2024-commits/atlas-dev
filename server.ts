@@ -12,6 +12,7 @@ import { createFinanceApiRouter } from './backend/finance/api-routes';
 import { createProjectSupplyApiRouter } from './backend/domains/project-supply/api-routes';
 import { createProcurementApiRouter } from './backend/domains/procurement/api-routes';
 import { createSupplierApiRouter } from './backend/domains/supplier/api-routes';
+import { createInventoryApiRouter } from './backend/domains/inventory/api-routes';
 import { createEventApiRouter } from './backend/event-fabric/event-api-routes';
 import { setupPlanningApiRoutes } from './backend/planning-engine/planning-api-routes';
 import { createDigitalTwinApiRouter } from './backend/digital-twin/api-routes';
@@ -23,6 +24,7 @@ import { createAiPlatformApiRouter } from './backend/ai-runtime/api-routes';
 import missionRouter from './backend/mission-engine/mission-api-routes';
 import { EventBus } from './backend/event-fabric/event-bus';
 import { AtlasAiGateway } from './backend/ai-federation/gateway/AtlasAiGateway';
+import { DatabaseAuditLogger } from './backend/observability/database-audit-logger';
 import {
   isEvaluationOsProductionMode,
   ProductionModeError,
@@ -145,9 +147,7 @@ async function startServer() {
   }
 
   const authz = new AuthorizationService();
-  const audit = {
-    log: (entry: any) => console.log('[AUDIT]', JSON.stringify(entry))
-  };
+  const audit = DatabaseAuditLogger.create(db);
   const kgService = KnowledgeGraphService.getInstance();
   const kg = kgService.getGraph();
 
@@ -214,6 +214,7 @@ async function startServer() {
   });
   app.use('/api/procurement', createProcurementApiRouter({ db, kg: kg as any, authz, audit }));
   app.use('/api/supplier', createSupplierApiRouter({ db, kg: kg as any, authz, audit }));
+  app.use('/api/inventory', createInventoryApiRouter({ db, authz, audit }));
   app.use('/api/events', createEventApiRouter());
   app.use('/api/twin/engineering', createEngineeringApiRouter({ db, authz }));
   app.use('/api/twin', createDigitalTwinApiRouter());

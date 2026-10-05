@@ -467,6 +467,13 @@ function AppInner() {
       group: 'OPERATIONS'
     },
     { 
+      id: 'inventory', 
+      label: 'Inventory Intelligence', 
+      icon: Boxes, 
+      desc: 'Stock positions, network & health',
+      group: 'OPERATIONS'
+    },
+    { 
       id: 'project', 
       label: 'Project Supply Nexus', 
       icon: Network, 
