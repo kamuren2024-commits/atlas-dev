@@ -97,7 +97,7 @@ describe('Meeting Intelligence operational golden path', () => {
 
     expect((await repository.getMeetingById(meeting.id))?.status).toBe('DRAFT');
     await repository.updateMeeting(meeting.id, { status: 'SCHEDULED' }, 'scheduler');
-    await repository.startMeeting(meeting.id, 'chair');
+    await repository.startMeeting(meeting.id, 'chair', 2);
 
     const recording = await repository.saveRecordingSession({
       id: 'REC_GOLDEN_PATH',
@@ -168,6 +168,7 @@ describe('Meeting Intelligence operational golden path', () => {
     expect(completedAction?.status).toBe('COMPLETED');
     expect(completedAction?.version).toBe(3);
     expect(completedAction?.verified_by).toBe('verifier');
+    expect(await repository.verifyAction(action!.id, 'Retry verification', 'verifier')).toBe(false);
 
     const decisionCandidate = await repository.addDetectedItem({
       id: 'SIG_DECISION_GOLDEN_PATH',
@@ -212,6 +213,7 @@ describe('Meeting Intelligence operational golden path', () => {
 
     const storedMeeting = await repository.getMeetingById(meeting.id);
     expect(storedMeeting?.status).toBe('ARCHIVED');
+    expect(storedMeeting?.lifecycle_version).toBe(9);
     expect(await repository.getEvidenceForMeeting(meeting.id)).toEqual([evidence]);
 
     const lifecycleEvents = await repository.getLifecycleEvents(meeting.id);
@@ -249,6 +251,50 @@ describe('Meeting Intelligence operational golden path', () => {
       category_tag: '',
       confidence: 50
     })).rejects.toThrow('was not found');
+    await expect(repository.executeActionWorkflow('ACTION_UNCONFIGURED', 'actor'))
+      .rejects.toThrow('MEETING_WORKFLOW_NOT_CONFIGURED');
     expect((await repository.getMeetingById(meeting.id))?.status).toBe('DRAFT');
+  });
+
+  it('allows only one of two concurrent lifecycle operations from the same version', async () => {
+    const meeting = await repository.createMeeting({
+      id: 'MI_LIFECYCLE_RACE',
+      title: 'Lifecycle concurrency verification',
+      status: 'SCHEDULED'
+    });
+    await repository.startMeeting(meeting.id, 'chair', 1);
+    const live = await repository.getMeetingById(meeting.id);
+    expect(live?.status).toBe('LIVE');
+
+    const outcomes = await Promise.allSettled([
+      repository.pauseMeeting(meeting.id, 'secretary', live!.lifecycle_version),
+      repository.endMeeting(meeting.id, 'chair', live!.lifecycle_version)
+    ]);
+    expect(outcomes.filter(outcome => outcome.status === 'fulfilled')).toHaveLength(1);
+    const state = await repository.getMeetingById(meeting.id);
+    expect(['PAUSED', 'COMPLETED']).toContain(state?.status);
+    expect(state?.lifecycle_version).toBe(3);
+  });
+
+  it('rejects transitions out of terminal or published states', async () => {
+    const archived = await repository.createMeeting({
+      id: 'MI_ARCHIVED_TERMINAL',
+      title: 'Archived terminal state',
+      status: 'ARCHIVED'
+    });
+    const cancelled = await repository.createMeeting({
+      id: 'MI_CANCELLED_TERMINAL',
+      title: 'Cancelled terminal state',
+      status: 'CANCELLED'
+    });
+    const published = await repository.createMeeting({
+      id: 'MI_PUBLISHED_TERMINAL',
+      title: 'Published terminal state',
+      status: 'PUBLISHED'
+    });
+
+    await expect(repository.startMeeting(archived.id)).rejects.toThrow('Cannot start meeting in ARCHIVED');
+    await expect(repository.startMeeting(cancelled.id)).rejects.toThrow('Cannot start meeting in CANCELLED');
+    await expect(repository.updateMeeting(published.id, { status: 'DRAFT' })).rejects.toThrow('Invalid state transition');
   });
 });

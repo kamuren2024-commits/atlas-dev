@@ -10,7 +10,6 @@ import {
   Search,
   Check,
   Send,
-  Zap,
   ArrowUpRight,
   ShieldCheck,
   FileCheck,
@@ -25,7 +24,6 @@ interface Props {
   onUpdateStatus: (id: string, status: ActionStatus) => Promise<void>;
   onEscalate: (id: string, reason: string) => Promise<void>;
   onVerify: (id: string, notes: string) => Promise<void>;
-  onExecuteWorkflow: (id: string) => Promise<void>;
 }
 
 export const ActionControlQueueView: React.FC<Props> = ({
@@ -33,8 +31,7 @@ export const ActionControlQueueView: React.FC<Props> = ({
   onCreateAction,
   onUpdateStatus,
   onEscalate,
-  onVerify,
-  onExecuteWorkflow
+  onVerify
 }) => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -209,13 +206,6 @@ export const ActionControlQueueView: React.FC<Props> = ({
               <div className="flex items-center gap-2 flex-wrap shrink-0">
                 {act.status !== 'COMPLETED' && (
                   <>
-                    <button
-                      onClick={() => onExecuteWorkflow(act.id)}
-                      className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 font-medium text-xs flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Zap className="w-3.5 h-3.5" /> Trigger Workflow
-                    </button>
-
                     {act.status !== 'UNDER_VERIFICATION' && (
                       <button
                         onClick={() => onUpdateStatus(act.id, 'UNDER_VERIFICATION')}

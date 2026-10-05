@@ -34,6 +34,16 @@ export function createMeetingIntelligenceApiRouter(): Router {
     });
   };
 
+  const getExpectedVersion = (req: Request, res: Response): number | undefined => {
+    const value = req.body?.expectedVersion;
+    if (value === undefined) return undefined;
+    if (!Number.isSafeInteger(value) || value < 1) {
+      res.status(400).json({ error: 'expectedVersion must be a positive integer.' });
+      return undefined;
+    }
+    return value;
+  };
+
   // --- SSE STREAM ---
   router.get('/live/stream', (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -164,7 +174,9 @@ export function createMeetingIntelligenceApiRouter(): Router {
   router.post('/meetings/:id/start', checkRbac('START'), async (req: Request, res: Response) => {
     try {
       const actor = req.body.actor || 'Operator';
-      const meeting = await repo.startMeeting(req.params.id, actor);
+      const expectedVersion = getExpectedVersion(req, res);
+      if (req.body.expectedVersion !== undefined && expectedVersion === undefined) return;
+      const meeting = await repo.startMeeting(req.params.id, actor, expectedVersion);
       broadcastSse('meeting_started', meeting);
       res.json({ success: true, meeting });
     } catch (err: any) {
@@ -175,7 +187,9 @@ export function createMeetingIntelligenceApiRouter(): Router {
   router.post('/meetings/:id/pause', checkRbac('PAUSE'), async (req: Request, res: Response) => {
     try {
       const actor = req.body.actor || 'Operator';
-      const meeting = await repo.pauseMeeting(req.params.id, actor);
+      const expectedVersion = getExpectedVersion(req, res);
+      if (req.body.expectedVersion !== undefined && expectedVersion === undefined) return;
+      const meeting = await repo.pauseMeeting(req.params.id, actor, expectedVersion);
       broadcastSse('meeting_paused', meeting);
       res.json({ success: true, meeting });
     } catch (err: any) {
@@ -186,7 +200,9 @@ export function createMeetingIntelligenceApiRouter(): Router {
   router.post('/meetings/:id/resume', checkRbac('RESUME'), async (req: Request, res: Response) => {
     try {
       const actor = req.body.actor || 'Operator';
-      const meeting = await repo.resumeMeeting(req.params.id, actor);
+      const expectedVersion = getExpectedVersion(req, res);
+      if (req.body.expectedVersion !== undefined && expectedVersion === undefined) return;
+      const meeting = await repo.resumeMeeting(req.params.id, actor, expectedVersion);
       broadcastSse('meeting_resumed', meeting);
       res.json({ success: true, meeting });
     } catch (err: any) {
@@ -197,7 +213,9 @@ export function createMeetingIntelligenceApiRouter(): Router {
   router.post('/meetings/:id/end', checkRbac('END'), async (req: Request, res: Response) => {
     try {
       const actor = req.body.actor || 'Operator';
-      const meeting = await repo.endMeeting(req.params.id, actor);
+      const expectedVersion = getExpectedVersion(req, res);
+      if (req.body.expectedVersion !== undefined && expectedVersion === undefined) return;
+      const meeting = await repo.endMeeting(req.params.id, actor, expectedVersion);
       broadcastSse('meeting_ended', meeting);
       res.json({ success: true, meeting });
     } catch (err: any) {
@@ -642,7 +660,8 @@ export function createMeetingIntelligenceApiRouter(): Router {
       broadcastSse('action_executed', { id: req.params.id, workflowId: result.workflowId });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ error: 'Workflow execution failed', details: err?.message });
+      const unavailable = err?.message?.startsWith('MEETING_WORKFLOW_NOT_CONFIGURED');
+      res.status(unavailable ? 501 : 500).json({ error: 'Workflow execution failed', details: err?.message });
     }
   });
 

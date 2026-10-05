@@ -251,6 +251,7 @@ export interface MeetingEntity {
   endedAt?: string | null;
   total_paused_ms?: number;
   totalPausedMs?: number;
+  lifecycle_version?: number;
   elapsed_seconds?: number;
   created_at: string;
   createdAt?: string;

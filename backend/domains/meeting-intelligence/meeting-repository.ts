@@ -399,7 +399,6 @@ export class MeetingIntelligenceRepository {
           entity.created_at, entity.updated_at
         ]
       );
-
       // Insert relational participants
       for (const p of entity.participants) {
         try {
@@ -497,18 +496,25 @@ export class MeetingIntelligenceRepository {
       sync_status: 'SYNCED',
     };
 
-    await this.db.run(
+    const updateResult = await this.db.run(
       `UPDATE meeting_entities SET
         title = ?, meeting_type = ?, room = ?, venue = ?, date = ?, start_time = ?, end_time = ?,
         status = ?, priority = ?, objective = ?, description = ?, department = ?, chair = ?, secretary = ?,
-        project_id = ?, tender_id = ?, contract_id = ?, pds_stage = ?, current_stage = ?, provider_json = ?, calendar_json = ?, updated_at = ?
-       WHERE id = ?`,
+        project_id = ?, tender_id = ?, contract_id = ?, pds_stage = ?, current_stage = ?, provider_json = ?, calendar_json = ?,
+        lifecycle_version = lifecycle_version + ?, updated_at = ?
+       WHERE id = ? AND status = ?`,
       [
         title, meetingType, room, room, date, startTime, endTime,
         status, priority, description, description, department, chair, secretary,
-        projectId, tenderId, contractId, pdsStage, currentStage, JSON.stringify(providerMetadata), JSON.stringify(calendarData), now, meetingId
+        projectId, tenderId, contractId, pdsStage, currentStage, JSON.stringify(providerMetadata), JSON.stringify(calendarData),
+        updates.status && updates.status !== existing.status ? 1 : 0, now, meetingId, existing.status
       ]
     );
+    if (updateResult.changes !== 1) {
+      const current = await this.getMeetingById(meetingId);
+      if (current?.status === status) return current;
+      throw new Error(`Concurrent update changed meeting ${meetingId} from ${existing.status} to ${current?.status || 'MISSING'}.`);
+    }
 
     await this.logAudit('EDIT', 'MEETING', meetingId, actor, { updates });
     await this.emitMeetingEvent('MEETING_UPDATED', meetingId, actor, { updates });
@@ -537,9 +543,11 @@ export class MeetingIntelligenceRepository {
 
   // --- LIFECYCLE CONTROLS (START, PAUSE, RESUME, END) ---
 
-  public async startMeeting(meetingId: string, actor: string = 'Operator'): Promise<MeetingEntity> {
+  public async startMeeting(meetingId: string, actor: string = 'Operator', expectedVersion?: number): Promise<MeetingEntity> {
     const meeting = await this.getMeetingById(meetingId);
     if (!meeting) throw new Error(`Meeting ${meetingId} not found.`);
+    if (meeting.status === 'LIVE') return meeting;
+    this.assertExpectedLifecycleVersion(meeting, expectedVersion);
 
     const validInitialStatuses = ['SCHEDULED', 'DRAFT', 'READY', 'CREATED'];
     if (!validInitialStatuses.includes(meeting.status)) {
@@ -547,16 +555,15 @@ export class MeetingIntelligenceRepository {
     }
 
     const now = new Date().toISOString();
-    await this.db.run(
-      `UPDATE meeting_entities SET
-        status = 'LIVE',
-        started_at = ?,
-        paused_at = NULL,
-        current_stage = 'LIVE_MEETING',
-        updated_at = ?
-       WHERE id = ?`,
-      [now, now, meetingId]
+    const transition = await this.compareAndSetMeetingStatus(
+      meeting,
+      'LIVE',
+      'started_at = ?, paused_at = NULL, current_stage = ?',
+      [now, 'LIVE_MEETING'],
+      now,
+      expectedVersion
     );
+    if (!transition.changed) return transition.meeting;
 
     await this.logAudit('START', 'MEETING', meetingId, actor, { started_at: now });
     await this.emitMeetingEvent('MEETING_STARTED', meetingId, actor, { started_at: now });
@@ -564,23 +571,26 @@ export class MeetingIntelligenceRepository {
     return (await this.getMeetingById(meetingId))!;
   }
 
-  public async pauseMeeting(meetingId: string, actor: string = 'Operator'): Promise<MeetingEntity> {
+  public async pauseMeeting(meetingId: string, actor: string = 'Operator', expectedVersion?: number): Promise<MeetingEntity> {
     const meeting = await this.getMeetingById(meetingId);
     if (!meeting) throw new Error(`Meeting ${meetingId} not found.`);
+    if (meeting.status === 'PAUSED') return meeting;
+    this.assertExpectedLifecycleVersion(meeting, expectedVersion);
 
     if (meeting.status !== 'LIVE') {
       throw new Error(`Cannot pause meeting in ${meeting.status} state. Only LIVE sessions can be paused.`);
     }
 
     const now = new Date().toISOString();
-    await this.db.run(
-      `UPDATE meeting_entities SET
-        status = 'PAUSED',
-        paused_at = ?,
-        updated_at = ?
-       WHERE id = ?`,
-      [now, now, meetingId]
+    const transition = await this.compareAndSetMeetingStatus(
+      meeting,
+      'PAUSED',
+      'paused_at = ?',
+      [now],
+      now,
+      expectedVersion
     );
+    if (!transition.changed) return transition.meeting;
 
     await this.logAudit('PAUSE', 'MEETING', meetingId, actor, { paused_at: now });
     await this.emitMeetingEvent('MEETING_PAUSED', meetingId, actor, { paused_at: now });
@@ -588,9 +598,11 @@ export class MeetingIntelligenceRepository {
     return (await this.getMeetingById(meetingId))!;
   }
 
-  public async resumeMeeting(meetingId: string, actor: string = 'Operator'): Promise<MeetingEntity> {
+  public async resumeMeeting(meetingId: string, actor: string = 'Operator', expectedVersion?: number): Promise<MeetingEntity> {
     const meeting = await this.getMeetingById(meetingId);
     if (!meeting) throw new Error(`Meeting ${meetingId} not found.`);
+    if (meeting.status === 'LIVE') return meeting;
+    this.assertExpectedLifecycleVersion(meeting, expectedVersion);
 
     if (meeting.status !== 'PAUSED') {
       throw new Error(`Cannot resume meeting in ${meeting.status} state. Only PAUSED sessions can be resumed.`);
@@ -609,16 +621,15 @@ export class MeetingIntelligenceRepository {
 
     const newTotalPausedMs = (meeting.total_paused_ms || 0) + additionalPausedMs;
 
-    await this.db.run(
-      `UPDATE meeting_entities SET
-        status = 'LIVE',
-        paused_at = NULL,
-        resumed_at = ?,
-        total_paused_ms = ?,
-        updated_at = ?
-       WHERE id = ?`,
-      [nowIso, newTotalPausedMs, nowIso, meetingId]
+    const transition = await this.compareAndSetMeetingStatus(
+      meeting,
+      'LIVE',
+      'paused_at = NULL, resumed_at = ?, total_paused_ms = ?',
+      [nowIso, newTotalPausedMs],
+      nowIso,
+      expectedVersion
     );
+    if (!transition.changed) return transition.meeting;
 
     await this.logAudit('RESUME', 'MEETING', meetingId, actor, { resumed_at: nowIso, total_paused_ms: newTotalPausedMs });
     await this.emitMeetingEvent('MEETING_RESUMED', meetingId, actor, { resumed_at: nowIso, total_paused_ms: newTotalPausedMs });
@@ -626,9 +637,11 @@ export class MeetingIntelligenceRepository {
     return (await this.getMeetingById(meetingId))!;
   }
 
-  public async endMeeting(meetingId: string, actor: string = 'Operator'): Promise<MeetingEntity> {
+  public async endMeeting(meetingId: string, actor: string = 'Operator', expectedVersion?: number): Promise<MeetingEntity> {
     const meeting = await this.getMeetingById(meetingId);
     if (!meeting) throw new Error(`Meeting ${meetingId} not found.`);
+    if (meeting.status === 'COMPLETED') return meeting;
+    this.assertExpectedLifecycleVersion(meeting, expectedVersion);
 
     if (meeting.status !== 'LIVE' && meeting.status !== 'PAUSED') {
       throw new Error(`Cannot end meeting in ${meeting.status} state. Only LIVE or PAUSED sessions can be ended.`);
@@ -645,22 +658,60 @@ export class MeetingIntelligenceRepository {
       }
     }
 
-    await this.db.run(
-      `UPDATE meeting_entities SET
-        status = 'COMPLETED',
-        paused_at = NULL,
-        ended_at = ?,
-        total_paused_ms = ?,
-        current_stage = 'APPROVAL',
-        updated_at = ?
-       WHERE id = ?`,
-      [nowIso, finalTotalPausedMs, nowIso, meetingId]
+    const transition = await this.compareAndSetMeetingStatus(
+      meeting,
+      'COMPLETED',
+      'paused_at = NULL, ended_at = ?, total_paused_ms = ?, current_stage = ?',
+      [nowIso, finalTotalPausedMs, 'APPROVAL'],
+      nowIso,
+      expectedVersion
     );
+    if (!transition.changed) return transition.meeting;
 
     await this.logAudit('END', 'MEETING', meetingId, actor, { ended_at: nowIso, total_paused_ms: finalTotalPausedMs });
     await this.emitMeetingEvent('MEETING_ENDED', meetingId, actor, { ended_at: nowIso, total_paused_ms: finalTotalPausedMs });
 
     return (await this.getMeetingById(meetingId))!;
+  }
+
+  private async compareAndSetMeetingStatus(
+    meeting: MeetingEntity,
+    nextStatus: MeetingStatus,
+    assignments: string,
+    assignmentParams: unknown[],
+    updatedAt: string,
+    expectedVersion?: number
+  ): Promise<{ meeting: MeetingEntity; changed: boolean }> {
+    const currentVersion = Number(meeting.lifecycle_version || 1);
+    const requiredVersion = expectedVersion ?? currentVersion;
+    if (requiredVersion !== currentVersion) {
+      throw new Error(`Meeting ${meeting.id} lifecycle version conflict: expected ${requiredVersion}, current ${currentVersion}.`);
+    }
+    const result = await this.db.run(
+      `UPDATE meeting_entities
+       SET status = ?, ${assignments}, lifecycle_version = lifecycle_version + 1, updated_at = ?
+       WHERE id = ? AND status = ? AND lifecycle_version = ?`,
+      [nextStatus, ...assignmentParams, updatedAt, meeting.id, meeting.status, requiredVersion]
+    );
+
+    if (result.changes === 1) {
+      const updated = await this.getMeetingById(meeting.id);
+      if (!updated) throw new Error(`Meeting ${meeting.id} disappeared after a lifecycle transition.`);
+      return { meeting: updated, changed: true };
+    }
+
+    const current = await this.getMeetingById(meeting.id);
+    if (!current) throw new Error(`Meeting ${meeting.id} not found.`);
+    if (current.status === nextStatus && current.lifecycle_version === requiredVersion + 1) {
+      return { meeting: current, changed: false };
+    }
+    throw new Error(`Concurrent lifecycle transition changed meeting ${meeting.id} from ${meeting.status} to ${current.status}.`);
+  }
+
+  private assertExpectedLifecycleVersion(meeting: MeetingEntity, expectedVersion?: number): void {
+    if (expectedVersion !== undefined && Number(meeting.lifecycle_version || 1) !== expectedVersion) {
+      throw new Error(`Meeting ${meeting.id} lifecycle version conflict: expected ${expectedVersion}, current ${meeting.lifecycle_version || 1}.`);
+    }
   }
 
   public async updateMeetingStage(meetingId: string, stage: MeetingLoopStage, actor: string = 'Operator'): Promise<boolean> {
@@ -1562,6 +1613,7 @@ export class MeetingIntelligenceRepository {
       );
     } catch (e) {
       console.error('[MEETING-REPO] Error saving detected item:', e);
+      throw e;
     }
 
     return fullItem;
@@ -2026,17 +2078,10 @@ export class MeetingIntelligenceRepository {
   }
 
   public async executeActionWorkflow(id: string, actor: string): Promise<{ success: boolean; workflowId: string }> {
-    const workflowId = `WF_${Date.now().toString(36).toUpperCase()}`;
-    try {
-      await this.db.run(
-        `UPDATE meeting_actions SET status = 'ON_TRACK', workflow_triggered = 1, workflow_id = ?, updated_at = ? WHERE id = ?`,
-        [workflowId, new Date().toISOString(), id]
-      );
-      await this.logAudit('EDIT', 'ACTION', id, actor, { workflowTriggered: workflowId });
-    } catch (e) {
-      console.warn('[MEETING-REPO] DB update error, proceeding with execution acknowledge');
+    if (!id || !actor.trim()) {
+      throw new Error('Action ID and authenticated actor are required to request a workflow.');
     }
-    return { success: true, workflowId };
+    throw new Error('MEETING_WORKFLOW_NOT_CONFIGURED: no executable Atlas workflow is registered for meeting actions.');
   }
 
   // --- COMMITMENTS & RISKS ---
@@ -2613,6 +2658,7 @@ export class MeetingIntelligenceRepository {
       endedAt: ended_at,
       total_paused_ms,
       totalPausedMs: total_paused_ms,
+      lifecycle_version: Number(r.lifecycle_version || 1),
       elapsed_seconds,
       created_at: r.created_at,
       createdAt: r.created_at,

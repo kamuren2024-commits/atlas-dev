@@ -399,23 +399,6 @@ export default function MeetingIntelligenceModule() {
     }
   };
 
-  const handleExecuteWorkflow = async (id: string) => {
-    try {
-      const res = await fetch(`/api/meeting-intelligence/actions/${id}/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actor: userRole })
-      });
-      if (res.ok) {
-        const json = await res.json();
-        showToast(`Workflow ${json.workflowId} triggered on Event Fabric.`);
-        fetchOverview();
-      }
-    } catch (e) {
-      showToast('Workflow trigger failed.');
-    }
-  };
-
   const handleCreateCommitment = async (commitment: Partial<CommitmentRecord>) => {
     try {
       const res = await fetch('/api/meeting-intelligence/commitments', {
@@ -715,7 +698,6 @@ export default function MeetingIntelligenceModule() {
             onUpdateStatus={handleUpdateActionStatus}
             onEscalate={handleEscalateAction}
             onVerify={handleVerifyAction}
-            onExecuteWorkflow={handleExecuteWorkflow}
           />
         )}
 
