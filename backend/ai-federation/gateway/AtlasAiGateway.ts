@@ -138,6 +138,11 @@ export class AtlasAiGateway {
       }
     }
 
+    const hasConfiguredProvider = !!process.env.GEMINI_API_KEY || process.env.OLLAMA_ENABLED === 'true' || liveLocalModels.length > 0;
+    if (!hasConfiguredProvider) {
+      throw new Error('AI inference unavailable. No configured provider is available for task "' + (req.task || 'copilot') + '".');
+    }
+
     let lastErr: Error | undefined;
     let fallbackState: NonNullable<GatewayInferenceResponse['fallbackState']> | undefined;
 

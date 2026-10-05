@@ -11,10 +11,22 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { AtlasAiGateway } from '../../ai-federation/gateway/AtlasAiGateway';
 import { validateMeetingTransition, MeetingIntelligenceRepository } from './meeting-repository';
 
 describe('Meeting Intelligence — Provider-Neutral AI Architecture', () => {
   describe('1. MeetingAiGatewayAdapter — Authorization Boundaries', () => {
+    it('should return fail-closed when no provider is configured', async () => {
+      const gateway = AtlasAiGateway.getInstance();
+      await expect(
+        gateway.infer({
+          prompt: 'Summarize this meeting decision.',
+          task: 'copilot',
+          tenantId: 'ketraco',
+        })
+      ).rejects.toThrow(/AI inference unavailable|No configured provider/i);
+    });
+
     it('should block unauthorized user from accessing meeting context', async () => {
       // User not in tenant
       // User not participant in meeting
