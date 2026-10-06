@@ -42,7 +42,8 @@ export const DEV_ADMIN_PERMISSIONS = [
   'finance_source:view', 'finance_budget:view', 'finance_commitment:view',
   'finance_invoice:view', 'finance_payment:view', 'finance_project:view',
   'finance_quality:view', 'finance_lineage:view',
-  'logistics:read', 'logistics:create', 'logistics:update'
+  'logistics:read', 'logistics:create', 'logistics:update',
+  'inventory:read'
 ];
 
 export class DevAdminService {

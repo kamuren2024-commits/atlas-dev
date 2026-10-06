@@ -12,6 +12,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AtlasAiGateway } from '../../ai-federation/gateway/AtlasAiGateway';
+import { resolveTrustedRequestContext } from './api-routes';
 import { validateMeetingTransition, MeetingIntelligenceRepository } from './meeting-repository';
 
 describe('Meeting Intelligence — Provider-Neutral AI Architecture', () => {
@@ -25,6 +26,26 @@ describe('Meeting Intelligence — Provider-Neutral AI Architecture', () => {
           tenantId: 'ketraco',
         })
       ).rejects.toThrow(/AI inference unavailable|No configured provider/i);
+    });
+
+    it('should reject client-supplied tenant identity when trusted server context differs', () => {
+      const req = {
+        headers: { 'x-tenant-id': 'tenant-a', 'x-user-role': 'CHAIR', 'x-user-name': 'alice@example.com' },
+        body: { tenantId: 'tenant-b', userRole: 'CHAIR', actor: 'mallory@example.com' },
+        query: {},
+      } as any;
+
+      expect(() => resolveTrustedRequestContext(req)).toThrow(/Tenant mismatch|Role mismatch|Actor mismatch/);
+    });
+
+    it('should reject client-supplied role identity when trusted server role differs', () => {
+      const req = {
+        headers: { 'x-tenant-id': 'tenant-a', 'x-user-role': 'CHAIR', 'x-user-name': 'alice@example.com' },
+        body: { tenantId: 'tenant-a', userRole: 'MEMBER', actor: 'alice@example.com' },
+        query: {},
+      } as any;
+
+      expect(() => resolveTrustedRequestContext(req)).toThrow(/Role mismatch/);
     });
 
     it('should block unauthorized user from accessing meeting context', async () => {

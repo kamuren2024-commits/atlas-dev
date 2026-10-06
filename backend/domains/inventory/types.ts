@@ -69,6 +69,50 @@ export interface AtpBreakdown {
   availableToPromise: number;
 }
 
+export type AtpEvidence = 'measured' | 'no-records' | 'not-applicable';
+
+export interface AtpComponent {
+  key: keyof AtpBreakdown;
+  label: string;
+  value: number;
+  evidence: AtpEvidence;
+  source: string;
+}
+
+export interface MaterialDetail {
+  material: CanonicalMaterial;
+  atp: AtpBreakdown;
+  atpComponents: AtpComponent[];
+  positions: InventoryPosition[];
+  linkedEvents: MovementEvent[];
+  orderLineCoverage: 'PRESENT' | 'ABSENT';
+  projectLinkage: 'LINKED' | 'NO_EVIDENCE';
+  linkedProjects: ProjectRequirement[];
+  criticality: {
+    level: string;
+    score: number | null;
+    method: string;
+    missingFactors: string[];
+    confidence: string;
+  };
+  dataStatus: DataStatus;
+  provenance: Provenance[];
+  generatedAt: string;
+}
+
+export interface ProjectRequirement {
+  id: string;
+  requirementCode: string;
+  projectName: string;
+  substationTarget: string | null;
+  description: string;
+  requiredDate: string | null;
+  deliveryStatus: string;
+  progressPct: number | null;
+  source: string;
+  verifiedBy: string | null;
+}
+
 export interface WarehouseSummary {
   id: string;
   code: string;

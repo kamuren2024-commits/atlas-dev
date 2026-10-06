@@ -40,6 +40,30 @@ export interface InventoryPosition {
   health: HealthBand; healthReason: string;
 }
 
+export interface AtpComponent {
+  key: string; label: string; value: number;
+  evidence: 'measured' | 'no-records' | 'not-applicable'; source: string;
+}
+
+export interface MaterialDetail {
+  material: { materialId: string; sku: string; description: string; materialGroup: string; uom: string; unitCostKes: number | null; status: string };
+  atp: { onHand: number; inTransit: number; onOrder: number; reserved: number; allocated: number; committedDemand: number; forecastDemand: number; availableToPromise: number };
+  atpComponents: AtpComponent[];
+  positions: InventoryPosition[];
+  linkedEvents: Array<{ id: string; eventType: string; severity: string; source: string | null; message: string; createdAt: string }>;
+  orderLineCoverage: 'PRESENT' | 'ABSENT';
+  projectLinkage: 'LINKED' | 'NO_EVIDENCE';
+  criticality: { level: string; score: number | null; method: string; missingFactors: string[]; confidence: string };
+  dataStatus: DataStatus;
+  generatedAt: string;
+}
+
+export interface ProjectRequirement {
+  id: string; requirementCode: string; projectName: string; substationTarget: string | null;
+  description: string; requiredDate: string | null; deliveryStatus: string;
+  progressPct: number | null; source: string; verifiedBy: string | null;
+}
+
 export type LoadState = 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized' | 'forbidden';
 
 export class InventoryApiError extends Error {
@@ -82,4 +106,12 @@ export function formatKes(v: number | null): string {
   if (Math.abs(v) >= 1_000_000_000) return `KES ${(v / 1_000_000_000).toFixed(2)}B`;
   if (Math.abs(v) >= 1_000_000) return `KES ${(v / 1_000_000).toFixed(1)}M`;
   return `KES ${Math.round(v).toLocaleString('en-KE')}`;
+}
+
+export function fetchMaterialDetail(sku: string, signal: AbortSignal): Promise<{ data: MaterialDetail; dataStatus: DataStatus }> {
+  return fetch(`/api/inventory/materials/${encodeURIComponent(sku)}`, { signal }).then((res) => handle<MaterialDetail>(res));
+}
+
+export function fetchProjects(signal: AbortSignal): Promise<{ data: { projects: ProjectRequirement[] }; dataStatus: DataStatus }> {
+  return fetch('/api/inventory/projects', { signal }).then((res) => handle<{ projects: ProjectRequirement[] }>(res));
 }

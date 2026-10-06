@@ -1,5 +1,5 @@
-// SALIENCE ATLAS — INVENTORY INTELLIGENCE OS (Slice 1).
-// Real Atlas shell + responsive route + real overview contract.
+// SALIENCE ATLAS — INVENTORY INTELLIGENCE OS (Slices 1–2).
+// Real Atlas shell + responsive route + real overview contract + material intelligence.
 // Data-driven SVG network (no cartoon imagery). Unwired areas show
 // explicit CONTRACT PENDING — never fake controls.
 
@@ -9,9 +9,10 @@ import {
   AlertTriangle, CheckCircle2, RefreshCw, ChevronRight, X, WifiOff, Lock,
 } from 'lucide-react';
 import {
-  fetchOverview, fetchPositions,
+  fetchMaterialDetail, fetchOverview, fetchPositions, fetchProjects,
   formatKes,
   type DataStatus, type HealthBand, type InventoryOverview, type InventoryPosition, type LoadState,
+  type MaterialDetail, type ProjectRequirement,
   InventoryApiError,
 } from './api';
 
@@ -22,7 +23,7 @@ const NAV = [
   { id: 'suppliers', label: 'Suppliers', wired: false },
   { id: 'warehouses', label: 'Warehouses & Storage', wired: true },
   { id: 'transit', label: 'Transit & Logistics', wired: true },
-  { id: 'projects', label: 'Projects & Deployment', wired: false },
+  { id: 'projects', label: 'Projects & Deployment', wired: true },
   { id: 'assets', label: 'Assets & Substations', wired: false },
   { id: 'forecast', label: 'Forecasting & Demand', wired: false },
   { id: 'analytics', label: 'Analytics & Insights', wired: false },
@@ -38,8 +39,13 @@ function healthColor(h: HealthBand): string {
   return '#64748b';
 }
 
-function StatusDot({ status }: { status: DataStatus }) {
-  const color = status === 'LIVE' ? '#34d399' : status === 'PARTIAL' ? '#fbbf24' : '#64748b';
+function formatActivityTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('en-KE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function StatusDot({ status }: { status: DataStatus }) {  const color = status === 'LIVE' ? '#34d399' : status === 'PARTIAL' ? '#fbbf24' : '#64748b';
   return (
     <span className="inline-flex items-center gap-1.5 text-[10px] font-mono" style={{ color }}>
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
@@ -124,7 +130,7 @@ function SupplyNetworkGraph({ overview, selected, onSelect }: {
         </svg>
       </div>
       <p className="mt-1.5 text-[10px] font-mono text-slate-500">
-        Nodes derive from Atlas persistence (logistics_order / movement / warehouse / stock). Projects &amp; Assets report UNAVAILABLE until the project-supply join contract lands — no fabricated counts.
+        Nodes derive from Atlas persistence (logistics_order / movement / warehouse / stock / project requirements). Assets report UNAVAILABLE until the asset join contract lands — no fabricated counts.
       </p>
     </div>
   );
@@ -159,6 +165,47 @@ function Donut({ healthy, low, critical, total }: { healthy: number; low: number
   );
 }
 
+function EvidenceTag({ evidence }: { evidence: 'measured' | 'no-records' | 'not-applicable' }) {
+  const style = evidence === 'measured'
+    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+    : evidence === 'no-records'
+      ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+      : 'border-slate-600/50 bg-slate-800/40 text-slate-400';
+  const label = evidence === 'measured' ? 'MEASURED' : evidence === 'no-records' ? 'NO RECORDS' : 'N/A';
+  return <span className={`rounded border px-1.5 py-0.5 font-mono text-[9px] ${style}`}>{label}</span>;
+}
+
+function AtpWaterfall({ detail }: { detail: MaterialDetail }) {
+  const max = Math.max(1, ...detail.atpComponents.filter((c) => c.key !== 'availableToPromise').map((c) => Math.abs(c.value)));
+  return (
+    <div className="space-y-1.5" aria-label="Available to promise breakdown">
+      {detail.atpComponents.map((c) => (
+        <div key={c.key} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${c.key === 'availableToPromise' ? 'border border-cyan-500/30 bg-cyan-500/5' : 'bg-slate-950/50'}`}>
+          <span className="w-32 shrink-0 truncate text-[11px] text-slate-300" title={c.source}>{c.label}</span>
+          <span className="h-2 min-w-0 flex-1 overflow-hidden rounded bg-slate-800">
+            <span className={`block h-full rounded ${c.key === 'availableToPromise' ? 'bg-cyan-400' : c.value < 0 ? 'bg-rose-400' : 'bg-slate-400'}`}
+              style={{ width: `${Math.min(100, (Math.abs(c.value) / max) * 100)}%` }} />
+          </span>
+          <span className="w-20 shrink-0 text-right font-mono text-[11px] text-white">{c.value.toLocaleString()}</span>
+          <EvidenceTag evidence={c.evidence} />
+        </div>
+      ))}
+      {detail.orderLineCoverage === 'ABSENT' && (
+        <p className="pt-1 text-[10px] font-mono text-amber-300/90">
+          No order-line records on file — in-transit / on-order / allocated read as 0 pending line coverage, not as confirmed zero demand.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function deliveryColor(status: string): string {
+  if (status === 'ON_TRACK') return '#34d399';
+  if (status === 'AT_RISK') return '#fbbf24';
+  if (status === 'DELAYED') return '#fb7185';
+  return '#64748b';
+}
+
 export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot: (prompt: string) => void }) {
   const [nav, setNav] = useState<NavId>('overview');
   const [overview, setOverview] = useState<InventoryOverview | null>(null);
@@ -173,6 +220,11 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
   const [healthFilter, setHealthFilter] = useState('ALL');
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<InventoryPosition | null>(null);
+  const [detailSku, setDetailSku] = useState<string | null>(null);
+  const [detail, setDetail] = useState<MaterialDetail | null>(null);
+  const [detailState, setDetailState] = useState<LoadState>('loading');
+  const [projects, setProjects] = useState<ProjectRequirement[]>([]);
+  const [projectsState, setProjectsState] = useState<LoadState>('loading');
   const abortRef = useRef<AbortController | null>(null);
 
   const loadOverview = useCallback(async () => {
@@ -218,6 +270,39 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
       });
     return () => ctrl.abort();
   }, [nav, debouncedSearch, facilityFilter, healthFilter]);
+
+  // Project requirements load once the overview is ready (also feeds the projects tab).
+  useEffect(() => {
+    if (!overview) return;
+    const ctrl = new AbortController();
+    setProjectsState('loading');
+    fetchProjects(ctrl.signal)
+      .then((res) => { setProjects(res.data.projects); setProjectsState(res.data.projects.length ? 'ready' : 'empty'); })
+      .catch((e) => {
+        if ((e as Error).name === 'AbortError') return;
+        if (e instanceof InventoryApiError && e.status === 401) { setProjectsState('unauthorized'); return; }
+        if (e instanceof InventoryApiError && e.status === 403) { setProjectsState('forbidden'); return; }
+        setProjectsState('error');
+      });
+    return () => ctrl.abort();
+  }, [overview]);
+
+  // Canonical material detail loads on selection (row click / top-material click).
+  useEffect(() => {
+    if (!detailSku) { setDetail(null); return; }
+    const ctrl = new AbortController();
+    setDetailState('loading');
+    fetchMaterialDetail(detailSku, ctrl.signal)
+      .then((res) => { setDetail(res.data); setDetailState('ready'); })
+      .catch((e) => {
+        if ((e as Error).name === 'AbortError') return;
+        if (e instanceof InventoryApiError && e.status === 404) { setDetailState('empty'); return; }
+        if (e instanceof InventoryApiError && e.status === 401) { setDetailState('unauthorized'); return; }
+        if (e instanceof InventoryApiError && e.status === 403) { setDetailState('forbidden'); return; }
+        setDetailState('error');
+      });
+    return () => ctrl.abort();
+  }, [detailSku]);
 
   const facilities = useMemo(
     () => overview?.warehouses || [],
@@ -391,11 +476,14 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
                 ) : (
                   <ol className="space-y-1.5">
                     {overview.topMaterialsByValue.map((m, i) => (
-                      <li key={m.sku} className="flex items-center gap-2 text-[11px]">
-                        <span className="w-4 shrink-0 font-mono text-slate-500">{i + 1}</span>
-                        <span className="min-w-0 flex-1 truncate text-slate-200">{m.description}</span>
-                        <span className="shrink-0 font-mono text-slate-400">{formatKes(m.valueKes)}</span>
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: healthColor(m.health) }} title={m.health} />
+                      <li key={m.sku}>
+                        <button onClick={() => { setDetailSku(m.sku); setNav('materials'); }}
+                          className="flex w-full items-center gap-2 rounded-lg px-1 py-0.5 text-left text-[11px] hover:bg-cyan-500/5" title="Open material intelligence">
+                          <span className="w-4 shrink-0 font-mono text-slate-500">{i + 1}</span>
+                          <span className="min-w-0 flex-1 truncate text-slate-200">{m.description}</span>
+                          <span className="shrink-0 font-mono text-slate-400">{formatKes(m.valueKes)}</span>
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: healthColor(m.health) }} title={m.health} />
+                        </button>
                       </li>
                     ))}
                   </ol>
@@ -423,13 +511,32 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
                           ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
                           : <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />}
                         <span className="min-w-0"><span className="block truncate text-slate-200">{e.message}</span>
-                          <span className="font-mono text-[10px] text-slate-500">{e.eventType} · {e.createdAt}</span></span>
+                          <span className="font-mono text-[10px] text-slate-500">{e.eventType} · {formatActivityTime(e.createdAt)}</span></span>
                       </li>
                     ))}
                   </ul>
                 )}
               </section>
             </div>
+            {projectsState === 'ready' && projects.length > 0 && (
+              <section className="px-3 pb-3 lg:px-6" aria-label="Tracked project requirements">
+                <div className="rounded-2xl border border-cyan-500/10 bg-[#0a1224]/80 p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-white">Projects &amp; Deployment — tracked requirements</h2>
+                    <button onClick={() => setNav('projects')} className="font-mono text-[10px] text-cyan-400 hover:underline">View all</button>
+                  </div>
+                  <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {projects.slice(0, 3).map((p) => (
+                      <li key={p.id} className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: deliveryColor(p.deliveryStatus) }} title={p.deliveryStatus} />
+                        <span className="min-w-0 flex-1 truncate text-[11px] text-slate-200">{p.projectName} <span className="text-slate-500">· {p.description.slice(0, 60)}</span></span>
+                        <span className="shrink-0 font-mono text-[10px]" style={{ color: deliveryColor(p.deliveryStatus) }}>{p.deliveryStatus}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+            )}
           </div>
         )}
 
@@ -474,8 +581,8 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
                     <tbody>
                       {(selectedNode ? filteredByNode : positions).slice(0, 60).map((p) => (
                         <tr key={`${p.sku}-${p.facilityId}`}
-                          onClick={() => setSelectedMaterial(selectedMaterial?.sku === p.sku && selectedMaterial.facilityId === p.facilityId ? null : p)}
-                          className={`cursor-pointer border-b border-slate-800/50 hover:bg-cyan-500/5 ${selectedMaterial?.sku === p.sku ? 'bg-cyan-500/5' : ''}`}>
+                          onClick={() => { setSelectedMaterial(p); setDetailSku(p.sku); }}
+                          className={`cursor-pointer border-b border-slate-800/50 hover:bg-cyan-500/5 ${detailSku === p.sku ? 'bg-cyan-500/5' : ''}`}>
                           <td className="px-2 py-2 font-mono text-cyan-300">{p.sku}</td>
                           <td className="max-w-[260px] truncate px-2 py-2 text-slate-200">{p.description}</td>
                           <td className="px-2 py-2 text-slate-400">{p.facilityName}</td>
@@ -491,40 +598,126 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
                   </table>
                 </div>
               )}
-              {selectedMaterial && (
-                <div className="mt-3 rounded-xl border border-cyan-500/20 bg-slate-900/50 p-3 text-[11px]" role="dialog" aria-label="Material inspector">
+              {detailSku && (
+                <div className="mt-3 rounded-xl border border-cyan-500/20 bg-slate-900/50 p-3 text-[11px]" role="dialog" aria-label="Material intelligence">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-bold text-white">{selectedMaterial.description} <span className="font-mono text-slate-400">· {selectedMaterial.sku}</span></p>
-                    <button onClick={() => setSelectedMaterial(null)} className="text-slate-400 hover:text-white" aria-label="Close inspector"><X className="h-4 w-4" /></button>
+                    <p className="font-bold text-white">
+                      {detail?.material.description || detailSku}
+                      <span className="font-mono font-normal text-slate-400"> · {detailSku}{detail ? ` · ${detail.material.materialGroup} · ${detail.material.uom}` : ''}</span>
+                    </p>
+                    <button onClick={() => { setDetailSku(null); setSelectedMaterial(null); }} className="text-slate-400 hover:text-white" aria-label="Close material intelligence"><X className="h-4 w-4" /></button>
                   </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {[['On hand', selectedMaterial.onHand], ['Reserved', selectedMaterial.reserved], ['Available (ATP base)', selectedMaterial.available], ['In transit', selectedMaterial.inTransit]].map(([l, v]) => (
-                      <div key={l as string} className="rounded-lg bg-slate-950/60 p-2">
-                        <p className="font-mono text-[9px] uppercase text-slate-500">{l}</p>
-                        <p className="font-mono text-sm text-white">{(v as number).toLocaleString()}</p>
+                  {detailState === 'loading' && <p className="py-4 text-center font-mono text-xs text-cyan-300">Loading canonical material record…</p>}
+                  {detailState === 'empty' && <p className="py-4 text-center text-xs text-slate-400">No material with this SKU in the tenant ledger.</p>}
+                  {(detailState === 'error' || detailState === 'unauthorized' || detailState === 'forbidden') && (
+                    <p className="py-4 text-center text-xs text-rose-300">Material detail failed to load. No cached values shown.</p>
+                  )}
+                  {detailState === 'ready' && detail && (
+                    <div className="mt-2 space-y-3">
+                      <div>
+                        <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-slate-400">Available to promise — canonical engine</p>
+                        <AtpWaterfall detail={detail} />
                       </div>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-slate-400">Facility: {selectedMaterial.facilityName} · Bin: {selectedMaterial.binLocation || '—'} · UOM: {selectedMaterial.uom}</p>
-                  <p className="mt-1 text-slate-400">Risk: {selectedMaterial.healthReason}</p>
-                  <button onClick={() => onAskCopilot(`Explain stock exposure for ${selectedMaterial.sku} at ${selectedMaterial.facilityName} using verified Atlas evidence only.`)}
-                    className="mt-2 inline-flex items-center gap-1 rounded-lg border border-cyan-500/40 px-3 py-1.5 font-mono text-[11px] text-cyan-300 hover:bg-cyan-500/10">
-                    ASK COPILOT <ChevronRight className="h-3 w-3" />
-                  </button>
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div>
+                          <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-slate-400">Positions by facility ({detail.positions.length})</p>
+                          <ul className="space-y-1">
+                            {detail.positions.map((p) => (
+                              <li key={p.facilityId} className="flex items-center justify-between gap-2 rounded-lg bg-slate-950/60 px-2 py-1.5">
+                                <span className="min-w-0 truncate text-slate-200">{p.facilityName}{p.binLocation ? ` · ${p.binLocation}` : ''}</span>
+                                <span className="shrink-0 font-mono text-white">{p.available.toLocaleString()} <span className="text-slate-500">avail</span></span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="rounded-lg bg-slate-950/60 p-2">
+                            <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Criticality — {detail.criticality.level}</p>
+                            <p className="mt-0.5 text-slate-300">
+                              {detail.criticality.method === 'insufficient-data'
+                                ? 'UNVERIFIED — no validated asset, failure, lead-time or supplier inputs on record.'
+                                : `Score ${detail.criticality.score} (${detail.criticality.confidence} confidence).`}
+                            </p>
+                            {detail.criticality.missingFactors.length > 0 && (
+                              <p className="mt-0.5 font-mono text-[10px] text-slate-500">Missing: {detail.criticality.missingFactors.join(', ')}</p>
+                            )}
+                          </div>
+                          <div className="rounded-lg bg-slate-950/60 p-2">
+                            <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Supply linkage</p>
+                            <p className="mt-0.5 text-slate-300">
+                              Order lines: {detail.orderLineCoverage === 'PRESENT' ? 'present' : 'ABSENT — no per-SKU order linkage on record'}.
+                              Project linkage: {detail.projectLinkage === 'LINKED' ? 'present' : 'NO EVIDENCE — requirement set carries no product linkage'}.
+                            </p>
+                          </div>
+                          {detail.linkedEvents.length > 0 && (
+                            <div className="rounded-lg bg-slate-950/60 p-2">
+                              <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Linked events ({detail.linkedEvents.length})</p>
+                              <ul className="mt-1 space-y-1">
+                                {detail.linkedEvents.slice(0, 4).map((e) => (
+                                  <li key={e.id} className="truncate text-slate-300">{e.message} <span className="font-mono text-[10px] text-slate-500">· {formatActivityTime(e.createdAt)}</span></li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <button onClick={() => onAskCopilot(`Explain stock exposure for ${detail.material.sku} (ATP ${detail.atp.availableToPromise} ${detail.material.uom}) using verified Atlas evidence only.`)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-cyan-500/40 px-3 py-1.5 font-mono text-[11px] text-cyan-300 hover:bg-cyan-500/10">
+                        ASK COPILOT <ChevronRight className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </section>
         )}
 
-        {!['overview', 'materials', 'warehouses', 'transit'].includes(nav) && (
+        {nav === 'projects' && (
+          <section className="p-3 lg:px-6" aria-label="Projects and deployment">
+            <div className="rounded-2xl border border-cyan-500/10 bg-[#0a1224]/80 p-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-white">Projects &amp; Deployment</h2>
+                <span className="text-[10px] font-mono text-slate-500">logistics_project_requirement · no per-SKU linkage on record</span>
+                <div className="ml-auto"><StatusDot status={projectsState === 'ready' ? 'LIVE' : projectsState === 'loading' ? 'LIVE' : 'UNAVAILABLE'} /></div>
+              </div>
+              {projectsState === 'loading' && <p className="py-8 text-center text-xs font-mono text-cyan-300">Loading project requirements…</p>}
+              {projectsState === 'empty' && <p className="py-8 text-center text-xs text-slate-400">No project requirements on record for this tenant.</p>}
+              {(projectsState === 'error' || projectsState === 'unauthorized' || projectsState === 'forbidden') && (
+                <p className="py-8 text-center text-xs text-rose-300">Project requirements failed to load.</p>
+              )}
+              {projectsState === 'ready' && (
+                <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {projects.map((p) => (
+                    <li key={p.id} className="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+                      <p className="flex items-center justify-between gap-2 text-[11px] font-bold text-white">
+                        <span className="truncate">{p.projectName}</span>
+                        <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px]" style={{ color: deliveryColor(p.deliveryStatus) }}>
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ background: deliveryColor(p.deliveryStatus) }} />{p.deliveryStatus}
+                        </span>
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-[11px] text-slate-400">{p.description}</p>
+                      <p className="mt-1 font-mono text-[10px] text-slate-500">
+                        {p.requirementCode}{p.substationTarget ? ` · ${p.substationTarget}` : ''}{p.requiredDate ? ` · due ${p.requiredDate}` : ''}
+                        {p.progressPct !== null ? ` · ${p.progressPct}%` : ''}
+                      </p>
+                      {p.verifiedBy && <p className="mt-0.5 font-mono text-[10px] text-slate-500">Verified by {p.verifiedBy}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        )}
+
+        {!['overview', 'materials', 'warehouses', 'transit', 'projects'].includes(nav) && (
           <section className="p-3 lg:px-6" aria-label="Pending contract">
             <div className="rounded-2xl border border-amber-500/20 bg-[#0a1224]/80 p-8 text-center">
               <Boxes className="mx-auto h-8 w-8 text-amber-400" />
               <h2 className="mt-2 text-sm font-bold text-white">{NAV.find((n) => n.id === nav)?.label} — CONTRACT PENDING</h2>
               <p className="mx-auto mt-1 max-w-lg text-[11px] text-slate-400">
-                No backend contract exists for this view in Slice 1. It is intentionally unwired rather than
-                simulated. Overview, positions, warehouses and transit above are live against Atlas persistence.
+                No backend contract exists for this view yet. It is intentionally unwired rather than
+                simulated. Overview, positions, warehouses, transit and projects above are live against Atlas persistence.
               </p>
             </div>
           </section>

@@ -76,5 +76,32 @@ export function createInventoryApiRouter(deps: InventoryApiDeps): express.Router
     }
   });
 
+  router.get('/projects', async (req: Request, res: Response) => {
+    try {
+      const data = await service.getProjects((req as any).tenantId);
+      res.status(200).json({ ok: true, data, dataStatus: data.dataStatus });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: { code: 'INVENTORY_PROJECTS_ERROR', message: 'Failed to load project requirements.', details: err?.message } });
+    }
+  });
+
+  router.get('/materials/:sku', async (req: Request, res: Response) => {
+    try {
+      const sku = String(req.params.sku || '').toUpperCase();
+      if (!sku) {
+        res.status(400).json({ ok: false, error: { code: 'SKU_REQUIRED', message: 'A material SKU is required.' } });
+        return;
+      }
+      const data = await service.getMaterialDetail((req as any).tenantId, sku);
+      if (!data) {
+        res.status(404).json({ ok: false, error: { code: 'MATERIAL_NOT_FOUND', message: `No material with SKU ${sku} in this tenant.` } });
+        return;
+      }
+      res.status(200).json({ ok: true, data, dataStatus: data.dataStatus });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: { code: 'INVENTORY_MATERIAL_ERROR', message: 'Failed to load material detail.', details: err?.message } });
+    }
+  });
+
   return router;
 }

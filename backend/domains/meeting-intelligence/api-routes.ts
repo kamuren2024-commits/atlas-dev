@@ -13,6 +13,74 @@ import { AiMeetingService } from './ai-meeting-service';
 import { MeetingGraphAdapter } from './graph-adapter';
 import { ClosedLoopAutomationEngine } from './closed-loop-automation';
 
+function getTrustedHeader(req: Request, ...headerNames: string[]): string | undefined {
+  for (const headerName of headerNames) {
+    const value = req.headers[headerName];
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value) && value.length > 0) return value[0];
+  }
+  return undefined;
+}
+
+export function resolveTrustedRequestContext(req: Request): { tenantId: string; userRole: string; actor: string } {
+  const headerTenantId = getTrustedHeader(req, 'x-tenant-id', 'x-tenant');
+  const headerUserRole = getTrustedHeader(req, 'x-user-role');
+  const headerActor = getTrustedHeader(req, 'x-user-name', 'x-user-id');
+
+  const bodyTenantId = typeof req.body?.tenantId === 'string' ? req.body.tenantId : typeof req.body?.tenant_id === 'string' ? req.body.tenant_id : undefined;
+  if (bodyTenantId && headerTenantId && bodyTenantId !== headerTenantId) {
+    throw new Error(`Tenant mismatch: trusted context is ${headerTenantId} but request supplied ${bodyTenantId}.`);
+  }
+  if (bodyTenantId && !headerTenantId) {
+    throw new Error('Tenant context must come from trusted server headers, not request payload.');
+  }
+
+  const bodyUserRole = typeof req.body?.userRole === 'string' ? req.body.userRole : typeof req.query?.userRole === 'string' ? req.query.userRole : undefined;
+  if (bodyUserRole && headerUserRole && bodyUserRole !== headerUserRole) {
+    throw new Error(`Role mismatch: trusted context is ${headerUserRole} but request supplied ${bodyUserRole}.`);
+  }
+
+  const bodyActor = typeof req.body?.actor === 'string' ? req.body.actor : typeof req.query?.actor === 'string' ? req.query.actor : undefined;
+  if (bodyActor && headerActor && bodyActor !== headerActor) {
+    throw new Error(`Actor mismatch: trusted context is ${headerActor} but request supplied ${bodyActor}.`);
+  }
+
+  const tenantId = headerTenantId || 'ketraco';
+  const userRole = headerUserRole || 'CHAIR';
+  const actor = headerActor || 'Operator';
+
+  return { tenantId, userRole, actor };
+}
+
+export async function assertMeetingTenantAccess(
+  req: Request,
+  repo: MeetingIntelligenceRepository,
+  meetingId: string,
+  permission?: string
+): Promise<{ meeting: any; ok: true } | { ok: false; response: Response }> {
+  const { tenantId, actor, userRole } = resolveTrustedRequestContext(req);
+  const meeting = await repo.getMeetingById(meetingId);
+  if (!meeting) {
+    return { ok: false, response: (req as any).res?.status?.(404)?.json ? (req as any).res : ({ status: () => ({ json: () => undefined }) } as any) };
+  }
+
+  if (meeting.tenant_id !== tenantId) {
+    await repo.logAudit('AUTH_FAILURE', 'MEETING', meetingId, actor, {
+      requiredPermission: permission || 'VIEW',
+      userRole,
+      tenantId,
+      actualTenantId: meeting.tenant_id,
+      path: req.originalUrl,
+    });
+    return {
+      ok: false,
+      response: ({ status: () => ({ json: (payload: any) => payload }) } as any)
+    };
+  }
+
+  return { meeting, ok: true };
+}
+
 export function createMeetingIntelligenceApiRouter(): Router {
   const router = Router();
   const repo = new MeetingIntelligenceRepository();
@@ -75,8 +143,7 @@ export function createMeetingIntelligenceApiRouter(): Router {
   // RBAC Permission Guard
   const checkRbac = (permission: string) => {
     return (req: Request, res: Response, next: any) => {
-      const userRole = (req.headers['x-user-role'] as string) || (req.body?.userRole as string) || (req.query?.userRole as string) || 'CHAIR';
-      const actor = (req.headers['x-user-name'] as string) || (req.headers['x-user-id'] as string) || req.body?.actor || 'Operator';
+      const { tenantId, userRole, actor } = resolveTrustedRequestContext(req);
 
       const rolePermissions: Record<string, string[]> = {
         'admin': ['*'],
@@ -94,6 +161,7 @@ export function createMeetingIntelligenceApiRouter(): Router {
         repo.logAudit('AUTH_FAILURE', 'MEETING', req.params.id || 'N/A', actor, {
           requiredPermission: permission,
           userRole,
+          tenantId,
           path: req.originalUrl
         });
         return res.status(403).json({
@@ -105,7 +173,10 @@ export function createMeetingIntelligenceApiRouter(): Router {
       }
 
       req.body = req.body || {};
-      if (!req.body.actor) req.body.actor = actor;
+      req.body.actor = actor;
+      req.body.userRole = userRole;
+      req.body.tenantId = tenantId;
+      req.body.tenant_id = tenantId;
       next();
     };
   };
@@ -402,10 +473,11 @@ export function createMeetingIntelligenceApiRouter(): Router {
 
   router.post('/meetings/:id/recordings', async (req: Request, res: Response) => {
     try {
-      const { status, startedAt, endedAt, durationMs, mediaType, codec, storageRef, checksum, size, createdBy, tenantId } = req.body;
+      const { status, startedAt, endedAt, durationMs, mediaType, codec, storageRef, checksum, size } = req.body;
+      const { tenantId, actor } = resolveTrustedRequestContext(req);
       const session = await repo.saveRecordingSession({
         meetingId: req.params.id,
-        tenantId: tenantId || 'ketraco',
+        tenantId,
         status: status || 'READY',
         startedAt: startedAt || new Date().toISOString(),
         endedAt: endedAt || null,
@@ -415,7 +487,7 @@ export function createMeetingIntelligenceApiRouter(): Router {
         storageRef,
         checksum,
         size,
-        createdBy: createdBy || 'browser-recorder',
+        createdBy: actor,
         version: '1.0'
       });
       broadcastSse('recording_session_updated', { meetingId: req.params.id, session });
@@ -428,6 +500,7 @@ export function createMeetingIntelligenceApiRouter(): Router {
   router.post('/meetings/:id/recordings/upload', async (req: Request, res: Response) => {
     try {
       const { storageRef, checksum, size } = req.body;
+      const { tenantId, actor } = resolveTrustedRequestContext(req);
       if (!storageRef) {
         return res.status(400).json({ error: 'storageRef is required' });
       }
@@ -439,12 +512,12 @@ export function createMeetingIntelligenceApiRouter(): Router {
       }
       const session = await repo.saveRecordingSession({
         meetingId: req.params.id,
-        tenantId: req.body.tenantId || 'ketraco',
+        tenantId,
         status: 'STORED',
         storageRef: finalPath,
         checksum: checksum || undefined,
         size: size || 0,
-        createdBy: req.body.createdBy || 'browser-recorder',
+        createdBy: actor,
         version: '1.0'
       });
       broadcastSse('recording_stored', { meetingId: req.params.id, session });
@@ -466,7 +539,13 @@ export function createMeetingIntelligenceApiRouter(): Router {
 
   router.post('/meetings/:id/transcripts', async (req: Request, res: Response) => {
     try {
-      const segment = await repo.addTranscriptSegment({ ...req.body, meeting_id: req.params.id });
+      const { tenantId, actor } = resolveTrustedRequestContext(req);
+      const segment = await repo.addTranscriptSegment({
+        ...req.body,
+        meeting_id: req.params.id,
+        tenant_id: tenantId,
+        actor,
+      });
       broadcastSse('transcript_segment', segment);
       res.status(201).json(segment);
     } catch (err: any) {
@@ -878,12 +957,13 @@ export function createMeetingIntelligenceApiRouter(): Router {
   // --- COPILOT ---
   router.post('/copilot/ask', async (req: Request, res: Response) => {
     try {
-      const { prompt, context, userId, tenantId, userRole } = req.body || {};
+      const { prompt, context, userId } = req.body || {};
       if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
-      const authenticatedUserId = userId || (req.headers['x-user-id'] as string) || 'operator';
-      const userTenantId = tenantId || (req.headers['x-tenant-id'] as string) || 'ketraco';
-      const role = userRole || (req.headers['x-user-role'] as string) || 'CHAIR';
+      const { tenantId, userRole, actor } = resolveTrustedRequestContext(req);
+      const authenticatedUserId = userId || actor || 'operator';
+      const userTenantId = tenantId;
+      const role = userRole;
 
       const reply = await copilot.ask(prompt, authenticatedUserId, userTenantId, role, context || {});
       res.json(reply);

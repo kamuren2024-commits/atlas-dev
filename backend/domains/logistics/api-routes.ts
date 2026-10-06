@@ -312,6 +312,209 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
     }
   }
 
+  const SHIPMENT_STATE_ALIASES: Record<string, string> = {
+    REQUESTED: 'PENDING',
+    CREATED: 'PENDING',
+    PENDING: 'PENDING',
+    APPROVED: 'APPROVED',
+    PLANNED: 'PLANNED',
+    ASSIGNED: 'ASSIGNED',
+    LOADED: 'ASSIGNED',
+    DISPATCHED: 'DISPATCHED',
+    DEPARTED: 'DISPATCHED',
+    IN_TRANSIT: 'IN_TRANSIT',
+    EN_ROUTE: 'IN_TRANSIT',
+    ARRIVED: 'ARRIVED',
+    DELIVERED: 'DELIVERED',
+    VERIFIED: 'VERIFIED',
+    COMPLETED: 'COMPLETED',
+    CLOSED: 'CLOSED',
+    CANCELLED: 'CANCELLED',
+    REJECTED: 'REJECTED',
+  };
+
+  const SHIPMENT_TRANSITIONS: Record<string, string[]> = {
+    PENDING: ['APPROVED', 'REJECTED', 'CANCELLED'],
+    APPROVED: ['PLANNED', 'CANCELLED'],
+    PLANNED: ['ASSIGNED', 'CANCELLED'],
+    ASSIGNED: ['DISPATCHED', 'CANCELLED'],
+    DISPATCHED: ['IN_TRANSIT', 'CANCELLED'],
+    IN_TRANSIT: ['ARRIVED', 'DELIVERED', 'CANCELLED'],
+    ARRIVED: ['DELIVERED', 'VERIFIED', 'CANCELLED'],
+    DELIVERED: ['VERIFIED', 'COMPLETED', 'CANCELLED'],
+    VERIFIED: ['COMPLETED', 'CANCELLED'],
+    COMPLETED: ['CLOSED'],
+    REJECTED: [],
+    CANCELLED: [],
+    CLOSED: [],
+  };
+
+  const SHIPMENT_COMMAND_TO_STATE: Record<string, string> = {
+    REQUEST: 'PENDING',
+    CREATE: 'PENDING',
+    APPROVE: 'APPROVED',
+    PLAN: 'PLANNED',
+    ASSIGN: 'ASSIGNED',
+    LOAD: 'ASSIGNED',
+    DISPATCH: 'DISPATCHED',
+    START: 'IN_TRANSIT',
+    DEPART: 'IN_TRANSIT',
+    ARRIVE: 'ARRIVED',
+    DELIVER: 'DELIVERED',
+    VERIFY: 'VERIFIED',
+    COMPLETE: 'COMPLETED',
+    CLOSE: 'CLOSED',
+    CANCEL: 'CANCELLED',
+    REJECT: 'REJECTED',
+  };
+
+  function normalizeShipmentState(value: unknown): string {
+    const text = String(value ?? '').trim().toUpperCase();
+    return (SHIPMENT_STATE_ALIASES[text] ?? text) || 'PENDING';
+  }
+
+  function resolveRequestedShipmentState(body: Record<string, any>, currentState: string): string {
+    const explicit = body.toState ?? body.nextState ?? body.status ?? body.targetState;
+    if (typeof explicit === 'string' && explicit.trim()) {
+      return normalizeShipmentState(explicit);
+    }
+    const command = typeof body.command === 'string' ? body.command.trim().toUpperCase() : '';
+    if (command) {
+      const mapped = SHIPMENT_COMMAND_TO_STATE[command];
+      if (mapped) {
+        return mapped;
+      }
+    }
+    if (currentState === 'PENDING') {
+      return 'APPROVED';
+    }
+    return currentState;
+  }
+
+  async function resolveShipmentTarget(tenantId: string, targetEntityId: string) {
+    const cargoRow = await db.get<any>(`
+      SELECT * FROM logistics_cargo
+      WHERE (id = ? OR cargo_code = ?) AND tenant_id = ?
+    `, [targetEntityId, targetEntityId, tenantId]);
+
+    if (cargoRow) {
+      return {
+        entityType: 'CARGO',
+        targetEntityId: cargoRow.id,
+        row: cargoRow,
+        state: normalizeShipmentState(cargoRow.status),
+      };
+    }
+
+    const missionRow = await db.get<any>(`
+      SELECT * FROM logistics_mission
+      WHERE (id = ? OR mission_code = ?) AND tenant_id = ?
+    `, [targetEntityId, targetEntityId, tenantId]);
+
+    if (missionRow) {
+      return {
+        entityType: 'MISSION',
+        targetEntityId: missionRow.id,
+        row: missionRow,
+        state: normalizeShipmentState(missionRow.status),
+      };
+    }
+
+    throw new Error(`Shipment target "${targetEntityId}" was not found for tenant "${tenantId}".`);
+  }
+
+  async function executeShipmentLifecycle(req: Request, res: Response) {
+    try {
+      const { targetEntityId, parameters = {} } = req.body;
+      const tenantId = (req as any).tenantId;
+      const actor = req.user;
+      const workflowId = req.params.workflowId || 'SHIPMENT_LIFECYCLE';
+
+      if (typeof targetEntityId !== 'string' || targetEntityId.trim().length === 0) {
+        return fail(res, 400, 'TARGET_ENTITY_REQUIRED', 'targetEntityId is required to execute a shipment workflow');
+      }
+
+      const target = await resolveShipmentTarget(tenantId, targetEntityId);
+      const currentState = target.state;
+      const requestedState = resolveRequestedShipmentState(req.body || {}, currentState);
+
+      if (!SHIPMENT_TRANSITIONS[currentState]) {
+        return fail(res, 409, 'UNSUPPORTED_SHIPMENT_STATE', `Shipment state "${currentState}" is not recognized for workflow execution`, {
+          currentState,
+          allowed: Object.keys(SHIPMENT_TRANSITIONS),
+        });
+      }
+
+      const allowedNext = SHIPMENT_TRANSITIONS[currentState] || [];
+      if (!allowedNext.includes(requestedState)) {
+        return fail(res, 409, 'INVALID_SHIPMENT_TRANSITION', `Shipment transition from ${currentState} to ${requestedState} is not allowed.`, {
+          currentState,
+          requestedState,
+          allowed: allowedNext,
+        });
+      }
+
+      const now = new Date().toISOString();
+      const originalMissionStatus = target.entityType === 'MISSION' ? target.row.status : null;
+
+      if (target.entityType === 'CARGO') {
+        await db.run(`
+          UPDATE logistics_cargo
+          SET status = ?, updated_at = ?
+          WHERE (id = ? OR cargo_code = ?) AND tenant_id = ?
+        `, [requestedState, now, target.targetEntityId, target.targetEntityId, tenantId]);
+      } else {
+        await db.run(`
+          UPDATE logistics_mission
+          SET status = ?, updated_at = ?
+          WHERE (id = ? OR mission_code = ?) AND tenant_id = ?
+        `, [requestedState, now, target.targetEntityId, target.targetEntityId, tenantId]);
+
+        if (requestedState === 'DISPATCHED' || requestedState === 'IN_TRANSIT' || requestedState === 'DELIVERED' || requestedState === 'COMPLETED') {
+          await db.run(`
+            UPDATE logistics_cargo
+            SET status = ?, updated_at = ?
+            WHERE mission_id = ? AND tenant_id = ?
+          `, [requestedState, now, target.targetEntityId, tenantId]);
+        }
+      }
+
+      const eventState = requestedState === 'COMPLETED' ? 'INFO' : requestedState === 'CANCELLED' || requestedState === 'REJECTED' ? 'WARNING' : 'INFO';
+      await emitEvent(
+        'logistics.shipment.state_changed',
+        eventState,
+        `Shipment ${targetEntityId} transitioned from ${currentState} to ${requestedState} via workflow ${workflowId}`,
+        target.entityType,
+        target.targetEntityId,
+        {
+          workflowId,
+          fromState: currentState,
+          toState: requestedState,
+          reason: (parameters && typeof parameters.reason === 'string') ? parameters.reason : 'workflow_execution',
+          correlationId: req.correlationId || null,
+          actorId: actor?.id || null,
+          actorRole: actor?.role || null,
+          entityType: target.entityType,
+          originalMissionStatus,
+        }
+      );
+
+      return ok(res, {
+        workflowId,
+        targetEntityId: target.targetEntityId,
+        entityType: target.entityType,
+        previousState: currentState,
+        currentState: requestedState,
+        status: 'EXECUTED',
+        executedBy: actor?.id || 'system',
+        executedAt: now,
+        correlationId: req.correlationId || null,
+      });
+    } catch (error) {
+      return fail(res, 500, 'SHIPMENT_WORKFLOW_ERROR', 'Failed to execute shipment workflow', error);
+    }
+  }
+
   // =====================================================================
   // GET /api/logistics/data-quality
   // =====================================================================
@@ -2175,6 +2378,11 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
       if (typeof targetEntityId !== 'string' || targetEntityId.trim().length === 0) {
         return fail(res, 400, 'TARGET_ENTITY_REQUIRED', 'targetEntityId is required to execute a logistics workflow');
       }
+
+      if (workflowId === 'SHIPMENT_LIFECYCLE' || workflowId === 'SHIPMENT' || workflowId === 'shipment' || workflowId === 'SHIPMENT_STATE') {
+        return executeShipmentLifecycle(req, res);
+      }
+
       const orchestrator = LogisticsAgentOrchestrator.getInstance(db);
 
       const user = {
