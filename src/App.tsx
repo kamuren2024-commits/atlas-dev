@@ -162,10 +162,8 @@ function AppInner() {
   const { theme } = useAtlasTheme();
   const { setCurrentModule } = useAtlasContext();
 
-  // Zero Trust Access States:
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return !!localStorage.getItem('atlas_access_token');
-  });
+  // Zero Trust Access States: the backend remains the source of truth for auth.
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [allowDevAdmin, setAllowDevAdmin] = useState(isAtlasDemoModeEnabled);
   const [loginEmail, setLoginEmail] = useState('kamau@ketraco.co.ke');
   const [loginPassword, setLoginPassword] = useState('');
@@ -173,9 +171,49 @@ function AppInner() {
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Load development identity availability from the backend; only the backend can authenticate users.
+  // Load development identity availability and validate any persisted session server-side.
   useEffect(() => {
     let isMounted = true;
+
+    const validateStoredSession = async () => {
+      const token = localStorage.getItem('atlas_access_token');
+      if (!token) {
+        if (isMounted) setIsAuthenticated(false);
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/session', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) {
+          localStorage.removeItem('atlas_access_token');
+          localStorage.removeItem('atlas_refresh_token');
+          localStorage.removeItem('atlas_user');
+          if (isMounted) setIsAuthenticated(false);
+          return;
+        }
+
+        const data = await res.json();
+        if (!isMounted || !data?.success || !data.user) {
+          return;
+        }
+
+        const user = data.user;
+        if (user.tenantId) switchTenant(user.tenantId);
+        setUserProfile({
+          name: user.name,
+          role: user.role,
+          accessLevel: user.accessLevel,
+          clearance: user.clearance
+        });
+        if (isMounted) setIsAuthenticated(true);
+      } catch (err) {
+        console.warn('[AUTH] Failed to validate stored session:', err instanceof Error ? err.message : 'unknown');
+        if (isMounted) setIsAuthenticated(false);
+      }
+    };
+
     fetch('/api/auth/config')
       .then(res => res.json())
       .then(config => {
@@ -186,10 +224,12 @@ function AppInner() {
         console.warn('[AUTH] Failed to fetch auth config:', err.message);
       });
 
+    validateStoredSession();
+
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [switchTenant, setUserProfile]);
 
   // Global window.fetch interceptor to seamlessly inject JWT tokens
   useEffect(() => {

@@ -184,32 +184,11 @@ const hasRestoredDemoSession = (() => {
   }
 })();
 
-const isDevAuthBypassActive = (() => {
-  try {
-    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-      const raw = (import.meta as any).env.DEV_AUTH_BYPASS ?? (import.meta as any).env.VITE_DEV_AUTH_BYPASS;
-      if (raw && String(raw).trim().toLowerCase() === 'true') return true;
-    }
-  } catch {}
-  try {
-    if (typeof process !== 'undefined' && process.env) {
-      const raw = process.env.DEV_AUTH_BYPASS ?? process.env.VITE_DEV_AUTH_BYPASS;
-      if (raw && String(raw).trim().toLowerCase() === 'true') return true;
-    }
-  } catch {}
-  return false;
-})();
-
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [tenantId, setTenantId] = useState<string>('ketraco');
   const [isDemoSession, setIsDemoSession] = useState(hasRestoredDemoSession);
   const [userProfile, setUserProfile] = useState(() => (
-    hasRestoredDemoSession ? demoUserProfile : isDevAuthBypassActive ? {
-      name: 'Administrator',
-      role: 'Administrator',
-      accessLevel: 'Level 10 (Full Access)',
-      clearance: 'Top Secret'
-    } : {
+    hasRestoredDemoSession ? demoUserProfile : {
       name: 'John Kamau',
       role: 'SCM Intelligence Officer',
       accessLevel: 'LEVEL 04',

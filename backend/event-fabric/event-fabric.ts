@@ -13,6 +13,7 @@ import { EventStateStore } from './state-store';
 import { WebSocketHandler } from './websocket-handler';
 import { SSEHandler } from './sse-handler';
 import { EventPersistenceManager } from './persistence';
+import { SpatialProjectionAdapter } from './projection-adapter';
 import { CanonicalEvent, EventFilter } from './types';
 
 /**
@@ -26,6 +27,7 @@ export class EventFabric {
   private wsHandler: WebSocketHandler;
   private sseHandler: SSEHandler;
   private persistenceManager: EventPersistenceManager;
+  private projectionAdapter: SpatialProjectionAdapter;
   private initialized = false;
 
   private constructor() {
@@ -35,6 +37,7 @@ export class EventFabric {
     this.wsHandler = WebSocketHandler.getInstance();
     this.sseHandler = SSEHandler.getInstance();
     this.persistenceManager = EventPersistenceManager.getInstance();
+    this.projectionAdapter = new SpatialProjectionAdapter();
   }
 
   /**
@@ -114,6 +117,7 @@ export class EventFabric {
 
       // Update state
       this.stateStore.updateFromEvent(event);
+      this.projectionAdapter.applyEvent(event);
 
       // Publish via event bus
       await this.eventBus.publishEvent(event);
@@ -233,6 +237,10 @@ export class EventFabric {
    */
   public getStateStore(): EventStateStore {
     return this.stateStore;
+  }
+
+  public getProjectionAdapter(): SpatialProjectionAdapter {
+    return this.projectionAdapter;
   }
 }
 

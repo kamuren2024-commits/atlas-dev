@@ -17,7 +17,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   envPrefix: ['VITE_'],
   define: {
-    'process.env.DEV_AUTH_BYPASS': JSON.stringify(process.env.DEV_AUTH_BYPASS || ''),
     'process.env.ATLAS_DEMO_MODE': JSON.stringify(process.env.ATLAS_DEMO_MODE || 'false'),
     'import.meta.env.VITE_ATLAS_DEMO_MODE': JSON.stringify(String(atlasDemoModeEnabled)),
   },

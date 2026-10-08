@@ -10,6 +10,8 @@ export { EventStateStore } from './state-store';
 export { WebSocketHandler } from './websocket-handler';
 export { SSEHandler } from './sse-handler';
 export { EventPersistenceManager } from './persistence';
+export { CanonicalAssetResolver } from './canonical-asset-resolver';
+export { SpatialProjectionAdapter } from './projection-adapter';
 
 export * from './types';
 

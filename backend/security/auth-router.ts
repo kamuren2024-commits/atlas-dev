@@ -252,6 +252,27 @@ authRouter.post('/refresh', async (req, res) => {
 });
 
 /**
+ * Endpoint: GET /api/auth/session
+ * Verifies the active bearer token server-side and returns the current user identity.
+ * The browser is never treated as the source of truth for authentication state.
+ */
+authRouter.get('/session', ApiGatewayMiddleware.authenticate, (req, res) => {
+  const user = req.user!;
+  return res.json({
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      accessLevel: user.accessLevel,
+      clearance: user.clearance,
+      tenantId: user.tenantId
+    }
+  });
+});
+
+/**
  * Endpoint: POST /api/auth/logout
  * Revokes active access token and logs out the user session.
  */

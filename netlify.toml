@@ -6,6 +6,23 @@ functions = "netlify/functions"
 [functions]
 node_bundler = "esbuild"
 
+[[redirects]]
+from = "/api/*"
+to = "/.netlify/functions/atlas-api/:splat"
+status = 200
+force = true
+
+[[redirects]]
+from = "/.netlify/*"
+to = "/.netlify/:splat"
+status = 200
+force = true
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
+
 [build.environment]
 ATLAS_DEMO_MODE = "false"
 VITE_ATLAS_DEMO_MODE = "false"

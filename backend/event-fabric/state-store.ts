@@ -6,7 +6,7 @@
  * Provides fast state lookup without querying history
  */
 
-import { CanonicalEvent, EventStatus } from './types';
+import { CanonicalEvent, EventStatus, SpatialProjectionState, SpatialProjectionVersion } from './types';
 
 /**
  * Asset State
@@ -20,6 +20,9 @@ export interface AssetState {
   lastOutage?: CanonicalEvent;
   lastIncident?: CanonicalEvent;
   state: Record<string, any>;
+  version?: number;
+  sourceEventId?: string;
+  observedAt?: string;
   updatedAt: string;
   eventCount: number;
 }
@@ -30,6 +33,8 @@ export interface AssetState {
 export class EventStateStore {
   private static instance: EventStateStore | null = null;
   private assetStates: Map<string, AssetState> = new Map();
+  private assetVersionState: Map<string, SpatialProjectionVersion> = new Map();
+  private spatialProjectionState: Map<string, SpatialProjectionState> = new Map();
   private sourceHealthStatus: Map<string, { healthy: boolean; lastHeartbeat: string }> = new Map();
   private globalState: {
     totalAssets: number;
@@ -63,6 +68,11 @@ export class EventStateStore {
    * Update state from event
    */
   public updateFromEvent(event: CanonicalEvent): void {
+    const versionDecision = this.evaluateSpatialProjectionVersion(event);
+    if (versionDecision === 'ignored_duplicate' || versionDecision === 'rejected_stale') {
+      return;
+    }
+
     // Get or create asset state
     let assetId: string | undefined;
 
@@ -85,6 +95,77 @@ export class EventStateStore {
 
     // Update global state based on event type
     this.updateGlobalState(event);
+  }
+
+  /**
+   * Protects GIS/digital-twin consumers from stale or duplicate asset versions.
+   */
+  public evaluateSpatialProjectionVersion(event: CanonicalEvent): 'accepted' | 'ignored_duplicate' | 'rejected_stale' {
+    const assetId = this.getAssetKeyFromEvent(event);
+    if (!assetId) {
+      return 'accepted';
+    }
+
+    const version = Number((event as any).version ?? (event as any).eventVersion ?? (event as any).payloadVersion ?? 0);
+    const observedAt = (event as any).observedAt || (event as any).timestamp || new Date().toISOString();
+    const sourceEventId = (event as any).sourceEventId || event.id;
+
+    const current = this.assetVersionState.get(assetId);
+    if (!current) {
+      this.assetVersionState.set(assetId, {
+        assetId,
+        version: Number.isFinite(version) ? version : 0,
+        observedAt,
+        sourceEventId,
+      });
+      return 'accepted';
+    }
+
+    if (sourceEventId === current.sourceEventId || event.id === current.sourceEventId) {
+      return 'ignored_duplicate';
+    }
+
+    const nextVersion = Number.isFinite(version) ? version : current.version;
+    if (nextVersion < current.version) {
+      return 'rejected_stale';
+    }
+
+    if (nextVersion === current.version) {
+      return 'rejected_stale';
+    }
+
+    this.assetVersionState.set(assetId, {
+      assetId,
+      version: nextVersion,
+      observedAt,
+      sourceEventId,
+    });
+
+    return 'accepted';
+  }
+
+  public getProjectionVersion(assetId: string): SpatialProjectionVersion | undefined {
+    return this.assetVersionState.get(assetId);
+  }
+
+  public setProjectionState(assetId: string, state: SpatialProjectionState): void {
+    this.spatialProjectionState.set(assetId, state);
+  }
+
+  public getProjectionState(assetId: string): SpatialProjectionState | undefined {
+    return this.spatialProjectionState.get(assetId);
+  }
+
+  public getAllProjectionStates(): SpatialProjectionState[] {
+    return Array.from(this.spatialProjectionState.values());
+  }
+
+  private getAssetKeyFromEvent(event: CanonicalEvent): string | undefined {
+    if ('assetId' in event && event.assetId) return event.assetId;
+    if ('affectedAssets' in event && Array.isArray(event.affectedAssets) && event.affectedAssets.length > 0) {
+      return event.affectedAssets[0];
+    }
+    return undefined;
   }
 
   /**
@@ -130,6 +211,8 @@ export class EventStateStore {
    */
   public clearState(): void {
     this.assetStates.clear();
+    this.assetVersionState.clear();
+    this.spatialProjectionState.clear();
     this.sourceHealthStatus.clear();
     this.globalState = {
       totalAssets: 0,
@@ -193,6 +276,9 @@ export class EventStateStore {
 
     state.lastEvent = event;
     state.eventCount += 1;
+    state.version = Number((event as any).version ?? (event as any).eventVersion ?? (event as any).payloadVersion ?? state.version ?? 0);
+    state.sourceEventId = (event as any).sourceEventId || event.id;
+    state.observedAt = (event as any).observedAt || event.timestamp;
     state.updatedAt = event.timestamp;
 
     // Update specific event types

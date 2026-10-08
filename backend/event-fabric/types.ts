@@ -299,6 +299,39 @@ export interface EventQueryParams {
 }
 
 /**
+ * Spatial projection version guard for GIS / digital twin consumers.
+ * Prevents stale or duplicate updates from overriding current state.
+ */
+export interface SpatialProjectionVersion {
+  assetId: string;
+  version: number;
+  observedAt: string;
+  sourceEventId: string;
+}
+
+export interface CanonicalAssetResolution {
+  assetId: string;
+  canonicalAssetId: string;
+  sourceId?: string;
+  sourceAssetId?: string;
+  gisFeatureId?: string;
+  confidence: number;
+  matchedBy: string[];
+}
+
+export interface SpatialProjectionState {
+  assetId: string;
+  canonicalAssetId: string;
+  sourceEventId?: string;
+  version?: number;
+  observedAt?: string;
+  state: Record<string, any>;
+  lastUpdatedAt: string;
+  freshness: 'LIVE_AUTHORITATIVE' | 'VERIFIED' | 'STALE' | 'UNAVAILABLE';
+  authority: 'AUTHORITATIVE' | 'NON_AUTHORITATIVE' | 'DERIVED' | 'SIMULATED' | 'PREDICTED' | 'UNAVAILABLE';
+}
+
+/**
  * Event Topic
  */
 export interface EventTopic {
