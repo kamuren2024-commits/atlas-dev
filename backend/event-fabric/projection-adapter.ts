@@ -19,7 +19,7 @@ export class SpatialProjectionAdapter {
       return null;
     }
 
-    const selection = this.stateStore.evaluateSpatialProjectionVersion(event);
+    const selection = this.stateStore.recordProjectionVersion(event);
     if (selection === 'ignored_duplicate' || selection === 'rejected_stale') {
       return this.projections.get(assetId) || null;
     }
@@ -55,7 +55,6 @@ export class SpatialProjectionAdapter {
       observedAt,
       sourceEventId,
     };
-    this.stateStore.evaluateSpatialProjectionVersion(event);
     this.stateStore.getProjectionVersion(assetId);
     this.stateStore.setProjectionState(assetId, projectedState);
 

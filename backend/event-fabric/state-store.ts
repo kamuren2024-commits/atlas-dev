@@ -68,25 +68,23 @@ export class EventStateStore {
    * Update state from event
    */
   public updateFromEvent(event: CanonicalEvent): void {
-    const versionDecision = this.evaluateSpatialProjectionVersion(event);
+    const versionDecision = this.recordProjectionVersion(event);
     if (versionDecision === 'ignored_duplicate' || versionDecision === 'rejected_stale') {
       return;
     }
 
     // Get or create asset state
-    let assetId: string | undefined;
-
-    if ('assetId' in event) {
-      assetId = event.assetId;
-    } else if ('affectedAssets' in event) {
-      // Handle multiple assets
-      for (const aid of event.affectedAssets) {
-        this.updateAssetState(aid, event);
-      }
-    }
+    const assetId = this.getAssetKeyFromEvent(event);
 
     if (assetId) {
       this.updateAssetState(assetId, event);
+    } else if ('affectedAssets' in event && Array.isArray(event.affectedAssets)) {
+      // Handle multiple assets
+      for (const aid of event.affectedAssets) {
+        if (typeof aid === 'string' && aid.trim()) {
+          this.updateAssetState(aid, event);
+        }
+      }
     }
 
     // Update source health
@@ -99,6 +97,8 @@ export class EventStateStore {
 
   /**
    * Protects GIS/digital-twin consumers from stale or duplicate asset versions.
+   * This check is intentionally side-effect free; callers that accept an event must
+   * commit its version explicitly via recordProjectionVersion().
    */
   public evaluateSpatialProjectionVersion(event: CanonicalEvent): 'accepted' | 'ignored_duplicate' | 'rejected_stale' {
     const assetId = this.getAssetKeyFromEvent(event);
@@ -112,12 +112,6 @@ export class EventStateStore {
 
     const current = this.assetVersionState.get(assetId);
     if (!current) {
-      this.assetVersionState.set(assetId, {
-        assetId,
-        version: Number.isFinite(version) ? version : 0,
-        observedAt,
-        sourceEventId,
-      });
       return 'accepted';
     }
 
@@ -131,12 +125,38 @@ export class EventStateStore {
     }
 
     if (nextVersion === current.version) {
-      return 'rejected_stale';
+      const currentTime = Date.parse(current.observedAt || new Date(0).toISOString());
+      const eventTime = Date.parse(observedAt);
+      // Versionless provider payloads can legitimately arrive with identical timestamps
+      // (for example, back-to-back events within the same millisecond). In that case,
+      // "older" is only a stale signal when the new event is strictly earlier.
+      if (!Number.isFinite(eventTime) || !Number.isFinite(currentTime) || eventTime < currentTime) {
+        return 'rejected_stale';
+      }
     }
+
+    return 'accepted';
+  }
+
+  public recordProjectionVersion(event: CanonicalEvent): 'accepted' | 'ignored_duplicate' | 'rejected_stale' {
+    const assetId = this.getAssetKeyFromEvent(event);
+    if (!assetId) {
+      return 'accepted';
+    }
+
+    const versionDecision = this.evaluateSpatialProjectionVersion(event);
+    if (versionDecision !== 'accepted') {
+      return versionDecision;
+    }
+
+    const version = Number((event as any).version ?? (event as any).eventVersion ?? (event as any).payloadVersion ?? 0);
+    const observedAt = (event as any).observedAt || (event as any).timestamp || new Date().toISOString();
+    const sourceEventId = (event as any).sourceEventId || event.id;
+    const current = this.assetVersionState.get(assetId);
 
     this.assetVersionState.set(assetId, {
       assetId,
-      version: nextVersion,
+      version: Number.isFinite(version) ? version : current?.version ?? 0,
       observedAt,
       sourceEventId,
     });
@@ -161,10 +181,28 @@ export class EventStateStore {
   }
 
   private getAssetKeyFromEvent(event: CanonicalEvent): string | undefined {
-    if ('assetId' in event && event.assetId) return event.assetId;
-    if ('affectedAssets' in event && Array.isArray(event.affectedAssets) && event.affectedAssets.length > 0) {
-      return event.affectedAssets[0];
+    const candidateKeys = [
+      (event as any)?.canonicalAssetId,
+      (event as any)?.assetId,
+      (event as any)?.sourceAssetId,
+      (event as any)?.asset?.canonicalAssetId,
+      (event as any)?.asset?.assetId,
+      (event as any)?.asset?.sourceAssetId,
+    ];
+
+    for (const candidate of candidateKeys) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate;
+      }
     }
+
+    if ('affectedAssets' in event && Array.isArray(event.affectedAssets) && event.affectedAssets.length > 0) {
+      const firstAsset = event.affectedAssets.find((assetId) => typeof assetId === 'string' && assetId.trim());
+      if (typeof firstAsset === 'string' && firstAsset.trim()) {
+        return firstAsset;
+      }
+    }
+
     return undefined;
   }
 

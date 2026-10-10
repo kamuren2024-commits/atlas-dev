@@ -34,6 +34,8 @@ export interface BaseEvent {
   category: EventCategory;
   timestamp: string;
   sourceId: string; // Provider ID
+  canonicalAssetId?: string;
+  sourceAssetId?: string;
   severity: EventSeverity;
   status: EventStatus;
   correlationId?: string; // Link related events

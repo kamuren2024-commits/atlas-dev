@@ -81,6 +81,144 @@ function fail(res: Response, status: number, code: string, message: string, deta
   res.status(status).json({ ok: false, error: { code, message, details } });
 }
 
+const LOGISTICS_SOURCE_MAP = [
+  {
+    source: 'fleet_registry',
+    table: 'logistics_vehicle_v2',
+    mode: 'synthetic_demo',
+    authority: 'demo_only',
+    freshness: 'runtime_seeded',
+    description: 'Vehicle roster and fleet operating state used for KETRACO logistics demos and workflow validation.'
+  },
+  {
+    source: 'mission_registry',
+    table: 'logistics_mission',
+    mode: 'synthetic_demo',
+    authority: 'demo_only',
+    freshness: 'runtime_seeded',
+    description: 'Mission and assignment state supporting dispatch, reroute, and delivery simulation.'
+  },
+  {
+    source: 'warehouse_inventory',
+    table: 'logistics_warehouse',
+    mode: 'synthetic_demo',
+    authority: 'demo_only',
+    freshness: 'runtime_seeded',
+    description: 'Warehouse capacity and stock configuration used for operational balancing and shortage checks.'
+  },
+  {
+    source: 'exception_stream',
+    table: 'logistics_exception',
+    mode: 'synthetic_demo',
+    authority: 'demo_only',
+    freshness: 'runtime_seeded',
+    description: 'Anomaly feed and exception events used to exercise escalation and remediation workflows.'
+  }
+] as const;
+
+function buildLogisticsSourceMap(tenantId: string) {
+  return LOGISTICS_SOURCE_MAP.map(source => ({
+    ...source,
+    tenantId,
+    authoritative: false,
+    connected: false,
+    sourceIdentity: `${source.source}:${tenantId}`,
+  }));
+}
+
+async function executeOperationalWorkflow(database: DatabaseCore, req: Request, res: Response) {
+  try {
+    const { targetEntityId, parameters = {} } = req.body;
+    const tenantId = (req as any).tenantId;
+    const workflowId = req.params.workflowId || 'STOCK_SHORTAGE_RECONCILIATION';
+
+    if (typeof targetEntityId !== 'string' || targetEntityId.trim().length === 0) {
+      return fail(res, 400, 'TARGET_ENTITY_REQUIRED', 'targetEntityId is required to execute a logistics operational workflow');
+    }
+
+    if (workflowId === 'STOCK_SHORTAGE_RECONCILIATION') {
+      const cargoRow = await database.get<any>(`
+        SELECT * FROM logistics_cargo WHERE (id = ? OR cargo_code = ?) AND tenant_id = ?
+      `, [targetEntityId, targetEntityId, tenantId]);
+
+      if (!cargoRow) {
+        return fail(res, 404, 'CARGO_NOT_FOUND', `Cargo ${targetEntityId} was not found for this tenant.`);
+      }
+
+      const shortageKg = Number(parameters.shortageKg ?? Math.max((Number(cargoRow.weight_kg || 0) * 0.12), 500));
+      const warehouseRow = await database.get<any>(`
+        SELECT * FROM logistics_warehouse
+        WHERE tenant_id = ? AND status != 'OFFLINE'
+        ORDER BY available_stock_kg DESC, updated_at DESC
+        LIMIT 1
+      `, [tenantId]);
+
+      if (!warehouseRow) {
+        return fail(res, 409, 'NO_REBALANCE_CAPACITY', 'No warehouse has available stock to reconcile the shortage.');
+      }
+
+      const now = new Date().toISOString();
+      await database.run(`
+        UPDATE logistics_warehouse
+        SET available_stock_kg = MAX(0, available_stock_kg - ?), stock_pct = CASE WHEN capacity_kg > 0 THEN (MAX(0, available_stock_kg - ?) / capacity_kg) * 100 ELSE 0 END, updated_at = ?
+        WHERE id = ? AND tenant_id = ?
+      `, [shortageKg, shortageKg, now, warehouseRow.id, tenantId]);
+
+      await database.run(`
+        UPDATE logistics_cargo
+        SET status = 'PENDING_RECONCILIATION', updated_at = ?
+        WHERE (id = ? OR cargo_code = ?) AND tenant_id = ?
+      `, [now, targetEntityId, targetEntityId, tenantId]);
+
+      return ok(res, {
+        workflowId,
+        targetEntityId,
+        status: 'EXECUTED',
+        shortageKg,
+        sourceWarehouseId: warehouseRow.id,
+        sourceMode: 'synthetic_demo',
+        executionSummary: 'Shortage was reconciled through available warehouse inventory and recorded as a pending reconciliation state.'
+      });
+    }
+
+    if (workflowId === 'DELIVERY_VERIFICATION') {
+      const missionRow = await database.get<any>(`
+        SELECT * FROM logistics_mission WHERE (id = ? OR mission_code = ?) AND tenant_id = ?
+      `, [targetEntityId, targetEntityId, tenantId]);
+
+      if (!missionRow) {
+        return fail(res, 404, 'MISSION_NOT_FOUND', `Mission ${targetEntityId} was not found for this tenant.`);
+      }
+
+      const now = new Date().toISOString();
+      await database.run(`
+        UPDATE logistics_mission
+        SET status = 'COMPLETED', updated_at = ?
+        WHERE (id = ? OR mission_code = ?) AND tenant_id = ?
+      `, [now, targetEntityId, targetEntityId, tenantId]);
+
+      await database.run(`
+        UPDATE logistics_cargo
+        SET status = 'DELIVERED', updated_at = ?
+        WHERE mission_id = ? AND tenant_id = ?
+      `, [now, missionRow.id, tenantId]);
+
+      return ok(res, {
+        workflowId,
+        targetEntityId,
+        status: 'EXECUTED',
+        verifiedAt: now,
+        sourceMode: 'synthetic_demo',
+        executionSummary: 'Mission delivery was verified and the cargo state was marked as delivered.'
+      });
+    }
+
+    return fail(res, 404, 'WORKFLOW_NOT_FOUND', `Workflow ${workflowId} is not implemented in the operational workflow runner.`);
+  } catch (error) {
+    return fail(res, 500, 'OPERATIONAL_WORKFLOW_ERROR', 'Failed to execute the logistics operational workflow', error);
+  }
+}
+
 export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router {
   const router = express.Router();
   const { db, authz, audit } = deps;
@@ -536,11 +674,16 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
         return buildSourceFreshness(source, table, Number(row?.recordCount || 0), row?.lastUpdatedAt);
       }));
 
+      const sourceMap = buildLogisticsSourceMap(tenantId);
+
       return ok(res, {
         generatedAt: new Date().toISOString(),
         tenantId,
+        sourceMap,
         freshness,
         governance: 'ISO_42001_COMPLIANT',
+        dataAuthority: 'synthetic_demo',
+        productionBoundary: 'demo_and_validation_only',
       });
     } catch (error) {
       return fail(res, 500, 'DATA_QUALITY_ERROR', 'Failed to retrieve logistics data quality', error);
@@ -2381,6 +2524,10 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
 
       if (workflowId === 'SHIPMENT_LIFECYCLE' || workflowId === 'SHIPMENT' || workflowId === 'shipment' || workflowId === 'SHIPMENT_STATE') {
         return executeShipmentLifecycle(req, res);
+      }
+
+      if (workflowId === 'STOCK_SHORTAGE_RECONCILIATION' || workflowId === 'DELIVERY_VERIFICATION') {
+        return executeOperationalWorkflow(db, req, res);
       }
 
       const orchestrator = LogisticsAgentOrchestrator.getInstance(db);

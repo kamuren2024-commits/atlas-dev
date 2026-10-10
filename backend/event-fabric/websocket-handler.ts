@@ -242,6 +242,10 @@ export class WebSocketHandler {
         clearInterval(pingInterval);
       }
     }, 30000);
+
+    if (typeof (pingInterval as any).unref === 'function') {
+      (pingInterval as any).unref();
+    }
   }
 
   /**

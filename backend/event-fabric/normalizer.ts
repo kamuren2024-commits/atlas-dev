@@ -46,6 +46,7 @@ export class EventNormalizer {
     telemetry: any,
     previousTelemetry?: any
   ): TelemetryUpdateEvent {
+    const canonicalAssetId = telemetry.canonicalAssetId ?? telemetry.assetId ?? telemetry.sourceAssetId;
     const event: any = {
       id: telemetry.id || uuidv4(),
       eventType: 'TELEMETRY_UPDATED',
@@ -59,11 +60,13 @@ export class EventNormalizer {
       },
       severity: this.calculateTelemetrySeverity(telemetry),
       status: 'PENDING',
-      assetId: telemetry.assetId,
+      assetId: canonicalAssetId,
+      canonicalAssetId,
+      sourceAssetId: telemetry.sourceAssetId ?? canonicalAssetId,
       version: telemetry.version ?? telemetry.eventVersion ?? 1,
       sourceEventId: telemetry.sourceEventId || telemetry.id || undefined,
       telemetry,
-      tags: [providerId, telemetry.assetId].filter(Boolean),
+      tags: [providerId, canonicalAssetId].filter(Boolean),
       metadata: {
         quality: telemetry.quality,
         normalized: true,
@@ -101,22 +104,25 @@ export class EventNormalizer {
     affectedAsset: string,
     data: Record<string, any>
   ): AlarmEvent {
+    const canonicalAssetId = data.canonicalAssetId ?? affectedAsset ?? data.sourceAssetId;
     const event: AlarmEvent = {
       id: uuidv4(),
       eventType: 'ALARM_CREATED',
       category: 'ALARM',
       timestamp: new Date().toISOString(),
       sourceId: providerId,
+      canonicalAssetId,
+      sourceAssetId: data.sourceAssetId ?? canonicalAssetId,
       severity: this.mapSeverity(data.severity || 'WARNING'),
       status: 'PENDING',
       alarmId: data.alarmId || uuidv4(),
       alarmType,
-      affectedAsset,
+      affectedAsset: canonicalAssetId ?? affectedAsset,
       description: data.description || `Alarm: ${alarmType}`,
       threshold: data.threshold,
       currentValue: data.currentValue,
       priority: data.priority || 3,
-      tags: [providerId, alarmType, affectedAsset],
+      tags: [providerId, alarmType, canonicalAssetId ?? affectedAsset].filter(Boolean),
       metadata: {
         rawAlarm: data,
       },
@@ -135,23 +141,26 @@ export class EventNormalizer {
     affectedAssets: string[],
     data: Record<string, any>
   ): OutageEvent {
+    const canonicalAssets = (affectedAssets || []).map((assetId) => data.canonicalAssetIds?.[assetId] ?? assetId);
     const event: OutageEvent = {
       id: uuidv4(),
       eventType: 'OUTAGE_CREATED',
       category: 'OUTAGE',
       timestamp: new Date().toISOString(),
       sourceId: providerId,
+      canonicalAssetId: canonicalAssets[0],
+      sourceAssetId: affectedAssets[0],
       severity: data.customersAffected > 10000 ? 'CRITICAL' : 'WARNING',
       status: 'PENDING',
       outageId,
-      affectedAssets,
+      affectedAssets: canonicalAssets.length ? canonicalAssets : affectedAssets,
       customersAffected: data.customersAffected || 0,
       estimatedDuration: data.estimatedDuration,
       cause: data.cause,
       startTime: data.startTime || new Date().toISOString(),
       endTime: data.endTime,
       restorationTime: data.restorationTime,
-      tags: [providerId, 'outage', ...affectedAssets],
+      tags: [providerId, 'outage', ...canonicalAssets].filter(Boolean),
       metadata: {
         rawOutage: data,
       },
@@ -171,24 +180,27 @@ export class EventNormalizer {
     affectedAssets: string[],
     data: Record<string, any>
   ): IncidentEvent {
+    const canonicalAssets = (affectedAssets || []).map((assetId) => data.canonicalAssetIds?.[assetId] ?? assetId);
     const event: IncidentEvent = {
       id: uuidv4(),
       eventType: 'INCIDENT_CREATED',
       category: 'INCIDENT',
       timestamp: new Date().toISOString(),
       sourceId: providerId,
+      canonicalAssetId: canonicalAssets[0],
+      sourceAssetId: affectedAssets[0],
       severity: this.mapSeverity(data.severity || 'WARNING'),
       status: 'PENDING',
       incidentId,
       title,
       description: data.description || title,
-      affectedAssets,
+      affectedAssets: canonicalAssets.length ? canonicalAssets : affectedAssets,
       rootCause: data.rootCause,
       resolution: data.resolution,
       assignedTo: data.assignedTo,
       priority: data.priority || 3,
       relatedEvents: data.relatedEvents,
-      tags: [providerId, 'incident', ...affectedAssets],
+      tags: [providerId, 'incident', ...canonicalAssets].filter(Boolean),
       metadata: {
         rawIncident: data,
       },
@@ -204,7 +216,8 @@ export class EventNormalizer {
   public normalizeGridEvent(providerId: string, gridEvent: any): CanonicalEvent {
     const type = gridEvent.type || gridEvent.eventType;
     const category = gridEvent.category || (type && type.startsWith('BREAKER') ? 'BREAKER' : 'INCIDENT');
-    const assetId = gridEvent.assetId || gridEvent.sourceId;
+    const canonicalAssetId = gridEvent.canonicalAssetId ?? gridEvent.assetId ?? gridEvent.sourceAssetId ?? gridEvent.asset?.canonicalAssetId ?? gridEvent.asset?.assetId;
+    const assetId = canonicalAssetId ?? gridEvent.assetId ?? gridEvent.sourceAssetId ?? undefined;
     const payload = gridEvent.payload || gridEvent;
 
     let canonicalEvent: CanonicalEvent;
@@ -221,6 +234,8 @@ export class EventNormalizer {
           severity: this.mapSeverity(payload.severity || 'INFO'),
           status: 'PENDING' as EventStatus,
           assetId,
+          canonicalAssetId,
+          sourceAssetId: payload.sourceAssetId ?? assetId,
           version: gridEvent.version ?? payload.version ?? 1,
           sourceEventId: gridEvent.sourceEventId || gridEvent.id || undefined,
           telemetry: payload as GridTelemetry,
@@ -238,16 +253,18 @@ export class EventNormalizer {
           timestamp: gridEvent.timestamp || new Date().toISOString(),
           observedAt: gridEvent.observedAt || gridEvent.timestamp || new Date().toISOString(),
           sourceId: providerId,
+          canonicalAssetId,
+          sourceAssetId: payload.sourceAssetId ?? assetId,
           severity: this.mapSeverity(gridEvent.severity || payload.severity),
           status: type === 'ALARM_CLEARED' ? 'RESOLVED' : 'PENDING',
           version: gridEvent.version ?? payload.version ?? 1,
           sourceEventId: gridEvent.sourceEventId || gridEvent.id || undefined,
           alarmId: payload.alarmId || uuidv4(),
           alarmType: payload.alarmType || 'UNKNOWN',
-          affectedAsset: assetId,
+          affectedAsset: canonicalAssetId ?? assetId,
           description: payload.description || 'Alarm event',
           priority: payload.priority || 3,
-          tags: [providerId, assetId].filter(Boolean),
+          tags: [providerId, canonicalAssetId ?? assetId].filter(Boolean),
           metadata: payload,
         } as AlarmEvent;
         break;
@@ -261,6 +278,8 @@ export class EventNormalizer {
           timestamp: gridEvent.timestamp || new Date().toISOString(),
           observedAt: gridEvent.observedAt || gridEvent.timestamp || new Date().toISOString(),
           sourceId: providerId,
+          canonicalAssetId: canonicalAssetId ?? (Array.isArray(payload.affectedAssets) ? payload.affectedAssets[0] : undefined),
+          sourceAssetId: payload.sourceAssetId ?? (Array.isArray(payload.affectedAssets) ? payload.affectedAssets[0] : assetId),
           severity: 'CRITICAL',
           status: 'PENDING',
           version: gridEvent.version ?? payload.version ?? 1,
@@ -270,7 +289,7 @@ export class EventNormalizer {
           customersAffected: payload.customersAffected || 0,
           cause: payload.cause,
           startTime: gridEvent.timestamp || new Date().toISOString(),
-          tags: [providerId, assetId].filter(Boolean),
+          tags: [providerId, ...(payload.affectedAssets || (assetId ? [assetId] : []))].filter(Boolean),
           metadata: payload,
         } as OutageEvent;
         break;
@@ -289,6 +308,8 @@ export class EventNormalizer {
           version: gridEvent.version ?? payload.version ?? 1,
           sourceEventId: gridEvent.sourceEventId || gridEvent.id || undefined,
           assetId,
+          canonicalAssetId,
+          sourceAssetId: payload.sourceAssetId ?? assetId,
           description: gridEvent.description || payload.description,
           tags: [providerId, assetId].filter(Boolean),
           metadata: payload,

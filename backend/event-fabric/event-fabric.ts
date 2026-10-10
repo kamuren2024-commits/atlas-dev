@@ -201,6 +201,7 @@ export class EventFabric {
   public async shutdown(): Promise<void> {
     console.log('[EVENT-FABRIC] Shutting down event fabric...');
 
+    this.stateStore.clearState();
     await this.persistenceManager.shutdown();
     await this.wsHandler.shutdown();
     await this.sseHandler.shutdown();

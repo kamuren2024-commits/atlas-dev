@@ -97,6 +97,10 @@ export class SSEHandler {
       }
     }, 30000);
 
+    if (typeof (pingInterval as any).unref === 'function') {
+      (pingInterval as any).unref();
+    }
+
     // Handle client disconnect
     res.on('close', () => {
       clearInterval(pingInterval);

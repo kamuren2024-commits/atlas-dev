@@ -507,6 +507,28 @@ export class LogisticsAgentOrchestrator {
         'Transport Driver Telematics Display',
         'National Operations Command Center'
       );
+    } else if (workflowId === 'STOCK_SHORTAGE_RECONCILIATION') {
+      const shortageKg = Number(parameters.shortageKg ?? 1200);
+      actionsTaken.push({
+        step: 'SHORTAGE_RECONCILIATION',
+        result: `Shortage of ${shortageKg} kg reconciled via available stock transfer from the nearest emergency warehouse.`,
+        timestamp: new Date().toISOString(),
+      });
+      notificationsSent.push(
+        'Warehouse Logistics Coordinator',
+        'Fleet Availability Desk',
+        'KETRACO Materials Control'
+      );
+    } else if (workflowId === 'DELIVERY_VERIFICATION') {
+      actionsTaken.push({
+        step: 'DELIVERY_VERIFICATION',
+        result: `Mission ${targetEntityId} delivery verified and close-out evidence recorded.`,
+        timestamp: new Date().toISOString(),
+      });
+      notificationsSent.push(
+        'Operations Command Center',
+        'Project Delivery Review Board'
+      );
     } else if (workflowId === 'WAREHOUSE_CAPACITY_REDISTRIBUTION') {
       actionsTaken.push({
         step: 'CAPACITY_REBALANCE',

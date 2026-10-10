@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach } from './test-helper';
 import { EventBus } from '../event-fabric/event-bus';
 import { EventNormalizer } from '../event-fabric/normalizer';
 import { EventStateStore } from '../event-fabric/state-store';
+import { EventPersistenceManager } from '../event-fabric/persistence';
 import { CanonicalEvent, EventFilter } from '../event-fabric/types';
 
 describe('Event Fabric - Unit Tests', () => {
@@ -80,6 +81,58 @@ describe('Event Fabric - Unit Tests', () => {
       expect(normalized.category).toBe('BREAKER');
       expect(normalized.eventType).toBe('BREAKER_TRIP');
       expect(normalized.severity).toBe('HIGH');
+    });
+
+    it('should preserve canonical asset identity on normalized events', () => {
+      const normalized = normalizer.normalizeGridEvent('SCADA', {
+        id: 'event-canon',
+        eventType: 'TELEMETRY_UPDATED',
+        category: 'TELEMETRY',
+        sourceAssetId: 'rtu-42',
+        canonicalAssetId: 'substation-01',
+        timestamp: new Date().toISOString(),
+        severity: 'INFO',
+      });
+
+      expect(normalized.canonicalAssetId).toBe('substation-01');
+      expect(normalized.assetId).toBe('substation-01');
+      expect(normalized.sourceAssetId).toBe('rtu-42');
+    });
+
+    it('should not fabricate an asset id from the provider when the canonical id is missing', () => {
+      const normalized = normalizer.normalizeGridEvent('SCADA', {
+        id: 'event-no-asset',
+        eventType: 'BREAKER_TRIP',
+        timestamp: new Date().toISOString(),
+        severity: 'HIGH',
+        description: 'Breaker tripped',
+      });
+
+      expect(normalized.assetId).toBeUndefined();
+      expect(normalized.tags).toContain('SCADA');
+    });
+
+    it('should detach the persistence flush timer so it does not keep the process alive', () => {
+      const originalSetInterval = global.setInterval;
+      let unrefCalled = false;
+
+      try {
+        (global as any).setInterval = (() => {
+          return {
+            unref: () => {
+              unrefCalled = true;
+            },
+          } as any;
+        }) as typeof setInterval;
+
+        const persistence = EventPersistenceManager.getInstance();
+        persistence.initialize();
+
+        expect(unrefCalled).toBe(true);
+        persistence.shutdown();
+      } finally {
+        (global as any).setInterval = originalSetInterval;
+      }
     });
 
     it('should validate correct event', () => {
@@ -267,6 +320,76 @@ describe('Event Fabric - Unit Tests', () => {
 
       expect(state).toBeDefined();
       expect(state?.lastAlarm).toEqual(event);
+    });
+
+    it('should update state from canonical asset ids without inventing a source asset', () => {
+      const event: CanonicalEvent = {
+        id: 'event-canonical-asset',
+        timestamp: new Date().toISOString(),
+        category: 'TELEMETRY',
+        eventType: 'TELEMETRY_UPDATED',
+        severity: 'INFO',
+        source: { providerId: 'SCADA', name: 'Test' },
+        canonicalAssetId: 'substation-01',
+        sourceAssetId: 'rtu-42',
+        version: 2,
+        telemetry: { measurements: { voltage: 220 } },
+      } as any;
+
+      stateStore.updateFromEvent(event);
+
+      expect(stateStore.getAssetState('substation-01')).toBeDefined();
+      expect(stateStore.getAssetState('SCADA')).toBeUndefined();
+    });
+
+    it('should allow a checked event to be accepted once and then rejected as duplicate', () => {
+      const event: CanonicalEvent = {
+        id: 'event-dupe-check',
+        timestamp: new Date().toISOString(),
+        category: 'TELEMETRY',
+        eventType: 'TELEMETRY_UPDATED',
+        severity: 'INFO',
+        source: { providerId: 'SCADA', name: 'Test' },
+        assetId: 'asset-dupe-check',
+        version: 1,
+        telemetry: { measurements: { voltage: 220 } },
+      } as any;
+
+      expect(stateStore.evaluateSpatialProjectionVersion(event)).toBe('accepted');
+      stateStore.updateFromEvent(event);
+
+      expect(stateStore.getAssetState('asset-dupe-check')).toBeDefined();
+      expect(stateStore.evaluateSpatialProjectionVersion(event)).toBe('ignored_duplicate');
+    });
+
+    it('should accept versionless events that share the same timestamp on one asset', () => {
+      const firstEvent: CanonicalEvent = {
+        id: 'event-same-time-1',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        category: 'TELEMETRY',
+        eventType: 'TELEMETRY_UPDATED',
+        severity: 'INFO',
+        source: { providerId: 'SCADA', name: 'Test' },
+        assetId: 'asset-same-time',
+        data: { voltage: 220 },
+      } as any;
+
+      const secondEvent: CanonicalEvent = {
+        id: 'event-same-time-2',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        category: 'ALARM',
+        eventType: 'ALARM_CREATED',
+        severity: 'HIGH',
+        source: { providerId: 'SCADA', name: 'Test' },
+        assetId: 'asset-same-time',
+      } as any;
+
+      stateStore.updateFromEvent(firstEvent);
+      expect(stateStore.evaluateSpatialProjectionVersion(secondEvent)).toBe('accepted');
+
+      stateStore.updateFromEvent(secondEvent);
+      expect(stateStore.getAssetState('asset-same-time')?.lastAlarm).toEqual(secondEvent);
+      expect(stateStore.getAssetState('asset-same-time')?.lastEvent).toEqual(secondEvent);
     });
 
     it('should maintain global state', () => {

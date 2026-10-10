@@ -220,6 +220,10 @@ export class EventPersistenceManager {
       this.flush();
     }, 10000);
 
+    if (this.flushInterval && typeof (this.flushInterval as any).unref === 'function') {
+      (this.flushInterval as any).unref();
+    }
+
     console.log('[EVENT-PERSISTENCE] Persistence manager initialized');
   }
 
