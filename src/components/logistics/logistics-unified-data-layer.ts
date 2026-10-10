@@ -147,7 +147,7 @@ function normalizeDeliveriesFromApi(data: any): LogisticsTwin['deliveries'] {
     shipmentId: d.shipmentId ?? d.shipment_id,
     vehicleId: d.vehicleId ?? d.vehicle_id,
     destination: String(d.destination ?? d.location ?? 'Unknown destination'),
-    podStatus: String(d.podStatus ?? d.pod_status ?? 'PENDING'),
+    podStatus: String(d.podStatus ?? d.pod_status ?? d.proofOfDelivery ?? 'UNAVAILABLE'),
     provenance: {
       sourceSystem: 'KETRACO_APP',
       sourceDataset: 'deliveries',

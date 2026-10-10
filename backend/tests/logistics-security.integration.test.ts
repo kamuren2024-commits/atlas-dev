@@ -10,6 +10,9 @@ import { AuthorizationService } from '../security/authorization-service';
 test('Logistics API requires authenticated, authorized, tenant-scoped requests', { timeout: 30000 }, async t => {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
   let writes = 0;
+  let workflowMission: Record<string, unknown> | undefined;
+  let workflowDelivery: Record<string, unknown> | undefined;
+  let workflowCargo: Record<string, unknown> | undefined;
   const database = {
     all: async (sql: string, params: unknown[] = []) => {
       queries.push({ sql, params });
@@ -17,6 +20,18 @@ test('Logistics API requires authenticated, authorized, tenant-scoped requests',
     },
     get: async (sql: string, params: unknown[] = []) => {
       queries.push({ sql, params });
+      if (sql.includes('FROM logistics_mission WHERE (id = ? OR mission_code = ?)')) {
+        return params[2] === 'ketraco' ? workflowMission : undefined;
+      }
+      if (sql.includes('FROM logistics_delivery') && sql.includes('mission_id = ? AND tenant_id = ?')) {
+        return params[1] === 'ketraco' ? workflowDelivery : undefined;
+      }
+      if (sql.includes('FROM logistics_cargo WHERE (id = ? OR cargo_code = ?)')) {
+        return params[2] === 'ketraco' ? workflowCargo : undefined;
+      }
+      if (sql.includes('SELECT id, status FROM logistics_delivery')) {
+        return params[2] === 'ketraco' ? workflowDelivery : undefined;
+      }
       return undefined;
     },
     run: async () => {
@@ -127,4 +142,69 @@ test('Logistics API requires authenticated, authorized, tenant-scoped requests',
   assert.match(queries[2].sql, /tenant_id = \?/);
   assert.deepEqual(queries[2].params, ['foreign-delivery', 'foreign-delivery', 'kengen']);
   assert.equal(writes, 0, 'foreign-tenant requests must not mutate persistence');
+
+  workflowMission = { id: 'mission-1', status: 'IN_TRANSIT' };
+  workflowDelivery = { id: 'delivery-1', status: 'IN_TRANSIT' };
+  const logisticsDirector = tokenFor('ketraco', 'Director Grid Logistics');
+
+  const unverifiedWorkflow = await request(`${baseUrl}/workflows/DELIVERY_VERIFICATION/execute`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${logisticsDirector}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetEntityId: 'mission-1', parameters: { verified: true, actor: 'forged-user' } }),
+  });
+  assert.equal(unverifiedWorkflow.status, 503);
+  assert.equal((await unverifiedWorkflow.json() as any).error.code, 'DELIVERY_EVIDENCE_NOT_CONFIGURED');
+  assert.equal(writes, 0, 'delivery verification must not mutate records without trusted evidence');
+  assert.deepEqual(queries.at(-1)?.params, ['mission-1', 'ketraco']);
+
+  const crossTenantVerification = await request(`${baseUrl}/workflows/DELIVERY_VERIFICATION/execute`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${otherTenantToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetEntityId: 'mission-1' }),
+  });
+  assert.equal(crossTenantVerification.status, 404);
+  assert.match(queries.at(-1)?.sql || '', /tenant_id = \?/);
+  assert.deepEqual(queries.at(-1)?.params, ['mission-1', 'mission-1', 'kengen']);
+  assert.equal(writes, 0, 'cross-tenant verification must not read or mutate another tenant mission');
+
+  const forgedSignature = await request(`${baseUrl}/deliveries/delivery-1`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${logisticsDirector}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      status: 'DELIVERED',
+      signoffSignature: 'DIGITAL_SIG_FORGED',
+      tenantId: 'ketraco',
+    }),
+  });
+  assert.equal(forgedSignature.status, 400);
+  assert.equal((await forgedSignature.json() as any).error.code, 'UNTRUSTED_SIGNOFF_SIGNATURE');
+  assert.equal(writes, 0, 'client-supplied signature and status must not establish proof of delivery');
+
+  const forgedDeliveredStatus = await request(`${baseUrl}/deliveries/delivery-1`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${logisticsDirector}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'DELIVERED' }),
+  });
+  assert.equal(forgedDeliveredStatus.status, 503);
+  assert.equal((await forgedDeliveredStatus.json() as any).error.code, 'DELIVERY_EVIDENCE_NOT_CONFIGURED');
+  assert.equal(writes, 0, 'delivery state must remain unchanged until trusted e-PoD verification exists');
+
+  workflowCargo = { id: 'cargo-1', weight_kg: 1000 };
+  const inferredShortage = await request(`${baseUrl}/workflows/STOCK_SHORTAGE_RECONCILIATION/execute`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${logisticsDirector}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetEntityId: 'cargo-1' }),
+  });
+  assert.equal(inferredShortage.status, 503);
+  assert.equal((await inferredShortage.json() as any).error.code, 'STOCK_SOURCE_NOT_CONFIGURED');
+  assert.equal(writes, 0, 'stock workflow must not infer shortage or reserve unverified inventory');
+
+  const invalidShortage = await request(`${baseUrl}/workflows/STOCK_SHORTAGE_RECONCILIATION/execute`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${logisticsDirector}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetEntityId: 'cargo-1', parameters: { shortageKg: -5 } }),
+  });
+  assert.equal(invalidShortage.status, 400);
+  assert.equal((await invalidShortage.json() as any).error.code, 'INVALID_SHORTAGE_QUANTITY');
+  assert.equal(writes, 0);
 });

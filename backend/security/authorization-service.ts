@@ -410,20 +410,49 @@ export class AuthorizationService {
     resource: string,
     resourceAttributes?: Record<string, unknown>,
   ): PolicyResult {
-    const role = (user?.role) ?? (Array.isArray(user?.roles) ? user!.roles[0] ?? 'viewer' : 'viewer');
+    if (!user?.id || !user.id.trim()) {
+      return {
+        isAuthorized: false,
+        decision: 'DENY',
+        reason: 'Authentication required: missing authenticated user identity.',
+      };
+    }
+
+    const tenantId = typeof user.tenantId === 'string' && user.tenantId.trim().length > 0 ? user.tenantId.trim() : '';
+    if (!tenantId) {
+      return {
+        isAuthorized: false,
+        decision: 'DENY',
+        reason: 'Authentication required: missing tenant context for the current identity.',
+      };
+    }
+
+    const role = (typeof user.role === 'string' && user.role.trim().length > 0) ? user.role.trim() : 'Guest';
     const canonical: UserIdentity = {
-      id: user?.id ?? 'anonymous',
+      id: user.id,
       role,
-      roles: Array.isArray(user?.roles) ? user!.roles : (role ? [role] : []),
-      tenantId: user?.tenantId ?? 'ketraco',
+      roles: Array.isArray(user?.roles) && user.roles.length > 0 ? user.roles.filter(Boolean) : [role],
+      tenantId,
       organizationId: user?.organizationId ?? 'default',
-      accessLevel: user?.accessLevel ?? 'standard',
-      clearance: user?.clearance ?? 'standard',
+      accessLevel: typeof user?.accessLevel === 'string' && user.accessLevel.trim().length > 0 ? user.accessLevel : 'LEVEL_01',
+      clearance: typeof user?.clearance === 'string' && user.clearance.trim().length > 0 ? user.clearance : 'standard',
       permissions: user?.permissions ?? [],
       email: user?.email,
       name: user?.name,
     };
-    return AuthorizationService.checkPermission(canonical, action, resource, resourceAttributes ?? {});
+
+    const safeResourceAttributes: Record<string, unknown> = { ...(resourceAttributes ?? {}) };
+    const requestedTenantId = typeof safeResourceAttributes.tenantId === 'string' ? safeResourceAttributes.tenantId.trim() : '';
+    if (requestedTenantId && requestedTenantId !== tenantId) {
+      return {
+        isAuthorized: false,
+        decision: 'DENY',
+        reason: `Multi-Tenant Violation: Operation barred. Attempted cross-tenant access from tenant "${tenantId}" to tenant "${requestedTenantId}".`,
+      };
+    }
+    safeResourceAttributes.tenantId = tenantId;
+
+    return AuthorizationService.checkPermission(canonical, action, resource, safeResourceAttributes);
   }
 
   async check(
@@ -432,16 +461,22 @@ export class AuthorizationService {
     action: string,
     resourceAttributes: Record<string, unknown> = {},
   ): Promise<boolean> {
-    if (!userId) return false;
+    if (!userId || typeof userId !== 'string' || !userId.trim()) return false;
 
+    const tenantId = typeof resourceAttributes.tenantId === 'string' ? resourceAttributes.tenantId.trim() : '';
+    if (!tenantId) return false;
+
+    const suppliedRole = typeof resourceAttributes.role === 'string' && resourceAttributes.role.trim().length > 0
+      ? resourceAttributes.role.trim()
+      : 'Guest';
     const user = {
       id: userId,
-      role: (resourceAttributes.role as string | undefined) ?? 'Guest',
-      roles: [(resourceAttributes.role as string | undefined) ?? 'Guest'],
-      tenantId: (resourceAttributes.tenantId as string | undefined) ?? 'ketraco',
+      role: suppliedRole,
+      roles: [suppliedRole],
+      tenantId,
       organizationId: (resourceAttributes.organizationId as string | undefined) ?? 'default',
       permissions: Array.isArray(resourceAttributes.permissions) ? resourceAttributes.permissions as string[] : [],
-      accessLevel: (resourceAttributes.accessLevel as string | undefined) ?? 'standard',
+      accessLevel: (resourceAttributes.accessLevel as string | undefined) ?? 'LEVEL_01',
       clearance: (resourceAttributes.clearance as string | undefined) ?? 'standard',
       email: (resourceAttributes.email as string | undefined),
       name: (resourceAttributes.name as string | undefined),

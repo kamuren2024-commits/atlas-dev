@@ -371,7 +371,7 @@ export class LogisticsDataProvider {
           shipmentId: raw.shipmentId ?? raw.shipment_id,
           vehicleId: raw.vehicleId ?? raw.vehicle_id,
           destination: String(raw.destination ?? raw.location ?? 'Unknown destination'),
-          podStatus: String(raw.podStatus ?? raw.pod_status ?? 'PENDING'),
+          podStatus: String(raw.podStatus ?? raw.pod_status ?? raw.proofOfDelivery ?? 'UNAVAILABLE'),
           provenance: {
             sourceSystem: String(raw.sourceSystem ?? 'KETRACO_APP'),
             sourceDataset: 'deliveries',

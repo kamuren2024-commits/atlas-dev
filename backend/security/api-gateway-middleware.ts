@@ -116,10 +116,10 @@ export class ApiGatewayMiddleware {
 
       // Gather attributes dynamically from body or query params to run ABAC checks
       const resourceAttributes = {
-        tenantId: req.body?.tenantId || req.query?.tenantId || req.user.tenantId,
-        costUSD: req.body?.costUSD || req.body?.costEstimateUSD || 0,
-        variationPct: req.body?.variationPct || 0,
-        securityLevel: req.body?.securityLevel || 'LEVEL 01'
+        tenantId: req.user.tenantId,
+        costUSD: req.body?.costUSD ?? req.body?.costEstimateUSD ?? 0,
+        variationPct: req.body?.variationPct ?? 0,
+        securityLevel: req.body?.securityLevel ?? 'LEVEL 01'
       };
 
       const decision = AuthorizationService.checkPermission(req.user, action, resource, resourceAttributes);

@@ -6,6 +6,7 @@ import { createProjectSupplyApiRouter } from '../domains/project-supply/api-rout
 import type { DatabaseCore } from '../database/db-core';
 import type { KnowledgeGraph } from '../evaluation/knowledge-graph';
 import { AuthorizationService } from '../security/authorization-service';
+import { ApiGatewayMiddleware } from '../security/api-gateway-middleware';
 import { IdentityService, type UserIdentity } from '../security/identity-service';
 
 test('Project supply API authenticates requests and isolates project reads by tenant', { timeout: 30000 }, async t => {
@@ -104,4 +105,58 @@ test('Project supply API authenticates requests and isolates project reads by te
   });
   assert.equal(foreignTenant.status, 404);
   assert.ok(queries.some(query => query.params.includes('kengen')), 'tenant-scoped lookups must use the authenticated tenant');
+});
+
+test('AuthorizationService and API gateway reject client tenant overrides and absent tenant context', async () => {
+  const authz = new AuthorizationService();
+
+  const deniedByTenantMismatch = authz.evaluate({
+    id: 'user-1',
+    role: 'Project Manager',
+    tenantId: 'tenant-a',
+    accessLevel: 'LEVEL 04',
+    clearance: 'Enterprise Clear',
+  }, 'read', 'project', { tenantId: 'tenant-b' });
+  assert.equal(deniedByTenantMismatch.isAuthorized, false);
+
+  const deniedByMissingTenant = authz.evaluate({
+    id: 'user-2',
+    role: 'Project Manager',
+    accessLevel: 'LEVEL 04',
+    clearance: 'Enterprise Clear',
+  }, 'read', 'project');
+  assert.equal(deniedByMissingTenant.isAuthorized, false);
+
+  const app = express();
+  app.use(express.json());
+  app.use((req, res, next) => {
+    req.user = {
+      id: 'user-3',
+      role: 'Project Manager',
+      tenantId: 'tenant-a',
+      accessLevel: 'LEVEL 04',
+      clearance: 'Enterprise Clear',
+      authenticated: true,
+    };
+    next();
+  });
+  app.get('/protected', ApiGatewayMiddleware.authorize('project', 'read'), (_req, res) => {
+    res.status(200).json({ ok: true });
+  });
+
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise<void>((resolve, reject) => {
+    server.once('listening', resolve);
+    server.once('error', reject);
+  });
+  try {
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/protected?tenantId=tenant-b`;
+    const response = await fetch(baseUrl, {
+      headers: { Authorization: 'Bearer token-value' },
+    });
+    assert.equal(response.status, 200);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    server.closeAllConnections();
+  }
 });

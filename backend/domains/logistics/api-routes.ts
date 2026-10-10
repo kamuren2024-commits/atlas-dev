@@ -135,6 +135,9 @@ async function executeOperationalWorkflow(database: DatabaseCore, req: Request, 
     if (typeof targetEntityId !== 'string' || targetEntityId.trim().length === 0) {
       return fail(res, 400, 'TARGET_ENTITY_REQUIRED', 'targetEntityId is required to execute a logistics operational workflow');
     }
+    if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) {
+      return fail(res, 400, 'INVALID_WORKFLOW_PARAMETERS', 'Workflow parameters must be an object.');
+    }
 
     if (workflowId === 'STOCK_SHORTAGE_RECONCILIATION') {
       const cargoRow = await database.get<any>(`
@@ -145,40 +148,19 @@ async function executeOperationalWorkflow(database: DatabaseCore, req: Request, 
         return fail(res, 404, 'CARGO_NOT_FOUND', `Cargo ${targetEntityId} was not found for this tenant.`);
       }
 
-      const shortageKg = Number(parameters.shortageKg ?? Math.max((Number(cargoRow.weight_kg || 0) * 0.12), 500));
-      const warehouseRow = await database.get<any>(`
-        SELECT * FROM logistics_warehouse
-        WHERE tenant_id = ? AND status != 'OFFLINE'
-        ORDER BY available_stock_kg DESC, updated_at DESC
-        LIMIT 1
-      `, [tenantId]);
-
-      if (!warehouseRow) {
-        return fail(res, 409, 'NO_REBALANCE_CAPACITY', 'No warehouse has available stock to reconcile the shortage.');
+      if (
+        parameters.shortageKg !== undefined &&
+        (typeof parameters.shortageKg !== 'number' || !Number.isFinite(parameters.shortageKg) || parameters.shortageKg <= 0)
+      ) {
+        return fail(res, 400, 'INVALID_SHORTAGE_QUANTITY', 'shortageKg must be a positive finite number.');
       }
 
-      const now = new Date().toISOString();
-      await database.run(`
-        UPDATE logistics_warehouse
-        SET available_stock_kg = MAX(0, available_stock_kg - ?), stock_pct = CASE WHEN capacity_kg > 0 THEN (MAX(0, available_stock_kg - ?) / capacity_kg) * 100 ELSE 0 END, updated_at = ?
-        WHERE id = ? AND tenant_id = ?
-      `, [shortageKg, shortageKg, now, warehouseRow.id, tenantId]);
-
-      await database.run(`
-        UPDATE logistics_cargo
-        SET status = 'PENDING_RECONCILIATION', updated_at = ?
-        WHERE (id = ? OR cargo_code = ?) AND tenant_id = ?
-      `, [now, targetEntityId, targetEntityId, tenantId]);
-
-      return ok(res, {
-        workflowId,
-        targetEntityId,
-        status: 'EXECUTED',
-        shortageKg,
-        sourceWarehouseId: warehouseRow.id,
-        sourceMode: 'synthetic_demo',
-        executionSummary: 'Shortage was reconciled through available warehouse inventory and recorded as a pending reconciliation state.'
-      });
+      return fail(
+        res,
+        503,
+        'STOCK_SOURCE_NOT_CONFIGURED',
+        'A canonical stock ledger, reservation contract, and approval workflow are not configured. No inventory or cargo state was changed.'
+      );
     }
 
     if (workflowId === 'DELIVERY_VERIFICATION') {
@@ -190,27 +172,21 @@ async function executeOperationalWorkflow(database: DatabaseCore, req: Request, 
         return fail(res, 404, 'MISSION_NOT_FOUND', `Mission ${targetEntityId} was not found for this tenant.`);
       }
 
-      const now = new Date().toISOString();
-      await database.run(`
-        UPDATE logistics_mission
-        SET status = 'COMPLETED', updated_at = ?
-        WHERE (id = ? OR mission_code = ?) AND tenant_id = ?
-      `, [now, targetEntityId, targetEntityId, tenantId]);
-
-      await database.run(`
-        UPDATE logistics_cargo
-        SET status = 'DELIVERED', updated_at = ?
+      const delivery = await database.get<any>(`
+        SELECT id FROM logistics_delivery
         WHERE mission_id = ? AND tenant_id = ?
-      `, [now, missionRow.id, tenantId]);
+        LIMIT 1
+      `, [missionRow.id, tenantId]);
+      if (!delivery) {
+        return fail(res, 409, 'DELIVERY_RECORD_REQUIRED', 'A persisted delivery record linked to this mission is required before verification.');
+      }
 
-      return ok(res, {
-        workflowId,
-        targetEntityId,
-        status: 'EXECUTED',
-        verifiedAt: now,
-        sourceMode: 'synthetic_demo',
-        executionSummary: 'Mission delivery was verified and the cargo state was marked as delivered.'
-      });
+      return fail(
+        res,
+        503,
+        'DELIVERY_EVIDENCE_NOT_CONFIGURED',
+        'Trusted proof-of-delivery evidence verification is not configured. Mission and cargo state were not changed.'
+      );
     }
 
     return fail(res, 404, 'WORKFLOW_NOT_FOUND', `Workflow ${workflowId} is not implemented in the operational workflow runner.`);
@@ -2092,7 +2068,7 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
           originName: d.origin_name || 'Apex Central Yard',
           priority: d.priority || 'HIGH',
           riskLevel: d.risk_level || 'LOW',
-          proofOfDelivery: d.signoff_signature ? 'VERIFIED_DIGITAL_SIGNOFF' : 'PENDING',
+          proofOfDelivery: 'VERIFICATION_UNAVAILABLE',
         })),
       });
     } catch (error) {
@@ -2108,11 +2084,46 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
       const now = new Date().toISOString();
 
       const existing = await db.get<any>(`
-        SELECT id FROM logistics_delivery
+        SELECT id, status FROM logistics_delivery
         WHERE (id = ? OR delivery_code = ?) AND tenant_id = ?
       `, [id, id, tenantId]);
       if (!existing) {
         return fail(res, 404, 'DELIVERY_NOT_FOUND', `Delivery ${id} was not found`);
+      }
+
+      if (signoffSignature !== undefined) {
+        return fail(res, 400, 'UNTRUSTED_SIGNOFF_SIGNATURE', 'A client-supplied signature is not accepted as proof of delivery.');
+      }
+
+      const normalizedStatus = typeof status === 'string' ? status.trim().toUpperCase() : undefined;
+      const finalStatuses = new Set(['DELIVERED', 'VERIFIED', 'COMPLETED', 'CLOSED']);
+      if (normalizedStatus && finalStatuses.has(normalizedStatus)) {
+        return fail(
+          res,
+          503,
+          'DELIVERY_EVIDENCE_NOT_CONFIGURED',
+          'Trusted proof-of-delivery evidence verification is not configured. Delivery state was not changed.'
+        );
+      }
+
+      const currentStatus = String(existing.status || '').toUpperCase();
+      if (recipientName !== undefined && (typeof recipientName !== 'string' || !recipientName.trim())) {
+        return fail(res, 400, 'INVALID_RECIPIENT_NAME', 'recipientName must be a non-empty string when provided.');
+      }
+      if (recipientRole !== undefined && (typeof recipientRole !== 'string' || !recipientRole.trim())) {
+        return fail(res, 400, 'INVALID_RECIPIENT_ROLE', 'recipientRole must be a non-empty string when provided.');
+      }
+      const allowedTransitions: Record<string, string[]> = {
+        PENDING: ['IN_TRANSIT'],
+        IN_TRANSIT: ['ARRIVED', 'DISCREPANCY'],
+        ARRIVED: ['DISCREPANCY'],
+        DISCREPANCY: ['ARRIVED'],
+      };
+      if (normalizedStatus && normalizedStatus !== currentStatus && !(allowedTransitions[currentStatus] || []).includes(normalizedStatus)) {
+        return fail(res, 409, 'INVALID_DELIVERY_TRANSITION', `Delivery transition from ${currentStatus} to ${normalizedStatus} is not allowed.`);
+      }
+      if (normalizedStatus && ![...Object.keys(allowedTransitions), ...Object.values(allowedTransitions).flat()].includes(normalizedStatus)) {
+        return fail(res, 400, 'INVALID_DELIVERY_STATUS', `Delivery status "${normalizedStatus}" is not supported.`);
       }
 
       await db.run(`
@@ -2124,11 +2135,11 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
             delivered_at = CASE WHEN ? = 'DELIVERED' THEN ? ELSE delivered_at END,
             updated_at = ?
         WHERE (id = ? OR delivery_code = ?) AND tenant_id = ?
-      `, [status, recipientName, recipientRole, signoffSignature, status, now, now, id, id, tenantId]);
+      `, [normalizedStatus || currentStatus, recipientName ?? null, recipientRole ?? null, null, normalizedStatus || currentStatus, now, now, id, id, tenantId]);
 
-      await emitEvent('delivery.sla_breach', 'INFO', `Delivery ${id} status updated to ${status}`, 'DELIVERY', id, { status });
+      await emitEvent('delivery.status_updated', 'INFO', `Delivery ${id} status updated to ${normalizedStatus || currentStatus}`, 'DELIVERY', id, { status: normalizedStatus || currentStatus });
 
-      return ok(res, { id, status, updatedAt: now });
+      return ok(res, { id, status: normalizedStatus || currentStatus, updatedAt: now });
     } catch (error) {
       return fail(res, 500, 'DELIVERY_UPDATE_ERROR', 'Failed to update delivery', error);
     }

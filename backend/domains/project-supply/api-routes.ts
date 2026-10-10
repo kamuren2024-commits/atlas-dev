@@ -103,8 +103,16 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
   async function authorizeProject(req: Request, res: Response, projectId: string, action: 'read' | 'update' = 'read'): Promise<string | null> {
     const user = (req as AuthenticatedRequest).user;
     const tenantId = user?.tenantId;
-    if (!user || !tenantId || !(await deps.authz.check(user.id, 'project', action, { tenantId, resourceId: projectId, role: user.role, permissions: user.permissions }))) {
+    if (!user || !tenantId) {
       fail(res, 403, 'UNAUTHORIZED', `Not authorized to ${action} project data`);
+      return null;
+    }
+    const authorization = deps.authz.evaluate(user, action, 'project', {
+      tenantId,
+      resourceId: projectId,
+    });
+    if (!authorization.isAuthorized) {
+      fail(res, 403, 'UNAUTHORIZED', authorization.reason || `Not authorized to ${action} project data`);
       return null;
     }
     const project = deps.kg.nodes.find(node =>
@@ -386,14 +394,12 @@ export function createProjectSupplyApiRouter(deps: ProjectSupplyApiDeps): expres
       return fail(res, 403, 'UNAUTHORIZED', 'Not authorized to read project telemetry');
     }
 
-    const allowed = await deps.authz.check(user.id, 'project', 'read', {
+    const authorization = deps.authz.evaluate(user, 'read', 'project', {
       tenantId,
       resourceId: 'project-supply-telemetry',
-      role: user.role,
-      permissions: user.permissions,
     });
-    if (!allowed) {
-      return fail(res, 403, 'UNAUTHORIZED', 'Not authorized to read project telemetry');
+    if (!authorization.isAuthorized) {
+      return fail(res, 403, 'UNAUTHORIZED', authorization.reason || 'Not authorized to read project telemetry');
     }
 
     try {

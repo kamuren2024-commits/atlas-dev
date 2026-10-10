@@ -256,6 +256,47 @@ describe('Meeting Intelligence operational golden path', () => {
     expect((await repository.getMeetingById(meeting.id))?.status).toBe('DRAFT');
   });
 
+  it('persists an action workflow request durably and idempotently', async () => {
+    const meeting = await repository.createMeeting({
+      id: 'MI_WORKFLOW_IDEMPOTENT',
+      title: 'Workflow durability verification',
+      status: 'DRAFT',
+      date: '2026-10-05'
+    }, 'meeting-creator');
+
+    const action = await repository.createAction({
+      id: 'ACT_WORKFLOW_IDEMPOTENT',
+      action_title: 'Issue KRA supplier validation follow-up',
+      description: 'Complete the follow-up gate before award approval.',
+      owner: 'jordan@example.com',
+      department: 'SCM',
+      due_date: '2026-10-14',
+      priority: 'HIGH',
+      status: 'ON_TRACK',
+      source_meeting_id: meeting.id,
+      source_meeting_title: meeting.title,
+      confirmation_actor: 'chair',
+      confirmed_at: new Date().toISOString(),
+      linked_entities: ['supplier-validation']
+    });
+
+    const firstRequest = await repository.executeActionWorkflow(action.id, 'chair');
+    expect(firstRequest.success).toBe(true);
+    expect(firstRequest.workflowId).toBeTruthy();
+    expect((await repository.getActions({ sourceMeetingId: meeting.id })).find(item => item.id === action.id)?.workflow_triggered).toBe(true);
+
+    const secondRequest = await repository.executeActionWorkflow(action.id, 'chair');
+    expect(secondRequest.duplicate).toBe(true);
+    expect(secondRequest.workflowId).toBe(firstRequest.workflowId);
+
+    const rows = await db.all<{ id: string; action_id: string; idempotency_key: string }>(
+      'SELECT id, action_id, idempotency_key FROM meeting_workflow_requests WHERE action_id = ?',
+      [action.id]
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].action_id).toBe(action.id);
+  });
+
   it('allows only one of two concurrent lifecycle operations from the same version', async () => {
     const meeting = await repository.createMeeting({
       id: 'MI_LIFECYCLE_RACE',

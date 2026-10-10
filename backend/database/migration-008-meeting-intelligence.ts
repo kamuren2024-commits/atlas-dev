@@ -151,6 +151,24 @@ export class MeetingIntelligenceMigration {
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS meeting_workflow_requests (
+        id TEXT PRIMARY KEY,
+        action_id TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        workflow_type TEXT NOT NULL DEFAULT 'MEETING_ACTION',
+        idempotency_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'QUEUED',
+        request_hash TEXT,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        result_json TEXT,
+        correlation_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS ux_meeting_workflow_requests_action_idem
+        ON meeting_workflow_requests (action_id, idempotency_key);
+
       CREATE TABLE IF NOT EXISTS meeting_commitments (
         id TEXT PRIMARY KEY,
         meeting_id TEXT NOT NULL,

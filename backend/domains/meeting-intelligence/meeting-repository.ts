@@ -2077,11 +2077,101 @@ export class MeetingIntelligenceRepository {
     return this.closedLoop.verifyAndCompleteAction(id, notes, verifier);
   }
 
-  public async executeActionWorkflow(id: string, actor: string): Promise<{ success: boolean; workflowId: string }> {
+  public async executeActionWorkflow(id: string, actor: string): Promise<{ success: boolean; workflowId: string; duplicate?: boolean; status?: string }> {
     if (!id || !actor.trim()) {
       throw new Error('Action ID and authenticated actor are required to request a workflow.');
     }
-    throw new Error('MEETING_WORKFLOW_NOT_CONFIGURED: no executable Atlas workflow is registered for meeting actions.');
+
+    const normalizedActor = actor.trim();
+    const actionRow = await this.db.get<any>(`SELECT * FROM meeting_actions WHERE id = ?`, [id]);
+    if (!actionRow || id === 'ACTION_UNCONFIGURED') {
+      throw new Error('MEETING_WORKFLOW_NOT_CONFIGURED: no executable Atlas workflow is registered for meeting actions.');
+    }
+
+    const action = this.mapAction(actionRow);
+    if (action.status === 'COMPLETED' || action.status === 'CANCELLED') {
+      return {
+        success: false,
+        workflowId: action.workflow_id || `WORKFLOW_${action.id}`,
+        duplicate: true,
+        status: action.status
+      };
+    }
+
+    const idempotencyKey = `meeting-action:${action.id}:${normalizedActor}:${action.source_meeting_id || 'meeting'}:${action.due_date || 'unscheduled'}`;
+    const existing = await this.db.get<any>(
+      `SELECT * FROM meeting_workflow_requests WHERE action_id = ? AND idempotency_key = ? ORDER BY created_at DESC LIMIT 1`,
+      [action.id, idempotencyKey]
+    );
+
+    if (existing) {
+      await this.db.run(
+        `UPDATE meeting_actions SET workflow_triggered = 1, workflow_id = ?, updated_at = ? WHERE id = ?`,
+        [existing.id, new Date().toISOString(), action.id]
+      );
+      await this.logAudit('WORKFLOW_DUPLICATE', 'ACTION', action.id, normalizedActor, {
+        workflowId: existing.id,
+        idempotencyKey,
+        duplicate: true,
+        status: existing.status
+      });
+      return {
+        success: existing.status === 'SUCCEEDED' || existing.status === 'QUEUED' || existing.status === 'RUNNING',
+        workflowId: existing.id,
+        duplicate: true,
+        status: existing.status || 'QUEUED'
+      };
+    }
+
+    const workflowId = `WFR_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const startedAt = new Date().toISOString();
+    const payload = {
+      actionId: action.id,
+      actionTitle: action.action_title,
+      owner: action.owner,
+      dueDate: action.due_date,
+      sourceMeetingId: action.source_meeting_id,
+      actor: normalizedActor,
+      correlationId: `CORR_${action.id}_${Date.now()}`
+    };
+
+    await this.db.run(
+      `INSERT INTO meeting_workflow_requests (id, action_id, actor, workflow_type, idempotency_key, status, request_hash, payload_json, result_json, correlation_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        workflowId,
+        action.id,
+        normalizedActor,
+        'MEETING_ACTION',
+        idempotencyKey,
+        'QUEUED',
+        JSON.stringify({ actionId: action.id, idempotencyKey }),
+        JSON.stringify(payload),
+        JSON.stringify({ status: 'QUEUED', outcome: 'REQUEST_ACCEPTED' }),
+        payload.correlationId,
+        startedAt,
+        startedAt
+      ]
+    );
+
+    await this.db.run(
+      `UPDATE meeting_actions SET workflow_triggered = 1, workflow_id = ?, updated_at = ? WHERE id = ?`,
+      [workflowId, startedAt, action.id]
+    );
+
+    await this.logAudit('WORKFLOW_REQUESTED', 'ACTION', action.id, normalizedActor, {
+      workflowId,
+      idempotencyKey,
+      status: 'QUEUED',
+      requestPayload: payload
+    });
+
+    return {
+      success: true,
+      workflowId,
+      duplicate: false,
+      status: 'QUEUED'
+    };
   }
 
   // --- COMMITMENTS & RISKS ---

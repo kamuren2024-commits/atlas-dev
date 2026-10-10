@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckCircle2, FileText, RefreshCw, Search, ShieldCheck, UserCheck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, FileText, RefreshCw, Search, ShieldCheck, UserCheck } from 'lucide-react';
 import type { LogisticsTwin } from '../logistics-data-fabric';
 
 interface DeliveryControlTowerViewProps {
@@ -11,10 +11,6 @@ interface DeliveryControlTowerViewProps {
 export default function DeliveryControlTowerView({ twin, loading, error }: DeliveryControlTowerViewProps) {
   const [search, setSearch] = useState('');
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(twin.deliveries[0]?.id ?? null);
-  const [signoffName, setSignoffName] = useState('');
-  const [signoffRole, setSignoffRole] = useState('Resident Substation Engineer');
-  const [signing, setSigning] = useState(false);
-  const [signedSuccess, setSignedSuccess] = useState(false);
 
   useEffect(() => {
     if (!twin.deliveries.length) {
@@ -43,32 +39,6 @@ export default function DeliveryControlTowerView({ twin, loading, error }: Deliv
     twin.deliveries.find((delivery) => delivery.id === selectedDeliveryId) ??
     twin.deliveries[0] ??
     null;
-
-  const handleSignoff = async () => {
-    if (!selectedDelivery || !signoffName) return;
-    setSigning(true);
-
-    try {
-      const res = await fetch(`/api/logistics/deliveries/${selectedDelivery.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: 'DELIVERED',
-          recipientName: signoffName,
-          recipientRole: signoffRole,
-          signoffSignature: `DIGITAL_SIG_${Date.now()}_${signoffName.toUpperCase().replace(/\s+/g, '_')}`,
-        }),
-      });
-      const json = await res.json();
-      if (json.ok) {
-        setSignedSuccess(true);
-      }
-    } catch (deliveryError) {
-      console.error('Signoff failed:', deliveryError);
-    } finally {
-      setSigning(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -130,11 +100,11 @@ export default function DeliveryControlTowerView({ twin, loading, error }: Deliv
           <span className="text-[11px] text-slate-400">Current quarter handovers</span>
         </div>
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Confirmed Delivered (e-PoD)</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Delivery Records Marked Delivered</span>
           <div className="mt-1 text-2xl font-bold text-emerald-400">
             {twin.deliveries.filter((delivery) => delivery.status === 'DELIVERED').length}
           </div>
-          <span className="text-[11px] text-emerald-400 font-medium">Digital signatures validated</span>
+          <span className="text-[11px] text-amber-300 font-medium">Trusted e-PoD verification unavailable</span>
         </div>
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">In Route / Approaching</span>
@@ -186,7 +156,6 @@ export default function DeliveryControlTowerView({ twin, loading, error }: Deliv
                       key={delivery.id}
                       onClick={() => {
                         setSelectedDeliveryId(delivery.id);
-                        setSignedSuccess(false);
                       }}
                       className={`cursor-pointer transition-colors ${
                         isSelected ? 'border-l-2 border-l-emerald-400 bg-emerald-950/40' : 'hover:bg-slate-800/40'
@@ -247,63 +216,20 @@ export default function DeliveryControlTowerView({ twin, loading, error }: Deliv
                 </div>
               </div>
 
-              {signedSuccess && (
-                <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-950/50 p-3 text-xs text-emerald-300">
-                  <CheckCircle2 size={16} />
-                  <span>Electronic Proof of Delivery (e-PoD) locked into audit ledger.</span>
+              <div className="space-y-2 rounded-xl border border-amber-500/40 bg-amber-950/20 p-3.5 text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                  <FileText size={14} />
+                  <span>e-PoD verification unavailable</span>
                 </div>
-              )}
-
-              {selectedDelivery.status !== 'DELIVERED' ? (
-                <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/80 p-3.5">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
-                    <FileText size={14} />
-                    <span>Electronic Handover Signoff</span>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase text-slate-400">Recipient Receiving Engineer</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Eng. Peter Macharia"
-                      value={signoffName}
-                      onChange={(event) => setSignoffName(event.target.value)}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-xs text-white focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase text-slate-400">Designation / Role</label>
-                    <input
-                      type="text"
-                      value={signoffRole}
-                      onChange={(event) => setSignoffRole(event.target.value)}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-xs text-white focus:outline-none"
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleSignoff}
-                    disabled={signing || !signoffName}
-                    className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-emerald-600/30 transition-all hover:bg-emerald-500 disabled:bg-slate-800"
-                  >
-                    {signing ? 'Confirming Signoff...' : 'Capture Electronic Proof of Delivery'}
-                  </button>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-3 text-xs text-emerald-300">
-                  <div className="mb-1 flex items-center gap-2">
-                    <CheckCircle2 size={16} />
-                    <span className="font-bold">Delivery Confirmed</span>
-                  </div>
-                  <div>Proof-of-delivery has been accepted and archived in the custody ledger.</div>
-                </div>
-              )}
+                <p className="text-slate-300">
+                  This workspace can display delivery records, but trusted evidence capture and verification are not configured.
+                  A delivered status is not proof of receipt, and this view cannot complete signoff.
+                </p>
+              </div>
 
               <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/80 p-3 text-xs text-slate-300">
-                <span>Asset Hand-off Ready</span>
-                <button type="button" className="inline-flex items-center gap-1.5 text-cyan-300 hover:text-white">
+                <span>Delivery state: {selectedDelivery.podStatus || 'UNAVAILABLE'}</span>
+                <button type="button" disabled className="inline-flex cursor-not-allowed items-center gap-1.5 text-slate-500">
                   Open signoff workflow <ArrowRight size={12} />
                 </button>
               </div>
