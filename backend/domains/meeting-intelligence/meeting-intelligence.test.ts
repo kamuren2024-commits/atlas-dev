@@ -48,6 +48,16 @@ describe('Meeting Intelligence — Provider-Neutral AI Architecture', () => {
       expect(() => resolveTrustedRequestContext(req)).toThrow(/Role mismatch/);
     });
 
+    it('should reject tenant overrides when no trusted server tenant header exists', () => {
+      const req = {
+        headers: {},
+        body: { tenantId: 'tenant-b' },
+        query: {},
+      } as any;
+
+      expect(() => resolveTrustedRequestContext(req)).toThrow(/trusted server headers/i);
+    });
+
     it('should block unauthorized user from accessing meeting context', async () => {
       // User not in tenant
       // User not participant in meeting

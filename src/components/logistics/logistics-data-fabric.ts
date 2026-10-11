@@ -141,6 +141,32 @@ export interface LogisticsTwin {
   analytics: LogisticsAnalytics;
 }
 
+export function resolveLogisticsSourceType(metadata: unknown): LogisticsSourceType {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return 'UNAVAILABLE';
+  }
+
+  const source = metadata as Record<string, unknown>;
+  if (
+    source.mode === 'SYNTHETIC' ||
+    source.synthetic === true ||
+    source.source === 'SYNTHETIC_DEMO_DATA'
+  ) {
+    return 'SYNTHETIC';
+  }
+  if (
+    source.mode === 'LIVE' &&
+    source.synthetic !== true &&
+    source.isConnected === true &&
+    source.isLive === true &&
+    (source.status === 'LIVE' || source.status === 'CONNECTED_PROVIDER') &&
+    source.source === 'CONNECTED_PROVIDER'
+  ) {
+    return 'LIVE_AUTHORITATIVE';
+  }
+  return 'UNAVAILABLE';
+}
+
 const syntheticProvenance = (sourceSystem: string, sourceRecordId: string): LogisticsProvenance => ({
   sourceSystem,
   sourceDataset: 'KETRACO_LOGISTICS_SYNTHETIC',
@@ -270,7 +296,7 @@ export class SyntheticLogisticsProvider {
 export class LogisticsDataProvider {
   static async load(): Promise<{ twin: LogisticsTwin; source: LogisticsSourceType; mode: LogisticsMode }> {
     try {
-      const [overview, fleet, cargo, warehouses, routes, deliveries, analytics] = await Promise.allSettled([
+      const [overview, fleet, cargo, warehouses, routes, deliveries, analytics, dataMode] = await Promise.allSettled([
         fetchJson<{ ok: boolean; data?: any }>('/api/logistics/overview'),
         fetchJson<{ ok: boolean; data?: any }>('/api/logistics/fleet/states'),
         fetchJson<{ ok: boolean; data?: any }>('/api/logistics/cargo'),
@@ -278,10 +304,15 @@ export class LogisticsDataProvider {
         fetchJson<{ ok: boolean; data?: any }>('/api/logistics/routes'),
         fetchJson<{ ok: boolean; data?: any }>('/api/logistics/deliveries'),
         fetchJson<{ ok: boolean; data?: any }>('/api/logistics/analytics'),
+        fetchJson<{ ok: boolean; data?: any }>('/api/logistics/data-mode'),
       ]);
 
-      const hasLiveData = [overview, fleet, cargo, warehouses, routes, deliveries, analytics].every(result => result.status === 'fulfilled' && result.value?.ok !== false);
-      if (!hasLiveData) {
+      const hasLiveData = [overview, fleet, cargo, warehouses, routes, deliveries, analytics, dataMode]
+        .every(result => result.status === 'fulfilled' && result.value?.ok === true);
+      const sourceType = dataMode.status === 'fulfilled'
+        ? resolveLogisticsSourceType(dataMode.value?.data?.provider ?? dataMode.value?.data)
+        : 'UNAVAILABLE';
+      if (!hasLiveData || sourceType !== 'LIVE_AUTHORITATIVE') {
         const fallback = SyntheticLogisticsProvider.load();
         return { twin: fallback, source: 'SYNTHETIC', mode: 'SYNTHETIC' };
       }

@@ -9,13 +9,23 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { LogisticsTwin } from './logistics-data-fabric';
+import {
+  resolveLogisticsSourceType,
+  type LogisticsSourceType,
+  type LogisticsTwin,
+} from './logistics-data-fabric';
 import { SyntheticLogisticsProvider } from './logistics-data-fabric';
+
+function sourceSystemForAuthority(authority: LogisticsSourceType): string {
+  if (authority === 'SYNTHETIC') return 'SYNTHETIC_LOGISTICS_PROVIDER';
+  if (authority === 'LIVE_AUTHORITATIVE') return 'KETRACO_APP';
+  return 'UNVERIFIED_LOGISTICS_SOURCE';
+}
 
 /**
  * Normalize API response for Shipments/Cargo
  */
-function normalizeCargoFromApi(data: any): LogisticsTwin['shipments'] {
+function normalizeCargoFromApi(data: any, authority: LogisticsSourceType): LogisticsTwin['shipments'] {
   if (!data?.cargo) return [];
   return (data.cargo || []).map((c: any) => ({
     id: String(c.id ?? `cargo-${Math.random()}`),
@@ -31,12 +41,12 @@ function normalizeCargoFromApi(data: any): LogisticsTwin['shipments'] {
     quantity: Number(c.quantity ?? 1),
     weightKg: Number(c.weightKg ?? c.weight_kg ?? 0),
     provenance: {
-      sourceSystem: 'KETRACO_APP',
+      sourceSystem: sourceSystemForAuthority(authority),
       sourceDataset: 'cargo',
       sourceRecordId: String(c.id ?? `cargo-${Math.random()}`),
       importedAt: new Date().toISOString(),
       sourceTimestamp: c.createdAt ?? c.updated_at,
-      authority: 'LIVE_AUTHORITATIVE',
+      authority,
       confidence: 1,
       transformationVersion: 'canonical-v1',
     },
@@ -46,7 +56,7 @@ function normalizeCargoFromApi(data: any): LogisticsTwin['shipments'] {
 /**
  * Normalize API response for Fleet/Vehicles
  */
-function normalizeFleetFromApi(data: any): LogisticsTwin['vehicles'] {
+function normalizeFleetFromApi(data: any, authority: LogisticsSourceType): LogisticsTwin['vehicles'] {
   if (!data?.states) return [];
   return (data.states || []).map((v: any) => ({
     id: String(v.id ?? `vehicle-${Math.random()}`),
@@ -64,12 +74,12 @@ function normalizeFleetFromApi(data: any): LogisticsTwin['vehicles'] {
     projectCode: v.projectCode ?? v.project_code,
     assignment: v.assignment ?? v.assignedMission,
     provenance: {
-      sourceSystem: 'KETRACO_APP',
+      sourceSystem: sourceSystemForAuthority(authority),
       sourceDataset: 'fleet',
       sourceRecordId: String(v.id ?? v.code ?? `vehicle-${Math.random()}`),
       importedAt: new Date().toISOString(),
       sourceTimestamp: v.updatedAt ?? v.updated_at,
-      authority: 'LIVE_AUTHORITATIVE',
+      authority,
       confidence: 1,
       transformationVersion: 'canonical-v1',
     },
@@ -79,7 +89,7 @@ function normalizeFleetFromApi(data: any): LogisticsTwin['vehicles'] {
 /**
  * Normalize API response for Warehouses
  */
-function normalizeWarehousesFromApi(data: any): LogisticsTwin['warehouses'] {
+function normalizeWarehousesFromApi(data: any, authority: LogisticsSourceType): LogisticsTwin['warehouses'] {
   if (!data?.warehouses) return [];
   return (data.warehouses || []).map((w: any) => ({
     id: String(w.id ?? `warehouse-${Math.random()}`),
@@ -94,12 +104,12 @@ function normalizeWarehousesFromApi(data: any): LogisticsTwin['warehouses'] {
     latitude: Number(w.latitude ?? -1.2864),
     longitude: Number(w.longitude ?? 36.8172),
     provenance: {
-      sourceSystem: 'KETRACO_APP',
+      sourceSystem: sourceSystemForAuthority(authority),
       sourceDataset: 'warehouses',
       sourceRecordId: String(w.id ?? `warehouse-${Math.random()}`),
       importedAt: new Date().toISOString(),
       sourceTimestamp: w.updatedAt ?? w.updated_at,
-      authority: 'LIVE_AUTHORITATIVE',
+      authority,
       confidence: 1,
       transformationVersion: 'canonical-v1',
     },
@@ -109,7 +119,7 @@ function normalizeWarehousesFromApi(data: any): LogisticsTwin['warehouses'] {
 /**
  * Normalize API response for Routes
  */
-function normalizeRoutesFromApi(data: any): LogisticsTwin['routes'] {
+function normalizeRoutesFromApi(data: any, authority: LogisticsSourceType): LogisticsTwin['routes'] {
   if (!data?.routes) return [];
   return (data.routes || []).map((r: any) => ({
     id: String(r.id ?? `route-${Math.random()}`),
@@ -122,12 +132,12 @@ function normalizeRoutesFromApi(data: any): LogisticsTwin['routes'] {
     roadCondition: String(r.roadCondition ?? r.road_condition ?? 'PAVED'),
     weatherHazardLevel: String(r.weatherHazardLevel ?? r.weather_hazard_level ?? 'LOW'),
     provenance: {
-      sourceSystem: 'KETRACO_APP',
+      sourceSystem: sourceSystemForAuthority(authority),
       sourceDataset: 'routes',
       sourceRecordId: String(r.id ?? `route-${Math.random()}`),
       importedAt: new Date().toISOString(),
       sourceTimestamp: r.updatedAt ?? r.updated_at,
-      authority: 'LIVE_AUTHORITATIVE',
+      authority,
       confidence: 1,
       transformationVersion: 'canonical-v1',
     },
@@ -137,7 +147,7 @@ function normalizeRoutesFromApi(data: any): LogisticsTwin['routes'] {
 /**
  * Normalize API response for Deliveries
  */
-function normalizeDeliveriesFromApi(data: any): LogisticsTwin['deliveries'] {
+function normalizeDeliveriesFromApi(data: any, authority: LogisticsSourceType): LogisticsTwin['deliveries'] {
   if (!data?.deliveries) return [];
   return (data.deliveries || []).map((d: any) => ({
     id: String(d.id ?? `delivery-${Math.random()}`),
@@ -149,12 +159,12 @@ function normalizeDeliveriesFromApi(data: any): LogisticsTwin['deliveries'] {
     destination: String(d.destination ?? d.location ?? 'Unknown destination'),
     podStatus: String(d.podStatus ?? d.pod_status ?? d.proofOfDelivery ?? 'UNAVAILABLE'),
     provenance: {
-      sourceSystem: 'KETRACO_APP',
+      sourceSystem: sourceSystemForAuthority(authority),
       sourceDataset: 'deliveries',
       sourceRecordId: String(d.id ?? `delivery-${Math.random()}`),
       importedAt: new Date().toISOString(),
       sourceTimestamp: d.updatedAt ?? d.updated_at,
-      authority: 'LIVE_AUTHORITATIVE',
+      authority,
       confidence: 1,
       transformationVersion: 'canonical-v1',
     },
@@ -164,7 +174,7 @@ function normalizeDeliveriesFromApi(data: any): LogisticsTwin['deliveries'] {
 /**
  * Normalize API response for Risks
  */
-function normalizeRisksFromApi(data: any): LogisticsTwin['risks'] {
+function normalizeRisksFromApi(data: any, authority: LogisticsSourceType): LogisticsTwin['risks'] {
   if (!data?.risks) return [];
   return (data.risks || []).map((r: any) => ({
     id: String(r.id ?? `risk-${Math.random()}`),
@@ -175,12 +185,12 @@ function normalizeRisksFromApi(data: any): LogisticsTwin['risks'] {
     entityId: String(r.entityId ?? r.affectedEntityId ?? 'UNKNOWN'),
     message: String(r.message ?? r.recommendedAction ?? 'Risk assessment pending'),
     provenance: {
-      sourceSystem: 'KETRACO_APP',
+      sourceSystem: sourceSystemForAuthority(authority),
       sourceDataset: 'risks',
       sourceRecordId: String(r.id ?? `risk-${Math.random()}`),
       importedAt: new Date().toISOString(),
       sourceTimestamp: r.timestamp ?? r.updated_at,
-      authority: 'LIVE_AUTHORITATIVE',
+      authority,
       confidence: Number(r.confidence ?? 0.85),
       transformationVersion: 'canonical-v1',
     },
@@ -190,7 +200,7 @@ function normalizeRisksFromApi(data: any): LogisticsTwin['risks'] {
 /**
  * Normalize API response for AI Operations
  */
-function normalizeAiOpsFromApi(data: any): LogisticsTwin['aiOperations'] {
+function normalizeAiOpsFromApi(data: any, authority: LogisticsSourceType): LogisticsTwin['aiOperations'] {
   if (!data?.aiOperations) return [];
   return (data.aiOperations || []).map((ao: any) => ({
     id: String(ao.id ?? `ai-op-${Math.random()}`),
@@ -204,12 +214,12 @@ function normalizeAiOpsFromApi(data: any): LogisticsTwin['aiOperations'] {
     probabilityPct: Number(ao.probabilityPct ?? ao.confidence ?? 75),
     recommendation: String(ao.recommendation ?? ao.recommendedAction ?? 'No action required'),
     provenance: {
-      sourceSystem: 'KETRACO_APP',
+      sourceSystem: sourceSystemForAuthority(authority),
       sourceDataset: 'ai_operations',
       sourceRecordId: String(ao.id ?? `ai-op-${Math.random()}`),
       importedAt: new Date().toISOString(),
       sourceTimestamp: ao.timestamp ?? ao.updated_at,
-      authority: 'LIVE_AUTHORITATIVE',
+      authority,
       confidence: Number(ao.probabilityPct ?? 75) / 100,
       transformationVersion: 'canonical-v1',
     },
@@ -257,6 +267,7 @@ export function useLogisticsUnifiedData() {
           risksRes,
           aiOpsRes,
           analyticsRes,
+          dataModeRes,
         ] = await Promise.all([
           fetch('/api/logistics/overview').then(r => r.json()).catch(() => ({})),
           fetch('/api/logistics/cargo').then(r => r.json()).catch(() => ({})),
@@ -267,10 +278,10 @@ export function useLogisticsUnifiedData() {
           fetch('/api/logistics/risks').then(r => r.json()).catch(() => ({})),
           fetch('/api/logistics/ai-operations').then(r => r.json()).catch(() => ({})),
           fetch('/api/logistics/analytics').then(r => r.json()).catch(() => ({})),
+          fetch('/api/logistics/data-mode').then(r => r.json()).catch(() => ({})),
         ]);
 
-        // Check if we got valid API responses
-        const hasLiveData = [
+        const hasCompleteApiData = [
           overviewRes?.ok,
           cargoRes?.ok,
           fleetRes?.ok,
@@ -278,32 +289,46 @@ export function useLogisticsUnifiedData() {
           routesRes?.ok,
           deliveriesRes?.ok,
           risksRes?.ok,
+          aiOpsRes?.ok,
           analyticsRes?.ok,
-        ].some(v => v === true);
+        ].every(v => v === true);
 
-        if (!hasLiveData) {
-          setError('Using deterministic synthetic fallback while live KETRACO data is unavailable.');
+        if (!hasCompleteApiData) {
+          setError('One or more logistics sources are unavailable; showing labeled synthetic fallback data.');
           setTwin(SyntheticLogisticsProvider.load());
           setLoading(false);
           return;
         }
 
+        const sourceType = resolveLogisticsSourceType(dataModeRes?.data?.provider ?? dataModeRes?.data);
+        const sourceMode = sourceType === 'LIVE_AUTHORITATIVE'
+          ? 'LIVE'
+          : sourceType === 'SYNTHETIC' ? 'SYNTHETIC' : 'UNAVAILABLE';
+        const sourceLabel = sourceMode === 'LIVE'
+          ? '● LIVE KETRACO DATA'
+          : sourceMode === 'SYNTHETIC' ? '● SYNTHETIC DEMO' : '● LOGISTICS SOURCE UNAVAILABLE';
+        const sourceNotice = sourceMode === 'LIVE'
+          ? 'Connected authoritative logistics state from the configured KETRACO provider.'
+          : sourceMode === 'SYNTHETIC'
+            ? 'Synthetic demonstration data only; not authoritative KETRACO operational state.'
+            : 'Source authority could not be verified; data must not be treated as authoritative.';
+
         // Normalize all responses into canonical twin
         const unifiedTwin: LogisticsTwin = {
           generatedAt: new Date().toISOString(),
           source: {
-            mode: 'LIVE',
-            label: '● LIVE KETRACO DATA',
-            notice: 'Unified authoritative logistics state from KETRACO systems.',
-            sourceType: 'LIVE_AUTHORITATIVE',
+            mode: sourceMode,
+            label: sourceLabel,
+            notice: sourceNotice,
+            sourceType,
           },
-          vehicles: normalizeFleetFromApi(fleetRes?.data || fleetRes),
-          shipments: normalizeCargoFromApi(cargoRes?.data || cargoRes),
-          warehouses: normalizeWarehousesFromApi(warehousesRes?.data || warehousesRes),
-          routes: normalizeRoutesFromApi(routesRes?.data || routesRes),
-          deliveries: normalizeDeliveriesFromApi(deliveriesRes?.data || deliveriesRes),
-          risks: normalizeRisksFromApi(risksRes?.data || risksRes),
-          aiOperations: normalizeAiOpsFromApi(aiOpsRes?.data || aiOpsRes),
+          vehicles: normalizeFleetFromApi(fleetRes?.data || fleetRes, sourceType),
+          shipments: normalizeCargoFromApi(cargoRes?.data || cargoRes, sourceType),
+          warehouses: normalizeWarehousesFromApi(warehousesRes?.data || warehousesRes, sourceType),
+          routes: normalizeRoutesFromApi(routesRes?.data || routesRes, sourceType),
+          deliveries: normalizeDeliveriesFromApi(deliveriesRes?.data || deliveriesRes, sourceType),
+          risks: normalizeRisksFromApi(risksRes?.data || risksRes, sourceType),
+          aiOperations: normalizeAiOpsFromApi(aiOpsRes?.data || aiOpsRes, sourceType),
           analytics: normalizeAnalyticsFromApi(analyticsRes?.data || analyticsRes),
         };
 

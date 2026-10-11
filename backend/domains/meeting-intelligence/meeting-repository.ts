@@ -2077,18 +2077,29 @@ export class MeetingIntelligenceRepository {
     return this.closedLoop.verifyAndCompleteAction(id, notes, verifier);
   }
 
-  public async executeActionWorkflow(id: string, actor: string): Promise<{ success: boolean; workflowId: string; duplicate?: boolean; status?: string }> {
+  public async executeActionWorkflow(id: string, actor: string, tenantId?: string): Promise<{ success: boolean; workflowId: string; duplicate?: boolean; status?: string }> {
     if (!id || !actor.trim()) {
       throw new Error('Action ID and authenticated actor are required to request a workflow.');
     }
 
     const normalizedActor = actor.trim();
-    const actionRow = await this.db.get<any>(`SELECT * FROM meeting_actions WHERE id = ?`, [id]);
+    const actionRow = await this.db.get<any>(`
+      SELECT a.*, m.tenant_id AS meeting_tenant_id
+      FROM meeting_actions a
+      LEFT JOIN meeting_entities m ON m.id = a.source_meeting_id
+      WHERE a.id = ?
+    `, [id]);
     if (!actionRow || id === 'ACTION_UNCONFIGURED') {
       throw new Error('MEETING_WORKFLOW_NOT_CONFIGURED: no executable Atlas workflow is registered for meeting actions.');
     }
 
     const action = this.mapAction(actionRow);
+    if (tenantId && actionRow.meeting_tenant_id && actionRow.meeting_tenant_id !== tenantId) {
+      throw new Error(`Tenant mismatch: action belongs to tenant "${actionRow.meeting_tenant_id}" but request is scoped to "${tenantId}".`);
+    }
+    if (!action.confirmation_actor || !String(action.confirmation_actor).trim()) {
+      throw new Error('Human approval is required before this action workflow can be created.');
+    }
     if (action.status === 'COMPLETED' || action.status === 'CANCELLED') {
       return {
         success: false,

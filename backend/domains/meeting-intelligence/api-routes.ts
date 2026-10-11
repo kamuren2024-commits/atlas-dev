@@ -28,21 +28,33 @@ export function resolveTrustedRequestContext(req: Request): { tenantId: string; 
   const headerActor = getTrustedHeader(req, 'x-user-name', 'x-user-id');
 
   const bodyTenantId = typeof req.body?.tenantId === 'string' ? req.body.tenantId : typeof req.body?.tenant_id === 'string' ? req.body.tenant_id : undefined;
-  if (bodyTenantId && headerTenantId && bodyTenantId !== headerTenantId) {
-    throw new Error(`Tenant mismatch: trusted context is ${headerTenantId} but request supplied ${bodyTenantId}.`);
+  const queryTenantId = typeof req.query?.tenantId === 'string' ? req.query.tenantId : typeof req.query?.tenant_id === 'string' ? req.query.tenant_id : undefined;
+  const suppliedTenantId = bodyTenantId || queryTenantId;
+  if (suppliedTenantId && headerTenantId && suppliedTenantId !== headerTenantId) {
+    throw new Error(`Tenant mismatch: trusted context is ${headerTenantId} but request supplied ${suppliedTenantId}.`);
   }
-  if (bodyTenantId && !headerTenantId) {
+  if (suppliedTenantId && !headerTenantId) {
     throw new Error('Tenant context must come from trusted server headers, not request payload.');
   }
 
-  const bodyUserRole = typeof req.body?.userRole === 'string' ? req.body.userRole : typeof req.query?.userRole === 'string' ? req.query.userRole : undefined;
-  if (bodyUserRole && headerUserRole && bodyUserRole !== headerUserRole) {
-    throw new Error(`Role mismatch: trusted context is ${headerUserRole} but request supplied ${bodyUserRole}.`);
+  const bodyUserRole = typeof req.body?.userRole === 'string' ? req.body.userRole : undefined;
+  const queryUserRole = typeof req.query?.userRole === 'string' ? req.query.userRole : undefined;
+  const suppliedUserRole = bodyUserRole || queryUserRole;
+  if (suppliedUserRole && headerUserRole && suppliedUserRole !== headerUserRole) {
+    throw new Error(`Role mismatch: trusted context is ${headerUserRole} but request supplied ${suppliedUserRole}.`);
+  }
+  if (suppliedUserRole && !headerUserRole) {
+    throw new Error('User role must originate from trusted server headers, not request payload.');
   }
 
-  const bodyActor = typeof req.body?.actor === 'string' ? req.body.actor : typeof req.query?.actor === 'string' ? req.query.actor : undefined;
-  if (bodyActor && headerActor && bodyActor !== headerActor) {
-    throw new Error(`Actor mismatch: trusted context is ${headerActor} but request supplied ${bodyActor}.`);
+  const bodyActor = typeof req.body?.actor === 'string' ? req.body.actor : undefined;
+  const queryActor = typeof req.query?.actor === 'string' ? req.query.actor : undefined;
+  const suppliedActor = bodyActor || queryActor;
+  if (suppliedActor && headerActor && suppliedActor !== headerActor) {
+    throw new Error(`Actor mismatch: trusted context is ${headerActor} but request supplied ${suppliedActor}.`);
+  }
+  if (suppliedActor && !headerActor) {
+    throw new Error('Actor identity must originate from trusted server headers, not request payload.');
   }
 
   const tenantId = headerTenantId || 'ketraco';
@@ -734,13 +746,14 @@ export function createMeetingIntelligenceApiRouter(): Router {
 
   router.post('/actions/:id/execute', async (req: Request, res: Response) => {
     try {
-      const { actor } = req.body;
-      const result = await repo.executeActionWorkflow(req.params.id, actor || 'Operations Director');
+      const { tenantId, actor } = resolveTrustedRequestContext(req);
+      const result = await repo.executeActionWorkflow(req.params.id, actor || 'Operations Director', tenantId);
       broadcastSse('action_executed', { id: req.params.id, workflowId: result.workflowId });
       res.json(result);
     } catch (err: any) {
       const unavailable = err?.message?.startsWith('MEETING_WORKFLOW_NOT_CONFIGURED');
-      res.status(unavailable ? 501 : 500).json({ error: 'Workflow execution failed', details: err?.message });
+      const forbidden = err?.message?.includes('Tenant mismatch') || err?.message?.includes('Human approval is required');
+      res.status(unavailable ? 501 : forbidden ? 403 : 500).json({ error: 'Workflow execution failed', details: err?.message });
     }
   });
 

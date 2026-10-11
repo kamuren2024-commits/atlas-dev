@@ -87,6 +87,33 @@ describe('Meeting Intelligence operational golden path', () => {
     await db.close();
   });
 
+  it('rejects workflow execution before human approval and across tenant scope', async () => {
+    const meeting = await repository.createMeeting({
+      id: 'MI_TENANT_GUARD',
+      title: 'Tenant guard verification',
+      status: 'DRAFT',
+      tenant_id: 'tenant-a',
+      date: '2026-10-04'
+    }, 'meeting-creator');
+
+    const action = await repository.createAction({
+      id: 'ACT_TENANT_GUARD',
+      action_title: 'Review export controls',
+      owner: 'Operations Director',
+      department: 'SCM',
+      due_date: '2026-10-12',
+      source_meeting_id: meeting.id,
+      status: 'ON_TRACK',
+      evidence_text: 'Needs executive check',
+      sourceEvidence: [{ quote: 'Check export controls', sourceRef: meeting.id, timestamp: '00:30' }],
+      dependencies: [],
+      linked_entities: []
+    });
+
+    await expect(repository.executeActionWorkflow(action.id, 'chair', 'tenant-b')).rejects.toThrow(/Tenant mismatch/);
+    await expect(repository.executeActionWorkflow(action.id, 'chair', 'tenant-a')).rejects.toThrow(/Human approval is required/);
+  });
+
   it('persists a meeting through recording, transcript evidence, human review, and verified action completion', async () => {
     const meeting = await repository.createMeeting({
       id: 'MI_GOLDEN_PATH',

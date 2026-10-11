@@ -14,7 +14,7 @@
     "test": "tsx backend/tests/run-tests.ts && node --import tsx --test backend/tests/server-config.test.ts backend/evaluation/eval-harness.test.ts backend/digital-twin/engineering-scenario-service.test.ts backend/tests/project-milestone-service.test.ts",
     "test:vitest": "vitest run",
     "test:agent-control-plane": "tsx backend/tests/agent-control-plane.test.ts",
-    "test:logistics-security": "node --import tsx --test backend/tests/logistics-security.integration.test.ts",
+    "test:logistics-security": "node --import tsx --test backend/tests/logistics-security.integration.test.ts backend/tests/logistics-orchestrator-workflow-guard.test.ts backend/tests/logistics-source-provenance.test.ts",
     "test:architecture": "tsx backend/evaluation/legal-control-plane/phase4-control-plane.test.ts",
     "test:contracts": "tsx backend/evaluation/legal-control-plane/phase4-control-plane.test.ts",
     "eval": "tsx backend/evaluation/eval-harness.ts all",
