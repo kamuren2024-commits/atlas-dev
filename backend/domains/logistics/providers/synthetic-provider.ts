@@ -72,6 +72,15 @@ export class SyntheticLogisticsProvider {
     };
   }
 
+  public getSourceDescriptors() {
+    return [
+      'SyntheticDemoProvider',
+      'FleetTelemetryProvider',
+      'WarehouseProvider',
+      'UnavailableProvider',
+    ];
+  }
+
   public getScenarioSnapshot(): LogisticsScenarioSnapshot {
     const generatedAt = new Date().toISOString();
     return {

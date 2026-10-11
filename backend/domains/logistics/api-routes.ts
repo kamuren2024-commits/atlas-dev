@@ -63,6 +63,16 @@ import {
   KETRACORouteOptimizationProvider,
   SyntheticLogisticsProvider,
   KETRACO_LOGISTICS_DEMO_FLEET,
+  KetracoImportedProvider,
+  KetracoReferenceProvider,
+  SAPIntegrationProvider,
+  AribaIntegrationProvider,
+  GISProvider,
+  FleetTelemetryProvider,
+  WarehouseProvider,
+  SyntheticDemoProvider,
+  HybridProvider,
+  UnavailableProvider,
 } from './providers';
 import { TelemetryPipeline } from './telemetry-pipeline';
 
@@ -208,6 +218,16 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
   const roadsProvider = new KETRACORoadsProvider();
   const routeOptimizationProvider = new KETRACORouteOptimizationProvider(db);
   const syntheticLogisticsProvider = new SyntheticLogisticsProvider();
+  const ketracoImportedProvider = new KetracoImportedProvider();
+  const ketracoReferenceProvider = new KetracoReferenceProvider();
+  const sapIntegrationProvider = new SAPIntegrationProvider();
+  const aribaIntegrationProvider = new AribaIntegrationProvider();
+  const gisProvider = new GISProvider();
+  const fleetTelemetryProvider = new FleetTelemetryProvider();
+  const warehouseProvider = new WarehouseProvider();
+  const syntheticDemoProvider = new SyntheticDemoProvider();
+  const hybridProvider = new HybridProvider();
+  const unavailableProvider = new UnavailableProvider();
   const telemetryPipeline = TelemetryPipeline.getInstance(db);
   const tenantContext = new AsyncLocalStorage<string>();
   const demoModeEnabled =
@@ -651,11 +671,24 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
       }));
 
       const sourceMap = buildLogisticsSourceMap(tenantId);
+      const sourceProviders = [
+        ketracoImportedProvider.getSourceDescriptor(),
+        ketracoReferenceProvider.getSourceDescriptor(),
+        sapIntegrationProvider.getSourceDescriptor(),
+        aribaIntegrationProvider.getSourceDescriptor(),
+        gisProvider.getSourceDescriptor(),
+        fleetTelemetryProvider.getSourceDescriptor(),
+        warehouseProvider.getSourceDescriptor(),
+        syntheticDemoProvider.getSourceDescriptor(),
+        hybridProvider.getSourceDescriptor(),
+        unavailableProvider.getSourceDescriptor(),
+      ];
 
       return ok(res, {
         generatedAt: new Date().toISOString(),
         tenantId,
         sourceMap,
+        sourceProviders,
         freshness,
         governance: 'ISO_42001_COMPLIANT',
         dataAuthority: 'synthetic_demo',
