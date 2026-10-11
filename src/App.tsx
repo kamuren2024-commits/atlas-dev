@@ -817,7 +817,7 @@ function AppInner() {
 
   return (
     <div 
-      className="min-h-screen relative flex flex-col font-sans text-slate-200 select-none"
+      className="min-h-dvh relative flex flex-col font-sans text-slate-200 select-none"
       style={{ backgroundColor: theme === 'atlas-dark' ? currentTenant.theme.bodyBg : 'var(--atlas-bg-canvas)' }}
     >
       

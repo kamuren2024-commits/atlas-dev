@@ -28,7 +28,7 @@ export default function TransparentFooter({ systemHealth }: TransparentFooterPro
 
   return (
     <footer
-      className="atlas-shell-footer shrink-0 select-none"
+      className="atlas-shell-footer mt-auto shrink-0 select-none"
       role="contentinfo"
     >
       <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-6 gap-y-1 px-5 md:px-6 py-1.5 text-[10px] font-mono uppercase tracking-wider text-slate-400">
