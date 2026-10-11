@@ -79,6 +79,13 @@ export class LogisticsTenantCapabilityUnavailableError extends Error {
   }
 }
 
+export class LogisticsWorkflowCapabilityUnavailableError extends Error {
+  constructor(workflowId: string) {
+    super(`Workflow "${workflowId}" cannot be completed because its authoritative logistics capability is not configured.`);
+    this.name = 'LogisticsWorkflowCapabilityUnavailableError';
+  }
+}
+
 export class LogisticsAgentOrchestrator {
   private static instance: LogisticsAgentOrchestrator | null = null;
   private db: DatabaseCore;
@@ -418,6 +425,10 @@ export class LogisticsAgentOrchestrator {
     if (tenantId !== 'ketraco') {
       throw new LogisticsTenantCapabilityUnavailableError('Logistics workflow execution', tenantId);
     }
+    if (workflowId === 'STOCK_SHORTAGE_RECONCILIATION' || workflowId === 'DELIVERY_VERIFICATION') {
+      throw new LogisticsWorkflowCapabilityUnavailableError(workflowId);
+    }
+
     const executionId = uuidv4();
     const auditRecordId = uuidv4();
     const now = new Date().toISOString();

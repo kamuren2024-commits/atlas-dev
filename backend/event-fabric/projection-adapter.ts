@@ -6,7 +6,7 @@
 
 import { CanonicalAssetResolver } from './canonical-asset-resolver';
 import { EventStateStore } from './state-store';
-import { CanonicalEvent, SpatialProjectionState, SpatialProjectionVersion } from './types';
+import { CanonicalEvent, SpatialProjectionState } from './types';
 
 export class SpatialProjectionAdapter {
   private readonly resolver = CanonicalAssetResolver.getInstance();
@@ -24,6 +24,15 @@ export class SpatialProjectionAdapter {
       return this.projections.get(assetId) || null;
     }
 
+    return this.projectAcceptedEvent(event, assetId);
+  }
+
+  public applyAcceptedEvent(event: CanonicalEvent): SpatialProjectionState | null {
+    const assetId = this.getCanonicalAssetId(event);
+    return assetId ? this.projectAcceptedEvent(event, assetId) : null;
+  }
+
+  private projectAcceptedEvent(event: CanonicalEvent, assetId: string): SpatialProjectionState {
     const observedAt = (event as any).observedAt || event.timestamp || new Date().toISOString();
     const sourceEventId = (event as any).sourceEventId || event.id;
     const version = Number((event as any).version ?? (event as any).eventVersion ?? (event as any).payloadVersion ?? 1);
@@ -49,16 +58,6 @@ export class SpatialProjectionAdapter {
     this.projections.set(assetId, projectedState);
     this.stateStore.setProjectionState(assetId, projectedState);
 
-    const projectionVersion: SpatialProjectionVersion = {
-      assetId,
-      version: projectedState.version || 1,
-      observedAt,
-      sourceEventId,
-    };
-    this.stateStore.getProjectionVersion(assetId);
-    this.stateStore.setProjectionState(assetId, projectedState);
-
-    void projectionVersion;
     return projectedState;
   }
 

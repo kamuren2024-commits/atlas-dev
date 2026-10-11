@@ -69,6 +69,44 @@ describe('Event Fabric - Integration Tests', () => {
       expect(state).toBeDefined();
     });
 
+    it('should project an accepted canonical asset event into Digital Twin state', async () => {
+      const event: CanonicalEvent = {
+        id: 'event-suswa-projection',
+        timestamp: '2024-01-01T00:00:00.000Z',
+        category: 'TELEMETRY',
+        eventType: 'TELEMETRY_UPDATED',
+        severity: 'INFO',
+        source: { providerId: 'SCADA', name: 'Test' },
+        assetId: 'SUB_SUSWA',
+        canonicalAssetId: 'SUB_SUSWA',
+        version: 1,
+        data: { voltage: 400 },
+      };
+
+      await eventFabric.publishEvent(event);
+
+      const assetState = stateStore.getAssetState('SUB_SUSWA');
+      const projection = eventFabric.getProjectionAdapter().getProjection('SUB_SUSWA');
+      expect(assetState?.lastEvent).toEqual(event);
+      expect(projection).toBeDefined();
+      expect(projection?.canonicalAssetId).toBe('SUB_SUSWA');
+      expect(projection?.sourceEventId).toBe(event.id);
+      expect(projection?.state.voltage).toBe(400);
+      expect(stateStore.getAssetState('SUB_ISINYA')).toBeUndefined();
+
+      await eventFabric.publishEvent(event);
+      await eventFabric.publishEvent({
+        ...event,
+        id: 'event-suswa-stale',
+        timestamp: '2023-12-31T23:59:59.000Z',
+        data: { voltage: 100 },
+      });
+
+      expect(stateStore.getAssetState('SUB_SUSWA')?.eventCount).toBe(1);
+      expect(stateStore.getAssetState('SUB_SUSWA')?.lastEvent).toEqual(event);
+      expect(eventFabric.getProjectionAdapter().getProjection('SUB_SUSWA')).toEqual(projection);
+    });
+
     it('should maintain event history', async () => {
       const event1: CanonicalEvent = {
         id: 'event-001',

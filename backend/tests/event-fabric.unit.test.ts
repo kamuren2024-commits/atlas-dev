@@ -171,6 +171,24 @@ describe('Event Fabric - Unit Tests', () => {
       expect(validation.valid).toBe(false);
       expect(validation.errors.length).toBeGreaterThan(0);
     });
+
+    it('should reject invalid timestamps and observedAt values', () => {
+      const event = {
+        id: 'event-invalid-time',
+        timestamp: 'not-a-timestamp',
+        observedAt: 'also-invalid',
+        category: 'TELEMETRY',
+        eventType: 'TELEMETRY_UPDATED',
+        severity: 'INFO',
+        source: { providerId: 'SCADA' },
+      } as any;
+
+      const validation = normalizer.validateEvent(event);
+
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).toContain('Invalid timestamp');
+      expect(validation.errors).toContain('Invalid observedAt');
+    });
   });
 
   // ==================== EVENT BUS ====================
@@ -390,6 +408,88 @@ describe('Event Fabric - Unit Tests', () => {
       stateStore.updateFromEvent(secondEvent);
       expect(stateStore.getAssetState('asset-same-time')?.lastAlarm).toEqual(secondEvent);
       expect(stateStore.getAssetState('asset-same-time')?.lastEvent).toEqual(secondEvent);
+    });
+
+    it('should reject strictly older versionless events without changing accepted state', () => {
+      const accepted = {
+        id: 'event-newer-time',
+        timestamp: '2024-01-01T00:00:02.000Z',
+        category: 'TELEMETRY',
+        eventType: 'TELEMETRY_UPDATED',
+        severity: 'INFO',
+        source: { providerId: 'SCADA', name: 'Test' },
+        assetId: 'asset-time-order',
+        data: { voltage: 220 },
+      } as any;
+      const older = {
+        ...accepted,
+        id: 'event-older-time',
+        timestamp: '2024-01-01T00:00:01.000Z',
+        data: { voltage: 110 },
+      } as any;
+
+      stateStore.updateFromEvent(accepted);
+      expect(stateStore.evaluateSpatialProjectionVersion(older)).toBe('rejected_stale');
+      stateStore.updateFromEvent(older);
+
+      expect(stateStore.getAssetState('asset-time-order')?.lastEvent).toEqual(accepted);
+      expect(stateStore.getAssetState('asset-time-order')?.state).toEqual({ voltage: 220 });
+    });
+
+    it('should order versioned events by version and treat versionless events as version zero', () => {
+      const versionOne = {
+        id: 'event-version-1',
+        timestamp: '2024-01-01T00:00:01.000Z',
+        category: 'TELEMETRY',
+        eventType: 'TELEMETRY_UPDATED',
+        severity: 'INFO',
+        source: { providerId: 'SCADA', name: 'Test' },
+        assetId: 'asset-version-order',
+        version: 1,
+      } as any;
+      const versionTwo = { ...versionOne, id: 'event-version-2', version: 2, timestamp: '2024-01-01T00:00:00.000Z' } as any;
+      const olderVersion = { ...versionOne, id: 'event-version-old', version: 0, timestamp: '2024-01-01T00:00:03.000Z' } as any;
+
+      stateStore.updateFromEvent(versionOne);
+      expect(stateStore.evaluateSpatialProjectionVersion(versionTwo)).toBe('accepted');
+      stateStore.updateFromEvent(versionTwo);
+      expect(stateStore.evaluateSpatialProjectionVersion(olderVersion)).toBe('rejected_stale');
+      stateStore.updateFromEvent(olderVersion);
+
+      expect(stateStore.getAssetState('asset-version-order')?.lastEvent).toEqual(versionTwo);
+
+      const versionlessFirst = { ...versionOne, id: 'event-versionless-first', version: undefined, assetId: 'asset-mixed-order' } as any;
+      const versionedNext = { ...versionOne, id: 'event-versioned-next', version: 1, assetId: 'asset-mixed-order' } as any;
+      const versionlessLate = { ...versionOne, id: 'event-versionless-late', version: undefined, assetId: 'asset-mixed-order', timestamp: '2024-01-01T00:00:02.000Z' } as any;
+
+      stateStore.updateFromEvent(versionlessFirst);
+      expect(stateStore.evaluateSpatialProjectionVersion(versionedNext)).toBe('accepted');
+      stateStore.updateFromEvent(versionedNext);
+      expect(stateStore.evaluateSpatialProjectionVersion(versionlessLate)).toBe('rejected_stale');
+    });
+
+    it('should reject missing or invalid timestamps without poisoning asset ordering state', () => {
+      const invalid = {
+        id: 'event-invalid-timestamp',
+        timestamp: 'not-a-timestamp',
+        category: 'TELEMETRY',
+        eventType: 'TELEMETRY_UPDATED',
+        severity: 'INFO',
+        source: { providerId: 'SCADA', name: 'Test' },
+        assetId: 'asset-invalid-time',
+        data: { voltage: 110 },
+      } as any;
+      const missing = { ...invalid, id: 'event-missing-timestamp', timestamp: undefined } as any;
+      const valid = { ...invalid, id: 'event-valid-after-invalid', timestamp: '2024-01-01T00:00:00.000Z', data: { voltage: 220 } } as any;
+
+      expect(stateStore.evaluateSpatialProjectionVersion(invalid)).toBe('rejected_stale');
+      stateStore.updateFromEvent(invalid);
+      stateStore.updateFromEvent(missing);
+      expect(stateStore.getAssetState('asset-invalid-time')).toBeUndefined();
+      expect(stateStore.getProjectionVersion('asset-invalid-time')).toBeUndefined();
+
+      stateStore.updateFromEvent(valid);
+      expect(stateStore.getAssetState('asset-invalid-time')?.lastEvent).toEqual(valid);
     });
 
     it('should maintain global state', () => {

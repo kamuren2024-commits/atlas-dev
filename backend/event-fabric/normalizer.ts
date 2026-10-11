@@ -329,7 +329,15 @@ export class EventNormalizer {
     if (!event.id) errors.push('Missing event ID');
     if (!event.eventType) errors.push('Missing event type');
     if (!event.category) errors.push('Missing category');
-    if (!event.timestamp) errors.push('Missing timestamp');
+    if (!event.timestamp) {
+      errors.push('Missing timestamp');
+    } else if (!Number.isFinite(Date.parse(event.timestamp))) {
+      errors.push('Invalid timestamp');
+    }
+    const observedAt = (event as any).observedAt;
+    if (observedAt !== undefined && (typeof observedAt !== 'string' || !Number.isFinite(Date.parse(observedAt)))) {
+      errors.push('Invalid observedAt');
+    }
     const hasSource = !!event.sourceId || !!(event as any).source?.providerId || !!(event as any).source;
     if (!hasSource) errors.push('Missing source ID');
     if (!event.severity) errors.push('Missing severity');

@@ -67,10 +67,10 @@ export class EventStateStore {
   /**
    * Update state from event
    */
-  public updateFromEvent(event: CanonicalEvent): void {
+  public updateFromEvent(event: CanonicalEvent): 'accepted' | 'ignored_duplicate' | 'rejected_stale' {
     const versionDecision = this.recordProjectionVersion(event);
     if (versionDecision === 'ignored_duplicate' || versionDecision === 'rejected_stale') {
-      return;
+      return versionDecision;
     }
 
     // Get or create asset state
@@ -93,6 +93,8 @@ export class EventStateStore {
 
     // Update global state based on event type
     this.updateGlobalState(event);
+
+    return versionDecision;
   }
 
   /**
@@ -101,13 +103,26 @@ export class EventStateStore {
    * commit its version explicitly via recordProjectionVersion().
    */
   public evaluateSpatialProjectionVersion(event: CanonicalEvent): 'accepted' | 'ignored_duplicate' | 'rejected_stale' {
+    const timestamp = (event as any)?.timestamp;
+    const suppliedObservedAt = (event as any)?.observedAt;
+    const observedAt = suppliedObservedAt === undefined ? timestamp : suppliedObservedAt;
+    if (
+      typeof timestamp !== 'string' ||
+      !timestamp.trim() ||
+      !Number.isFinite(Date.parse(timestamp)) ||
+      typeof observedAt !== 'string' ||
+      !observedAt.trim() ||
+      !Number.isFinite(Date.parse(observedAt))
+    ) {
+      return 'rejected_stale';
+    }
+
     const assetId = this.getAssetKeyFromEvent(event);
     if (!assetId) {
       return 'accepted';
     }
 
     const version = Number((event as any).version ?? (event as any).eventVersion ?? (event as any).payloadVersion ?? 0);
-    const observedAt = (event as any).observedAt || (event as any).timestamp || new Date().toISOString();
     const sourceEventId = (event as any).sourceEventId || event.id;
 
     const current = this.assetVersionState.get(assetId);
@@ -127,9 +142,8 @@ export class EventStateStore {
     if (nextVersion === current.version) {
       const currentTime = Date.parse(current.observedAt || new Date(0).toISOString());
       const eventTime = Date.parse(observedAt);
-      // Versionless provider payloads can legitimately arrive with identical timestamps
-      // (for example, back-to-back events within the same millisecond). In that case,
-      // "older" is only a stale signal when the new event is strictly earlier.
+      // Omitted versions are ordered as version 0; equal versions use observedAt,
+      // allowing distinct same-time events while rejecting strictly older ones.
       if (!Number.isFinite(eventTime) || !Number.isFinite(currentTime) || eventTime < currentTime) {
         return 'rejected_stale';
       }
@@ -139,18 +153,18 @@ export class EventStateStore {
   }
 
   public recordProjectionVersion(event: CanonicalEvent): 'accepted' | 'ignored_duplicate' | 'rejected_stale' {
-    const assetId = this.getAssetKeyFromEvent(event);
-    if (!assetId) {
-      return 'accepted';
-    }
-
     const versionDecision = this.evaluateSpatialProjectionVersion(event);
     if (versionDecision !== 'accepted') {
       return versionDecision;
     }
 
+    const assetId = this.getAssetKeyFromEvent(event);
+    if (!assetId) {
+      return 'accepted';
+    }
+
     const version = Number((event as any).version ?? (event as any).eventVersion ?? (event as any).payloadVersion ?? 0);
-    const observedAt = (event as any).observedAt || (event as any).timestamp || new Date().toISOString();
+    const observedAt = (event as any).observedAt ?? event.timestamp;
     const sourceEventId = (event as any).sourceEventId || event.id;
     const current = this.assetVersionState.get(assetId);
 

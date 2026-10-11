@@ -116,8 +116,10 @@ export class EventFabric {
       }
 
       // Update state
-      this.stateStore.updateFromEvent(event);
-      this.projectionAdapter.applyEvent(event);
+      const stateDecision = this.stateStore.updateFromEvent(event);
+      if (stateDecision === 'accepted') {
+        this.projectionAdapter.applyAcceptedEvent(event);
+      }
 
       // Publish via event bus
       await this.eventBus.publishEvent(event);

@@ -46,7 +46,11 @@ import { ApiGatewayMiddleware } from '../../security/api-gateway-middleware';
 import { SimulationFabric } from './simulation-fabric';
 import { LogisticsTestHarness } from './harness';
 import { buildSourceFreshness } from './data-quality';
-import { LogisticsAgentOrchestrator, LogisticsTenantCapabilityUnavailableError } from './agents/orchestrator';
+import {
+  LogisticsAgentOrchestrator,
+  LogisticsTenantCapabilityUnavailableError,
+  LogisticsWorkflowCapabilityUnavailableError,
+} from './agents/orchestrator';
 import { v4 as uuidv4 } from 'uuid';
 import {
   KETRACO_VEHICLE_TYPES,
@@ -2586,6 +2590,9 @@ export function createLogisticsApiRouter(deps: LogisticsApiDeps): express.Router
 
       return ok(res, result);
     } catch (error) {
+      if (error instanceof LogisticsWorkflowCapabilityUnavailableError) {
+        return fail(res, 503, 'WORKFLOW_CAPABILITY_NOT_CONFIGURED', error.message);
+      }
       if (error instanceof LogisticsTenantCapabilityUnavailableError) {
         return fail(res, 503, 'TENANT_CAPABILITY_NOT_CONFIGURED', error.message);
       }
