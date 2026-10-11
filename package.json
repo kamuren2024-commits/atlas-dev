@@ -13,6 +13,7 @@
     "lint": "tsc --noEmit",
     "test": "tsx backend/tests/run-tests.ts && node --import tsx --test backend/tests/server-config.test.ts backend/evaluation/eval-harness.test.ts backend/digital-twin/engineering-scenario-service.test.ts backend/tests/project-milestone-service.test.ts",
     "test:vitest": "vitest run",
+    "test:graph-phase0": "vitest run backend/tests/graph-phase0.test.ts",
     "test:agent-control-plane": "tsx backend/tests/agent-control-plane.test.ts",
     "test:logistics-security": "node --import tsx --test backend/tests/logistics-security.integration.test.ts backend/tests/logistics-orchestrator-workflow-guard.test.ts backend/tests/logistics-source-provenance.test.ts",
     "test:architecture": "tsx backend/evaluation/legal-control-plane/phase4-control-plane.test.ts",
