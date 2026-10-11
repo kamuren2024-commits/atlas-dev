@@ -1,15 +1,7 @@
 import React, { Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import GridHeader from './GridHeader';
 import GridKpiStrip from './GridKpiStrip';
-import GridMapCanvas, { type GridMapProviderStatus, MapProviderState } from './GridMapCanvas';
-import GridGraphExplorer from './GridGraphExplorer';
-import GridDataQualityPanel from './GridDataQualityPanel';
-import GridIntelligencePanel from './GridIntelligencePanel';
-import SubstationDetailsPanel from './SubstationDetailsPanel';
-import GridEventFabric from './GridEventFabric';
-import GridCommandPalette from './GridCommandPalette';
-import GridSystemHealthModal from './GridSystemHealthModal';
-import GridResilienceModal from './GridResilienceModal';
+import { type GridMapProviderStatus, MapProviderState } from './GridMapCanvas';
 import { GridReconciliationEngine } from './canonical/reconciliation-engine';
 
 // Phase 04 Intelligence Fabric & Scorecards
@@ -74,6 +66,23 @@ import AiIntelligenceAnomalyLayer from './layers/AiIntelligenceAnomalyLayer';
 import { motionController } from './motion-controller';
 
 const GridDigitalTwin3D = React.lazy(() => import('./GridDigitalTwin3D'));
+const LazyGridMapCanvas = React.lazy(() => import('./GridMapCanvas'));
+const LazyGridGraphExplorer = React.lazy(() => import('./GridGraphExplorer'));
+const LazyGridDataQualityPanel = React.lazy(() => import('./GridDataQualityPanel'));
+const LazyGridIntelligencePanel = React.lazy(() => import('./GridIntelligencePanel'));
+const LazySubstationDetailsPanel = React.lazy(() => import('./SubstationDetailsPanel'));
+const LazyGridEventFabric = React.lazy(() => import('./GridEventFabric'));
+const LazyGridCommandPalette = React.lazy(() => import('./GridCommandPalette'));
+const LazyGridSystemHealthModal = React.lazy(() => import('./GridSystemHealthModal'));
+const LazyGridResilienceModal = React.lazy(() => import('./GridResilienceModal'));
+
+function PanelLoader({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<div className="flex h-full min-h-[240px] items-center justify-center text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-300/80">Loading {label}…</div>}>
+      {children}
+    </Suspense>
+  );
+}
 
 import { 
   CANONICAL_SUBSTATIONS, 
@@ -619,14 +628,16 @@ export default function CommandCenterShell() {
             <div id="level-0-stage" className="w-full h-[640px] rounded-lg overflow-hidden flex border border-slate-800 relative">
               {/* Main Center Canvas according to Operational Mode */}
               {operationalMode === 'DATA_QUALITY' ? (
-                <GridDataQualityPanel
-                  summary={reconciliationAudit.summary}
-                  reports={reconciliationAudit.reports}
-                  conflicts={reconciliationAudit.conflicts}
-                  selectedAssetId={selectedAssetId}
-                  onSelectAsset={handleSelectAsset}
-                  onClose={() => setOperationalMode('NORMAL')}
-                />
+                <PanelLoader label="Data quality panel">
+                  <LazyGridDataQualityPanel
+                    summary={reconciliationAudit.summary}
+                    reports={reconciliationAudit.reports}
+                    conflicts={reconciliationAudit.conflicts}
+                    selectedAssetId={selectedAssetId}
+                    onSelectAsset={handleSelectAsset}
+                    onClose={() => setOperationalMode('NORMAL')}
+                  />
+                </PanelLoader>
               ) : operationalMode === '3D_TWIN' ? (
                 <Suspense fallback={<div className="flex flex-1 items-center justify-center text-xs font-mono text-cyan-300" role="status">Loading 3D twin...</div>}>
                   <GridDigitalTwin3D
@@ -635,58 +646,66 @@ export default function CommandCenterShell() {
                   />
                 </Suspense>
               ) : operationalMode === 'GRAPH_TOPOLOGY' ? (
-                <GridGraphExplorer
-                  substations={substations}
-                  lines={lines}
-                  selectedAssetId={selectedAssetId}
-                  onSelectAsset={handleSelectAsset}
-                  onHighlightPath={(path) => setHighlightedPath(path)}
-                />
+                <PanelLoader label="Topology graph">
+                  <LazyGridGraphExplorer
+                    substations={substations}
+                    lines={lines}
+                    selectedAssetId={selectedAssetId}
+                    onSelectAsset={handleSelectAsset}
+                    onHighlightPath={(path) => setHighlightedPath(path)}
+                  />
+                </PanelLoader>
               ) : (
-                <GridMapCanvas
-                  substations={substations}
-                  lines={lines}
-                  selectedAssetId={selectedAssetId}
-                  onSelectAsset={handleSelectAsset}
-                  onClearSelection={() => setSelectedAssetId(null)}
-                  activeLayers={activeLayers}
-                  onToggleLayer={handleToggleLayer}
-                  operationalMode={operationalMode}
-                  onSetOperationalMode={setOperationalMode}
-                  cameraPreset={cameraPreset}
-                  onSetCameraPreset={setCameraPreset}
-                  highlightedPath={highlightedPath}
-                  onMapProviderStatusChange={setMapProviderStatus}
-                />
+                <PanelLoader label="Grid map">
+                  <LazyGridMapCanvas
+                    substations={substations}
+                    lines={lines}
+                    selectedAssetId={selectedAssetId}
+                    onSelectAsset={handleSelectAsset}
+                    onClearSelection={() => setSelectedAssetId(null)}
+                    activeLayers={activeLayers}
+                    onToggleLayer={handleToggleLayer}
+                    operationalMode={operationalMode}
+                    onSetOperationalMode={setOperationalMode}
+                    cameraPreset={cameraPreset}
+                    onSetCameraPreset={setCameraPreset}
+                    highlightedPath={highlightedPath}
+                    onMapProviderStatusChange={setMapProviderStatus}
+                  />
+                </PanelLoader>
               )}
 
               {/* Right Intelligence Panel (AI Copilot, Anomaly Feed, Incidents) */}
               {selectedAsset ? (
-                <SubstationDetailsPanel
-                  substation={selectedAsset}
-                  substations={substations}
-                  lines={lines}
-                  alarms={alarms}
-                  events={events}
-                  onClose={() => setSelectedAssetId(null)}
-                  onFocus={() => {
-                    if (!selectedAssetId) return;
-                    setSelectedAssetId(null);
-                    window.setTimeout(() => setSelectedAssetId(selectedAssetId), 0);
-                  }}
-                />
+                <PanelLoader label="Asset detail panel">
+                  <LazySubstationDetailsPanel
+                    substation={selectedAsset}
+                    substations={substations}
+                    lines={lines}
+                    alarms={alarms}
+                    events={events}
+                    onClose={() => setSelectedAssetId(null)}
+                    onFocus={() => {
+                      if (!selectedAssetId) return;
+                      setSelectedAssetId(null);
+                      window.setTimeout(() => setSelectedAssetId(selectedAssetId), 0);
+                    }}
+                  />
+                </PanelLoader>
               ) : (
-                <GridIntelligencePanel
-                  selectedAsset={null}
-                  onClearSelection={() => setSelectedAssetId(null)}
-                  alarms={alarms}
-                  events={events}
-                  aiInsights={CANONICAL_AI_INSIGHTS}
-                  onAskCopilot={handleAskCopilot}
-                  intelligenceState={intelligenceState}
-                  copilotQAHistory={copilotQAHistory}
-                  onSelectAsset={handleSelectAsset}
-                />
+                <PanelLoader label="Intelligence panel">
+                  <LazyGridIntelligencePanel
+                    selectedAsset={null}
+                    onClearSelection={() => setSelectedAssetId(null)}
+                    alarms={alarms}
+                    events={events}
+                    aiInsights={CANONICAL_AI_INSIGHTS}
+                    onAskCopilot={handleAskCopilot}
+                    intelligenceState={intelligenceState}
+                    copilotQAHistory={copilotQAHistory}
+                    onSelectAsset={handleSelectAsset}
+                  />
+                </PanelLoader>
               )}
             </div>
           </div>
@@ -730,12 +749,14 @@ export default function CommandCenterShell() {
       )}
 
       {/* 7. Bottom Real-Time Event & Alarm Fabric Strip */}
-      <GridEventFabric
-        events={events}
-        alarms={alarms}
-        onSelectAsset={handleSelectAsset}
-        onAcknowledgeAlarm={handleAcknowledgeAlarm}
-      />
+      <PanelLoader label="Event fabric">
+        <LazyGridEventFabric
+          events={events}
+          alarms={alarms}
+          onSelectAsset={handleSelectAsset}
+          onAcknowledgeAlarm={handleAcknowledgeAlarm}
+        />
+      </PanelLoader>
 
       {/* 8. Operational Telemetry & Analytics Deep Dive Section */}
       <div className="border-t border-slate-800/80 bg-[#060b17] p-4 space-y-4">
@@ -826,30 +847,36 @@ export default function CommandCenterShell() {
       </div>
 
       {/* 16. Ctrl+K Global Command Palette */}
-      <GridCommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={() => setIsCommandPaletteOpen(false)}
-        substations={substations}
-        lines={lines}
-        onSelectAsset={handleSelectAsset}
-        onSetOperationalMode={setOperationalMode}
-        onOpenResilienceModal={() => setIsResilienceModalOpen(true)}
-        onOpenSystemHealth={() => setIsSystemHealthModalOpen(true)}
-        onToggleSimulation={handleToggleSimulation}
-      />
+      <PanelLoader label="Command palette">
+        <LazyGridCommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          substations={substations}
+          lines={lines}
+          onSelectAsset={handleSelectAsset}
+          onSetOperationalMode={setOperationalMode}
+          onOpenResilienceModal={() => setIsResilienceModalOpen(true)}
+          onOpenSystemHealth={() => setIsSystemHealthModalOpen(true)}
+          onToggleSimulation={handleToggleSimulation}
+        />
+      </PanelLoader>
 
       {/* 17. System Health Subsystem Diagnostics Modal */}
-      <GridSystemHealthModal
-        isOpen={isSystemHealthModalOpen}
-        onClose={() => setIsSystemHealthModalOpen(false)}
-        googleMapsStatus={mapProviderStatus}
-      />
+      <PanelLoader label="System health modal">
+        <LazyGridSystemHealthModal
+          isOpen={isSystemHealthModalOpen}
+          onClose={() => setIsSystemHealthModalOpen(false)}
+          googleMapsStatus={mapProviderStatus}
+        />
+      </PanelLoader>
 
       {/* 18. N-1 Resilience & Contingency Simulation Modal */}
-      <GridResilienceModal
-        isOpen={isResilienceModalOpen}
-        onClose={() => setIsResilienceModalOpen(false)}
-      />
+      <PanelLoader label="Resilience modal">
+        <LazyGridResilienceModal
+          isOpen={isResilienceModalOpen}
+          onClose={() => setIsResilienceModalOpen(false)}
+        />
+      </PanelLoader>
 
       {/* 19. Phase 06 Operator 9-Part Structured Decision Brief Modal */}
       <OperatorDecisionBriefModal
