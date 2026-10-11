@@ -51,7 +51,7 @@ export class IdentityService {
    * Create a standardized JWT access and refresh token pair
    */
   static async generateTokens(user: UserIdentity): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> {
-    const secret = SecretsManager.getSecret('JWT_SECRET', 'salience-atlas-jwt-secret-secure-random-2026');
+    const secret = SecretsManager.getSecret('JWT_SECRET');
     
     // Access Token valid for 15 minutes (900 seconds)
     const accessExpires = Math.floor(Date.now() / 1000) + 900;
@@ -120,7 +120,7 @@ export class IdentityService {
       if (parts.length !== 3) return null;
 
       const [headerEnc, payloadEnc, signature] = parts;
-      const secret = SecretsManager.getSecret('JWT_SECRET', 'salience-atlas-jwt-secret-secure-random-2026');
+      const secret = SecretsManager.getSecret('JWT_SECRET');
 
       // 1. Cryptographic Signature Verification
       const isValidSig = CryptographyService.verifyHmacSign(`${headerEnc}.${payloadEnc}`, signature, secret);
@@ -171,7 +171,7 @@ export class IdentityService {
       if (parts.length !== 3) return null;
 
       const [headerEnc, payloadEnc, signature] = parts;
-      const secret = SecretsManager.getSecret('JWT_SECRET', 'salience-atlas-jwt-secret-secure-random-2026');
+      const secret = SecretsManager.getSecret('JWT_SECRET');
 
       const isValidSig = CryptographyService.verifyHmacSign(`${headerEnc}.${payloadEnc}`, signature, secret);
       if (!isValidSig) return null;

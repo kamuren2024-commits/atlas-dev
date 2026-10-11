@@ -1,18 +1,26 @@
 import crypto from 'crypto';
 
 export class CryptographyService {
-  private static DEFAULT_KEY = crypto.scryptSync(
-    process.env.JWT_SECRET || 'salience-atlas-v5-enterprise-secret-key-salt',
-    'salt-for-key-derivation',
-    32
-  );
+  private static resolveKey(): Buffer {
+    const configuredSecret = process.env.JWT_SECRET?.trim() || process.env.ATLAS_ENCRYPTION_SECRET?.trim();
+    const secret = configuredSecret || (() => {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('JWT_SECRET or ATLAS_ENCRYPTION_SECRET must be configured in production.');
+      }
+      const generatedSecret = crypto.randomBytes(32).toString('hex');
+      process.env.JWT_SECRET = generatedSecret;
+      return generatedSecret;
+    })();
+
+    return crypto.scryptSync(secret, 'salt-for-key-derivation', 32);
+  }
 
   /**
    * Encrypt a plain-text string using AES-256-GCM
    */
   static encrypt(text: string, customKey?: Buffer): { iv: string; encryptedData: string; tag: string } {
     const iv = crypto.randomBytes(12);
-    const key = customKey || this.DEFAULT_KEY;
+    const key = customKey || this.resolveKey();
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
     
     let encrypted = cipher.update(text, 'utf8', 'hex');
@@ -30,7 +38,7 @@ export class CryptographyService {
    * Decrypt an AES-256-GCM encrypted payload
    */
   static decrypt(payload: { iv: string; encryptedData: string; tag: string }, customKey?: Buffer): string {
-    const key = customKey || this.DEFAULT_KEY;
+    const key = customKey || this.resolveKey();
     const iv = Buffer.from(payload.iv, 'hex');
     const tag = Buffer.from(payload.tag, 'hex');
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);

@@ -99,8 +99,8 @@ export function loadConfig(): AtlasConfig {
     groqApiKey: env('GROQ_API_KEY'),
 
     // Security
-    jwtSecret: env('JWT_SECRET', 'atlas-dev-jwt-secret-change-in-prod'),
-    encryptionSecret: env('ATLAS_ENCRYPTION_SECRET', 'atlas-default-dev-secret-change-in-prod'),
+    jwtSecret: env('JWT_SECRET'),
+    encryptionSecret: env('ATLAS_ENCRYPTION_SECRET'),
     devAuthBypass: envBool('DEV_AUTH_BYPASS', false),
 
     // Rate Limiting
@@ -145,8 +145,8 @@ export function validateConfig(config: AtlasConfig): string[] {
 
   if (config.nodeEnv === 'production') {
     if (!config.databaseUrl) errors.push('DATABASE_URL is required in production');
-    if (config.jwtSecret === 'atlas-dev-jwt-secret-change-in-prod') errors.push('JWT_SECRET must be changed in production');
-    if (config.encryptionSecret === 'atlas-default-dev-secret-change-in-prod') errors.push('ATLAS_ENCRYPTION_SECRET must be changed in production');
+    if (!config.jwtSecret || !config.jwtSecret.trim()) errors.push('JWT_SECRET is required in production');
+    if (!config.encryptionSecret || !config.encryptionSecret.trim()) errors.push('ATLAS_ENCRYPTION_SECRET is required in production');
     if (config.devAuthBypass) errors.push('DEV_AUTH_BYPASS must be false in production');
   }
 

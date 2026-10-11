@@ -11,8 +11,26 @@ export class SecretsManager {
     if (this.secretsCache.has(key)) {
       return this.secretsCache.get(key)!;
     }
-    const val = process.env[key] || defaultValue;
-    return val;
+
+    const configured = process.env[key]?.trim();
+    if (configured) {
+      this.secretsCache.set(key, configured);
+      return configured;
+    }
+
+    if (defaultValue && defaultValue.trim()) {
+      this.secretsCache.set(key, defaultValue);
+      return defaultValue;
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(`Missing required secret ${key} in production.`);
+    }
+
+    const generated = CryptographyService.generateRandomToken(32);
+    this.secretsCache.set(key, generated);
+    process.env[key] = generated;
+    return generated;
   }
 
   /**
@@ -49,13 +67,19 @@ export class SecretsManager {
     for (const key of criticalKeys) {
       const val = process.env[key];
       if (!val || val.trim() === '' || val.includes('MY_') || val.includes('placeholder')) {
-        warnings.push(`[WARN] Config value for "${key}" is either missing or contains a placeholder.`);
-        if (key === 'JWT_SECRET') {
-          // Provision a fallback secret in-memory for zero-crash startup
-          const fallbackSecret = CryptographyService.generateRandomToken();
-          process.env[key] = fallbackSecret;
-          warnings.push(`[AUTO-HEAL] Provisioned fallback cryptographic JWT_SECRET in memory.`);
+        const message = `[WARN] Config value for "${key}" is either missing or contains a placeholder.`;
+        warnings.push(message);
+
+        if (process.env.NODE_ENV === 'production') {
+          isValid = false;
+          warnings.push(`[ERROR] ${key} must be configured before production startup.`);
+          continue;
         }
+
+        const generated = CryptographyService.generateRandomToken(32);
+        process.env[key] = generated;
+        this.secretsCache.set(key, generated);
+        warnings.push(`[AUTO-HEAL] Generated an ephemeral secret for "${key}" in this process.`);
       }
     }
 

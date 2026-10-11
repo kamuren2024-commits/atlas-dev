@@ -25,6 +25,11 @@ export default defineConfig({
       '@': path.resolve(__dirname, '.'),
     },
   },
+  optimizeDeps: {
+    force: true,
+    entries: ['./src/main.tsx'],
+    include: ['react', 'react-dom/client', 'motion/react', 'lucide-react'],
+  },
   server: {
     host: process.env.HOST || '0.0.0.0',
     port: Number(process.env.PORT) || 3000,

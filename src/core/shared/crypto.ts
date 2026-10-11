@@ -9,6 +9,21 @@ function deriveKey(secret: string): Buffer {
   return scryptSync(secret, 'atlas-salt-v1', KEY_LENGTH);
 }
 
+function resolveEncryptionSecret(): string {
+  const configured = process.env.ATLAS_ENCRYPTION_SECRET?.trim();
+  if (configured) {
+    return configured;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('ATLAS_ENCRYPTION_SECRET must be configured before encryption is used in production.');
+  }
+
+  const generated = randomBytes(KEY_LENGTH).toString('hex');
+  process.env.ATLAS_ENCRYPTION_SECRET = generated;
+  return generated;
+}
+
 // Generate a prefixed UUID (e.g., "evt-550e8400-e29b-41d4-a716-446655440000")
 export function generateId(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
@@ -65,20 +80,15 @@ export function decrypt(ciphertext: string, secret: string): string {
   return decrypted.toString('utf8');
 }
 
-// Default secret from environment or fallback (production should always set ATLAS_ENCRYPTION_SECRET)
-function getEncryptionSecret(): string {
-  return process.env.ATLAS_ENCRYPTION_SECRET || 'atlas-default-dev-secret-change-in-prod';
-}
-
-// Convenience wrappers using default secret
+// Convenience wrappers using the configured or ephemeral development secret.
 export function encryptValue(value: any): string {
   const raw = typeof value === 'string' ? value : JSON.stringify(value);
-  return encrypt(raw, getEncryptionSecret());
+  return encrypt(raw, resolveEncryptionSecret());
 }
 
 export function decryptValue(cipher: string): any {
   if (!cipher.startsWith('enc:')) return cipher;
-  const decoded = decrypt(cipher, getEncryptionSecret());
+  const decoded = decrypt(cipher, resolveEncryptionSecret());
   try {
     return JSON.parse(decoded);
   } catch {
