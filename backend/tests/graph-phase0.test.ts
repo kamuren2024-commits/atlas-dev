@@ -191,6 +191,8 @@ describe('Phase 0 graph production-grade baseline evaluation', () => {
     await expect(
       graph.upsertEdge({ from: 'MISSING-ROOT', to: 'MISSING-LEAF', relation: 'CONNECTS', weight: 3 })
     ).rejects.toThrow(/invalid|missing|not found/i);
+    expect(await graph.getNode('MISSING-ROOT')).toBeNull();
+    expect(await graph.getNode('MISSING-LEAF')).toBeNull();
   });
 
   it('5. Duplicate requests obey a documented idempotency contract', async () => {
@@ -220,6 +222,7 @@ describe('Phase 0 graph production-grade baseline evaluation', () => {
   it('7. A durable graph write and its event outcome can be reconciled after a simulated failure', async () => {
     const graph = PersistentKnowledgeGraph.getInstance();
     await graph.upsertNode({ id: 'EVENT-A', type: 'Substation', name: 'Event A' });
+    await graph.upsertNode({ id: 'EVENT-B', type: 'Substation', name: 'Event B' });
     await graph.upsertEdge({ from: 'EVENT-A', to: 'EVENT-B', relation: 'CONNECTS', weight: 11 });
 
     const eventState = await graph.getEdges('EVENT-A', 'OUT');

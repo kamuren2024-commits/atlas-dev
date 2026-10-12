@@ -123,6 +123,9 @@ describe('Salience Atlas Phase 02 — Platform Foundation & Runtime Consolidatio
       const sup2 = `SUP_RING_B_${Date.now()}`;
       const sharedDirector = `DIR_COMMON_${Date.now()}`;
 
+      await graph.upsertNode({ id: sup1, type: 'Supplier', name: sup1 });
+      await graph.upsertNode({ id: sup2, type: 'Supplier', name: sup2 });
+      await graph.upsertNode({ id: sharedDirector, type: 'Person', name: sharedDirector });
       await graph.upsertEdge({ from: sup1, to: sharedDirector, relation: 'SHARES_DIRECTOR' });
       await graph.upsertEdge({ from: sup2, to: sharedDirector, relation: 'SHARES_DIRECTOR' });
 

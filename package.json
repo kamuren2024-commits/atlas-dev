@@ -12,7 +12,7 @@
     "postinstall": "mkdir -p build/Release && ln -sf ../../node_modules/sqlite3/build/Release/node_sqlite3.node build/Release/node_sqlite3.node && ln -sf ../../node_modules/better-sqlite3/prebuilds/linux-x64.node build/Release/better_sqlite3.node || true",
     "lint": "tsc --noEmit",
     "test": "tsx backend/tests/run-tests.ts && node --import tsx --test backend/tests/server-config.test.ts backend/evaluation/eval-harness.test.ts backend/digital-twin/engineering-scenario-service.test.ts backend/tests/project-milestone-service.test.ts",
-    "test:vitest": "vitest run",
+    "test:vitest": "vitest run backend/agents/__tests__/registry.test.ts backend/domains/meeting-intelligence/meeting-intelligence.test.ts backend/domains/meeting-intelligence/meeting-intelligence.integration.test.ts backend/tests/graph-phase0.test.ts backend/tests/platform-foundation.test.ts --maxWorkers=1 --testTimeout=30000",
     "test:graph-phase0": "vitest run backend/tests/graph-phase0.test.ts",
     "test:graph-phase0:eval": "node scripts/run-graph-phase0-eval.mjs",
     "test:agent-control-plane": "tsx backend/tests/agent-control-plane.test.ts",

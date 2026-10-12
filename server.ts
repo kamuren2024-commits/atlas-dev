@@ -32,6 +32,7 @@ import {
 } from './backend/core/config/production-mode';
 import { resolveHealthCheckStatus } from './backend/core/config/health-check';
 import { resolveHttpServerConfig } from './backend/core/config/http-server-config';
+import { createApiReadinessMiddleware } from './backend/core/config/api-readiness';
 
 async function startServer() {
   const app = express();
@@ -41,6 +42,7 @@ async function startServer() {
     process.env.CONTEXT !== 'production';
   let databaseStatus = 'INITIALIZING';
   let systemHealth = 'STARTING';
+  let apiRoutesReady = false;
 
   validateProductionConfiguration();
 
@@ -80,6 +82,8 @@ async function startServer() {
       gemini_configured: Boolean(process.env.GEMINI_API_KEY)
     });
   });
+
+  app.use('/api', createApiReadinessMiddleware(() => apiRoutesReady));
 
   // Make the HTTP surface available before migrations and optional services initialize.
   const distPath = path.join(process.cwd(), 'dist');
@@ -271,6 +275,8 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
+
+  apiRoutesReady = true;
 
   // Final SPA fallback after all API routes are registered.
   app.get('*', async (req, res, next) => {

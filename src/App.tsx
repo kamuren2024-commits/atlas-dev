@@ -42,6 +42,7 @@ import { TenantProvider, useTenant, isAtlasDemoModeEnabled } from './context/Ten
 import { ThemeProvider, useAtlasTheme } from './context/ThemeContext';
 import { AtlasContextProvider, useAtlasContext } from './context/AtlasContext';
 import { TenantBadge, PermissionBadge } from './components/ui/EnterpriseComponents';
+import type { AdministrationTelemetryLog } from './components/ketraco/ScmModules';
 
 import { ShellProvider } from './components/shell/ShellContext';
 import GlobalHeader from './components/shell/GlobalHeader';
@@ -148,6 +149,27 @@ type AuthenticatedLogin = {
     tenantId: string;
   };
 };
+
+function isAdministrationTelemetryLog(value: unknown): value is AdministrationTelemetryLog {
+  return typeof value === 'object'
+    && value !== null
+    && 'agentName' in value
+    && typeof value.agentName === 'string'
+    && 'timestamp' in value
+    && typeof value.timestamp === 'string'
+    && 'task' in value
+    && typeof value.task === 'string'
+    && 'result' in value
+    && typeof value.result === 'string'
+    && (!('id' in value) || typeof value.id === 'string');
+}
+
+function getTelemetryErrorMessage(payload: unknown): string | null {
+  if (typeof payload !== 'object' || payload === null || !('error' in payload)) return null;
+  const error = payload.error;
+  if (typeof error !== 'object' || error === null || !('message' in error)) return null;
+  return typeof error.message === 'string' ? error.message : null;
+}
 
 function AppInner() {
   const {
@@ -395,7 +417,9 @@ function AppInner() {
     version: '1.0_KETRACO'
   });
 
-  const [telemetryLogs, setTelemetryLogs] = useState<any[]>([]);
+  const [telemetryLogs, setTelemetryLogs] = useState<AdministrationTelemetryLog[]>([]);
+  const [telemetryStatus, setTelemetryStatus] = useState<'loading' | 'available' | 'unavailable'>('loading');
+  const [telemetryError, setTelemetryError] = useState<string | null>(null);
   const [copilotOverridePrompt, setCopilotOverridePrompt] = useState<string | null>(null);
 
   // Executive Demo Mode state
@@ -420,20 +444,35 @@ function AppInner() {
   const fetchTelemetry = async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
+    setTelemetryStatus('loading');
+    setTelemetryError(null);
     try {
       const res = await fetch('/api/scm/telemetry', { signal: controller.signal });
-      const data = await res.json();
-      clearTimeout(timeoutId);
-      if (data.success) {
-        setTelemetryLogs(data.logs || []);
+      const data: unknown = await res.json();
+      if (!res.ok) {
+        throw new Error(getTelemetryErrorMessage(data) || `Telemetry request failed with status ${res.status}.`);
       }
+
+      if (
+        typeof data !== 'object'
+        || data === null
+        || !('logs' in data)
+        || !Array.isArray(data.logs)
+        || !data.logs.every(isAdministrationTelemetryLog)
+      ) {
+        throw new Error('Telemetry response did not contain valid agent execution traces.');
+      }
+
+      setTelemetryLogs(data.logs);
+      setTelemetryStatus('available');
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown telemetry request failure.';
+      setTelemetryLogs([]);
+      setTelemetryStatus('unavailable');
+      setTelemetryError(message);
+      console.warn('[ADMIN] Failed to load agent telemetry traces:', message);
+    } finally {
       clearTimeout(timeoutId);
-      // In-app high-fidelity fallback logs in case of offline dev server
-      setTelemetryLogs([
-        { id: 't1', agentName: 'SCMOrchestrator', timestamp: 'Just now', task: 'Scan Suswa Lot-4 supply readiness', result: 'Allocated 3 core intelligence agents.' },
-        { id: 't2', agentName: 'Supplier Intelligence Agent', timestamp: '2 min ago', task: 'Evaluate vendor Shanghai Cable', result: 'SLA rating tagged at 78% reliability buffers.' }
-      ]);
     }
   };
 
@@ -817,7 +856,7 @@ function AppInner() {
 
   return (
     <div 
-      className="min-h-dvh relative flex flex-col font-sans text-slate-200 select-none"
+      className="relative flex min-h-[100dvh] flex-col font-sans text-slate-200 select-none"
       style={{ backgroundColor: theme === 'atlas-dark' ? currentTenant.theme.bodyBg : 'var(--atlas-bg-canvas)' }}
     >
       
@@ -865,7 +904,7 @@ function AppInner() {
       />
 
       {/* STAGE CONTAINER WITH LEFT COMPACT SIDEBAR AND CENTRAL STAGE */}
-      <div className="flex-1 min-h-0 flex overflow-hidden select-none" id="shell-container">
+      <div className="flex min-h-0 flex-1 overflow-hidden select-none" id="shell-container">
         <GlobalSidebar
           items={menuItems}
           activeModule={activeModule}
@@ -1188,7 +1227,12 @@ function AppInner() {
                   transition={{ duration: 0.15 }}
                   className="flex-1 flex flex-col overflow-hidden"
                 >
-                  <AdministrationOS telemetryLogs={telemetryLogs} onAskCopilot={handleTriggerCopilot} />
+                  <AdministrationOS
+                    telemetryLogs={telemetryLogs}
+                    telemetryStatus={telemetryStatus}
+                    telemetryError={telemetryError}
+                    onAskCopilot={handleTriggerCopilot}
+                  />
                 </motion.div>
               )}
 

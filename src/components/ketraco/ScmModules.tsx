@@ -992,10 +992,20 @@ export function ExecutiveIntelligence({ onAskCopilot }: ScmModuleProps) {
 // 8. ADMINISTRATION MODULE
 // ==========================================
 interface AdministrationOSProps extends ScmModuleProps {
-  telemetryLogs: any[];
+  telemetryLogs: AdministrationTelemetryLog[];
+  telemetryStatus: 'loading' | 'available' | 'unavailable';
+  telemetryError: string | null;
 }
 
-export function AdministrationOS({ telemetryLogs, onAskCopilot }: AdministrationOSProps) {
+export interface AdministrationTelemetryLog {
+  id?: string;
+  agentName: string;
+  timestamp: string;
+  task: string;
+  result: string;
+}
+
+export function AdministrationOS({ telemetryLogs, telemetryStatus, telemetryError, onAskCopilot }: AdministrationOSProps) {
   const [sessions, setSessions] = useState<any[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
@@ -1234,7 +1244,7 @@ export function AdministrationOS({ telemetryLogs, onAskCopilot }: Administration
             
             <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1">
               {telemetryLogs && telemetryLogs.length > 0 ? (
-                telemetryLogs.map((log: any, idx: number) => (
+                telemetryLogs.map((log, idx) => (
                   <div key={log.id || idx} className="bg-slate-950/50 p-3 rounded-xl border border-slate-850 space-y-1.5 font-mono text-[10px]">
                     <div className="flex justify-between text-indigo-300">
                       <span className="font-bold">{log.agentName}</span>
@@ -1245,8 +1255,16 @@ export function AdministrationOS({ telemetryLogs, onAskCopilot }: Administration
                   </div>
                 ))
               ) : (
-                <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-850 text-center text-xs text-slate-600">
-                  No active execution triggers recorded. Prompt SCM Command Workspace above to see live multi-agent traces step-by-step.
+                <div
+                  className="bg-slate-950/40 p-4 rounded-xl border border-slate-850 text-center text-xs text-slate-400"
+                  role={telemetryStatus === 'unavailable' ? 'alert' : 'status'}
+                  aria-live="polite"
+                >
+                  {telemetryStatus === 'loading'
+                    ? 'Loading agent execution traces...'
+                    : telemetryStatus === 'unavailable'
+                      ? `Telemetry traces unavailable: ${telemetryError || 'No error details provided.'}`
+                      : 'No agent execution traces were returned by the telemetry source.'}
                 </div>
               )}
             </div>

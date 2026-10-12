@@ -189,11 +189,15 @@ const mapCameraPresets: Record<ViewCameraPreset, { center: google.maps.LatLngLit
   NORTHERN_HVDC: { center: { lat: 1.7, lng: 38.0 }, zoom: 7.2 }
 };
 
+const EMPTY_ALARMS: GridAlarm[] = [];
+const EMPTY_EVENTS: GridEvent[] = [];
+const EMPTY_HIGHLIGHTED_PATH: string[] = [];
+
 export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   substations = CANONICAL_SUBSTATIONS,
   lines = CANONICAL_LINES,
-  alarms = [],
-  events = [],
+  alarms = EMPTY_ALARMS,
+  events = EMPTY_EVENTS,
   selectedAssetId,
   onSelectAsset,
   onClearSelection,
@@ -206,7 +210,7 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   onSetOperationalMode,
   cameraPreset = 'NATIONAL',
   onSetCameraPreset,
-  highlightedPath = [],
+  highlightedPath = EMPTY_HIGHLIGHTED_PATH,
   onMapProviderStatusChange
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
