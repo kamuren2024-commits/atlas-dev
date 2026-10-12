@@ -856,7 +856,7 @@ function AppInner() {
 
   return (
     <div 
-      className="relative flex min-h-[100dvh] flex-col font-sans text-slate-200 select-none"
+      className="h-dvh relative flex flex-col font-sans text-slate-200 select-none"
       style={{ backgroundColor: theme === 'atlas-dark' ? currentTenant.theme.bodyBg : 'var(--atlas-bg-canvas)' }}
     >
       
@@ -904,7 +904,7 @@ function AppInner() {
       />
 
       {/* STAGE CONTAINER WITH LEFT COMPACT SIDEBAR AND CENTRAL STAGE */}
-      <div className="flex min-h-0 flex-1 overflow-hidden select-none" id="shell-container">
+      <div className="flex-1 min-h-0 flex overflow-hidden select-none" id="shell-container">
         <GlobalSidebar
           items={menuItems}
           activeModule={activeModule}
