@@ -348,7 +348,8 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
   }, [substations, lines, selectedAssetId]);
 
   useEffect(() => {
-    if (!mapContainerRef.current) return;
+    const container = mapContainerRef.current;
+    if (!container) return;
 
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim();
     if (!apiKey) {
@@ -356,19 +357,32 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
       return;
     }
 
+    const ensureVisibleMapContainer = () => {
+      const rect = container.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        container.style.minHeight = '420px';
+      }
+    };
+
     let isMounted = true;
+    let resizeObserver: ResizeObserver | null = null;
+    const cleanupFns: Array<() => void> = [];
+
     const authFailureUnsubscribe = subscribeToGoogleMapsAuthFailure(() => {
       if (isMounted) {
         setMapState(MapProviderState.ERROR_AUTHENTICATION);
       }
     });
+    cleanupFns.push(authFailureUnsubscribe);
+
+    ensureVisibleMapContainer();
 
     loadGoogleMaps(apiKey)
       .then(() => {
         if (!isMounted || !mapContainerRef.current) return;
 
         try {
-          mapRef.current = new google.maps.Map(mapContainerRef.current, {
+          const mapOptions: google.maps.MapOptions = {
             zoom: mapCameraPresets[cameraPreset].zoom,
             center: mapCameraPresets[cameraPreset].center,
             mapTypeId: 'roadmap',
@@ -380,6 +394,20 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
             gestureHandling: 'greedy',
             keyboardShortcuts: true,
             clickableIcons: false,
+          };
+
+          mapRef.current = new google.maps.Map(mapContainerRef.current, mapOptions);
+
+          resizeObserver = new ResizeObserver(() => {
+            if (!isMounted || !mapRef.current) return;
+            google.maps.event.trigger(mapRef.current, 'resize');
+          });
+          resizeObserver.observe(mapContainerRef.current);
+          cleanupFns.push(() => resizeObserver?.disconnect());
+
+          requestAnimationFrame(() => {
+            if (!mapRef.current) return;
+            google.maps.event.trigger(mapRef.current, 'resize');
           });
 
           mapRef.current.addListener('click', () => {
@@ -411,7 +439,11 @@ export const GridMapCanvas: React.FC<GridMapCanvasProps> = ({
 
     return () => {
       isMounted = false;
-      authFailureUnsubscribe();
+      cleanupFns.forEach((cleanup) => cleanup());
+      if (mapRef.current) {
+        google.maps.event.clearInstanceListeners(mapRef.current);
+        mapRef.current = null;
+      }
     };
   }, []);
 

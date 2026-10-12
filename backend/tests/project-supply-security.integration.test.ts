@@ -127,11 +127,21 @@ test('AuthorizationService and API gateway reject client tenant overrides and ab
   }, 'read', 'project');
   assert.equal(deniedByMissingTenant.isAuthorized, false);
 
+  const deniedByMissingAccessLevel = AuthorizationService.checkPermission({
+    id: 'user-3',
+    role: 'Project Manager',
+    tenantId: 'tenant-a',
+    accessLevel: '',
+    clearance: 'Enterprise Clear',
+  } as any, 'read', 'project');
+  assert.equal(deniedByMissingAccessLevel.isAuthorized, false);
+  assert.match(deniedByMissingAccessLevel.reason, /missing or invalid access level/i);
+
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => {
     req.user = {
-      id: 'user-3',
+      id: 'user-4',
       role: 'Project Manager',
       tenantId: 'tenant-a',
       accessLevel: 'LEVEL 04',
@@ -141,6 +151,18 @@ test('AuthorizationService and API gateway reject client tenant overrides and ab
     next();
   });
   app.get('/protected', ApiGatewayMiddleware.authorize('project', 'read'), (_req, res) => {
+    res.status(200).json({ ok: true });
+  });
+  app.get('/protected-tenantless', (req, res, next) => {
+    req.user = {
+      id: 'user-5',
+      role: 'Project Manager',
+      accessLevel: 'LEVEL 04',
+      clearance: 'Enterprise Clear',
+      authenticated: true,
+    } as any;
+    return ApiGatewayMiddleware.authorize('project', 'read')(req, res, next);
+  }, (_req, res) => {
     res.status(200).json({ ok: true });
   });
 
@@ -155,6 +177,12 @@ test('AuthorizationService and API gateway reject client tenant overrides and ab
       headers: { Authorization: 'Bearer token-value' },
     });
     assert.equal(response.status, 200);
+
+    const tenantlessUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/protected-tenantless`;
+    const tenantlessResponse = await fetch(tenantlessUrl, {
+      headers: { Authorization: 'Bearer token' },
+    });
+    assert.equal(tenantlessResponse.status, 403);
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     server.closeAllConnections();

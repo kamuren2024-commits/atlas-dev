@@ -232,6 +232,15 @@ export class AuthorizationService {
     resource: string,
     resourceAttributes: Record<string, any> = {}
   ): PolicyResult {
+    const accessLevel = typeof user.accessLevel === 'string' && user.accessLevel.trim().length > 0 ? user.accessLevel.trim() : 'LEVEL_01';
+    if (!/^LEVEL\s*\d+$/i.test(accessLevel)) {
+      return {
+        isAuthorized: false,
+        decision: 'DENY',
+        reason: 'Authentication required: missing or invalid access level for the current identity.',
+      };
+    }
+
     const isDevAdmin = user.id === DEV_ADMIN_ID;
     if (isDevAdmin && !DevAdminService.isDevAdminEnabled()) {
       return {
@@ -288,8 +297,8 @@ export class AuthorizationService {
 
     // Policy 3: Regional / Clearances Levels Enforcements
     const resourceSecurityLevel = resourceAttributes.securityLevel || 'LEVEL 01';
-    const userLevelNum = parseInt(user.accessLevel.replace('LEVEL ', ''), 10) || 1;
-    const resourceLevelNum = parseInt(resourceSecurityLevel.replace('LEVEL ', ''), 10) || 1;
+    const userLevelNum = parseInt(accessLevel.replace(/^LEVEL\s*/i, ''), 10) || 1;
+    const resourceLevelNum = parseInt(String(resourceSecurityLevel).replace(/^LEVEL\s*/i, ''), 10) || 1;
 
     if (userLevelNum < resourceLevelNum) {
       return {

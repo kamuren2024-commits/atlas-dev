@@ -12,18 +12,34 @@ declare global {
   }
 }
 
+export function resetGoogleMapsLoader(): void {
+  configuredApiKey = null;
+  mapsLibraryPromise = null;
+  hasGoogleMapsAuthFailure = false;
+}
+
 export function loadGoogleMaps(apiKey: string): Promise<google.maps.MapsLibrary> {
+  const trimmedApiKey = apiKey.trim();
+  if (!trimmedApiKey) {
+    return Promise.reject(new Error('Google Maps API key is missing.'));
+  }
+
   if (mapsLibraryPromise) {
-    if (configuredApiKey !== apiKey) {
+    if (configuredApiKey !== trimmedApiKey) {
       return Promise.reject(new Error('Google Maps has already been configured with a different API key.'));
     }
     return mapsLibraryPromise;
   }
 
-  configuredApiKey = apiKey;
-  setOptions({ key: apiKey, v: 'weekly' });
+  configuredApiKey = trimmedApiKey;
+  setOptions({ key: trimmedApiKey, v: 'weekly' });
   mapsLibraryPromise = importLibrary('maps');
-  return mapsLibraryPromise;
+
+  return mapsLibraryPromise.catch((error) => {
+    mapsLibraryPromise = null;
+    configuredApiKey = null;
+    throw error;
+  });
 }
 
 export function subscribeToGoogleMapsAuthFailure(listener: () => void): () => void {
@@ -46,5 +62,11 @@ export function subscribeToGoogleMapsAuthFailure(listener: () => void): () => vo
 
   if (hasGoogleMapsAuthFailure) listener();
 
-  return () => authFailureListeners.delete(listener);
+  return () => {
+    authFailureListeners.delete(listener);
+    if (authFailureListeners.size === 0 && authFailureHandlerInstalled) {
+      window.gm_authFailure = previousGmAuthFailure;
+      authFailureHandlerInstalled = false;
+    }
+  };
 }

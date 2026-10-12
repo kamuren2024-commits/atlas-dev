@@ -114,6 +114,14 @@ export class ApiGatewayMiddleware {
         return res.status(401).json({ success: false, error: 'Unauthorized: User identity unverified.' });
       }
 
+      if (!req.user.tenantId || typeof req.user.tenantId !== 'string' || req.user.tenantId.trim().length === 0) {
+        return res.status(403).json({ success: false, error: 'Access Forbidden: Missing tenant context for the authenticated identity.' });
+      }
+
+      if (!req.user.accessLevel || !/^LEVEL\s*\d+$/i.test(req.user.accessLevel)) {
+        return res.status(403).json({ success: false, error: 'Access Forbidden: Missing or invalid access-level context for the authenticated identity.' });
+      }
+
       // Gather attributes dynamically from body or query params to run ABAC checks
       const resourceAttributes = {
         tenantId: req.user.tenantId,
