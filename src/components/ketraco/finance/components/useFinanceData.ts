@@ -100,16 +100,23 @@ export function useFinanceData(): FinanceDataState {
         setAuditTrail(audRes.value);
       }
 
-      // If any endpoint is REAL, prefer showing real state for those.
       const resolved: DataState = states.has('REAL')
         ? 'REAL'
-        : states.has('ERROR') && !states.has('DEVELOPMENT_FIXTURE')
-          ? 'ERROR'
-          : states.has('DEVELOPMENT_FIXTURE')
-            ? 'DEVELOPMENT_FIXTURE'
-            : states.has('PARTIAL')
-              ? 'PARTIAL'
-              : 'UNAVAILABLE';
+        : states.has('FORBIDDEN')
+          ? 'FORBIDDEN'
+          : states.has('INVALID')
+            ? 'INVALID'
+            : states.has('ERROR')
+              ? 'ERROR'
+              : states.has('SIMULATED')
+                ? 'SIMULATED'
+                : states.has('UNAVAILABLE')
+                  ? 'UNAVAILABLE'
+                  : states.has('DEVELOPMENT_FIXTURE')
+                    ? 'DEVELOPMENT_FIXTURE'
+                    : states.has('PARTIAL')
+                      ? 'PARTIAL'
+                      : 'LOADING';
 
       setState(resolved);
     } catch {
