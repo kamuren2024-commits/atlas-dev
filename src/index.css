@@ -656,6 +656,8 @@ body {
 .atlas-shell-footer {
   background: transparent;
   border-top: 1px solid var(--atlas-shell-border);
+  flex-shrink: 0;
+  width: 100%;
 }
 
 /* Scoped focus ring for shell chrome — keyboard accessible */
