@@ -85,9 +85,12 @@ export const FINANCE_NAV_ITEMS = [
 export const DATA_STATE_INDICATORS: Record<string, { label: string; color: string; bgColor: string }> = {
   REAL: { label: 'LIVE DATA', color: '#10B981', bgColor: 'rgba(16, 185, 129, 0.1)' },
   DEVELOPMENT_FIXTURE: { label: 'DEV FIXTURE', color: '#F59E0B', bgColor: 'rgba(245, 158, 11, 0.1)' },
+  SIMULATED: { label: 'SIMULATED', color: '#F59E0B', bgColor: 'rgba(245, 158, 11, 0.08)' },
   STALE: { label: 'STALE', color: '#F97316', bgColor: 'rgba(249, 115, 22, 0.1)' },
   PARTIAL: { label: 'PARTIAL', color: '#8B5CF6', bgColor: 'rgba(139, 92, 246, 0.1)' },
   UNAVAILABLE: { label: 'UNAVAILABLE', color: '#64748B', bgColor: 'rgba(100, 116, 139, 0.1)' },
+  INVALID: { label: 'INVALID', color: '#F43F5E', bgColor: 'rgba(244, 63, 94, 0.08)' },
+  FORBIDDEN: { label: 'FORBIDDEN', color: '#F43F5E', bgColor: 'rgba(244, 63, 94, 0.1)' },
   LOADING: { label: 'LOADING', color: '#0EA5E9', bgColor: 'rgba(14, 165, 233, 0.1)' },
   ERROR: { label: 'ERROR', color: '#F43F5E', bgColor: 'rgba(244, 63, 94, 0.1)' },
 };

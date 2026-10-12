@@ -40,9 +40,12 @@ export type DataClassification =
 export type DataState =
   | 'REAL'
   | 'DEVELOPMENT_FIXTURE'
+  | 'SIMULATED'
   | 'STALE'
   | 'PARTIAL'
   | 'UNAVAILABLE'
+  | 'INVALID'
+  | 'FORBIDDEN'
   | 'LOADING'
   | 'ERROR';
 
