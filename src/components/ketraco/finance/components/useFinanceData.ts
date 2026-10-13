@@ -100,14 +100,14 @@ export function useFinanceData(): FinanceDataState {
         setAuditTrail(audRes.value);
       }
 
-      const resolved: DataState = states.has('REAL')
-        ? 'REAL'
-        : states.has('FORBIDDEN')
-          ? 'FORBIDDEN'
-          : states.has('INVALID')
-            ? 'INVALID'
-            : states.has('ERROR')
-              ? 'ERROR'
+      const resolved: DataState = states.has('FORBIDDEN')
+        ? 'FORBIDDEN'
+        : states.has('INVALID')
+          ? 'INVALID'
+          : states.has('ERROR')
+            ? 'ERROR'
+            : states.has('REAL')
+              ? 'REAL'
               : states.has('SIMULATED')
                 ? 'SIMULATED'
                 : states.has('UNAVAILABLE')

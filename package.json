@@ -3,6 +3,14 @@
   "private": true,
   "version": "5.1.0",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "overrides": {
+    "sqlite3": {
+      "node-gyp": "10.3.1"
+    }
+  },
   "scripts": {
     "dev": "node scripts/start-dev.mjs",
     "dev:demo": "node scripts/start-demo.mjs",
