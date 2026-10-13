@@ -179,6 +179,7 @@ function AppInner() {
     userProfile,
     setUserProfile,
     isDemoSession,
+    enterDemoSession,
     exitDemoSession
   } = useTenant();
   const { theme } = useAtlasTheme();
@@ -186,7 +187,7 @@ function AppInner() {
 
   // Zero Trust Access States: the backend remains the source of truth for auth.
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [allowDevAdmin, setAllowDevAdmin] = useState(isAtlasDemoModeEnabled);
+  const [allowDevAdmin, setAllowDevAdmin] = useState(false);
   const [loginEmail, setLoginEmail] = useState('kamau@ketraco.co.ke');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginTenantId, setLoginTenantId] = useState('ketraco');
@@ -322,22 +323,22 @@ function AppInner() {
     setIsAuthenticated(true);
   };
 
-  const handleEnterDemoMode = async () => {
+  const handleEnterDemoMode = () => {
     setLoginError('');
-    setIsLoggingIn(true);
     try {
-      const res = await fetch('/api/auth/demo-login', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setLoginError(data.error || 'Demo authentication failed.');
-        return;
-      }
-      completeLogin(data);
+      localStorage.removeItem('atlas_access_token');
+      localStorage.removeItem('atlas_refresh_token');
+      localStorage.removeItem('atlas_user');
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Unable to reach the development identity service.');
-    } finally {
-      setIsLoggingIn(false);
+      setLoginError(err instanceof Error ? err.message : 'Unable to isolate this browser session for demo access.');
+      return;
     }
+
+    if (!enterDemoSession()) {
+      setLoginError('Demo mode is unavailable in this build.');
+      return;
+    }
+    setIsAuthenticated(true);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -749,14 +750,14 @@ function AppInner() {
               <section className="rounded-lg border border-amber-400/30 bg-amber-400/[0.06] p-4 space-y-3">
                 <div>
                   <p className="text-[10px] font-mono font-bold tracking-widest text-amber-300 uppercase">DEMO ACCESS</p>
-                  <p className="mt-1 text-[10px] font-mono text-slate-300">Sign in to a development administrator session through the identity gateway.</p>
+                  <p className="mt-1 text-[10px] font-mono text-slate-300">Open an isolated workspace with simulated data. No production identity or live services are used.</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleEnterDemoMode}
                   className="w-full rounded-lg border border-amber-300/50 bg-amber-300/15 px-3 py-3 text-[11px] font-mono font-bold tracking-wider text-amber-100 transition-colors hover:bg-amber-300/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1220]"
                 >
-                  {isLoggingIn ? 'AUTHENTICATING...' : 'ENTER DEMO MODE'}
+                  {isLoggingIn ? 'ENTERING DEMO...' : 'ENTER DEMO MODE'}
                 </button>
               </section>
             )}
@@ -874,7 +875,7 @@ function AppInner() {
         <div className="relative z-40 flex min-h-9 items-center justify-between gap-3 border-b border-amber-400/20 bg-amber-400/10 px-4 text-[10px] font-mono text-amber-100">
           <span className="inline-flex items-center gap-2 uppercase tracking-wider">
             <span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden="true" />
-            DEMO MODE | Stakeholder Demonstration
+            DEMO — SIMULATED DATA | Stakeholder Demonstration
           </span>
           <button
             type="button"
