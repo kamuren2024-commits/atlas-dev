@@ -54,6 +54,10 @@ test('API routes return retryable unavailability until registration completes', 
 
   const server = app.listen(0, '127.0.0.1');
   try {
+    await new Promise<void>((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    });
     const address = server.address() as AddressInfo;
     const url = `http://127.0.0.1:${address.port}`;
     const healthResponse = await fetch(`${url}/api/health`);
