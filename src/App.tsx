@@ -201,7 +201,7 @@ function AppInner() {
     const validateStoredSession = async () => {
       const token = localStorage.getItem('atlas_access_token');
       if (!token) {
-        if (isMounted) setIsAuthenticated(false);
+        if (isMounted) setIsAuthenticated(isDemoSession);
         return;
       }
 
@@ -252,7 +252,7 @@ function AppInner() {
     return () => {
       isMounted = false;
     };
-  }, [switchTenant, setUserProfile]);
+  }, [isDemoSession, switchTenant, setUserProfile]);
 
   // Global window.fetch interceptor to seamlessly inject JWT tokens
   useEffect(() => {
