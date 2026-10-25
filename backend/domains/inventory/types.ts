@@ -122,8 +122,117 @@ export interface WarehouseSummary {
   longitude: number | null;
   itemsCount: number;
   stockPercentage: number | null;
-  alert: boolean;
+  alert: boolean | null;
   sourceTable: 'logistics_warehouse' | 'logistics_facility';
+}
+
+export interface InventoryFacility {
+  id: string;
+  code: string;
+  name: string;
+  city: string | null;
+  facilityType: string | null;
+  operationalStatus: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  currentStock: number | null;
+  capacity: number | null;
+  sourceTable: 'logistics_facility';
+}
+
+export type InventoryOperationType =
+  | 'GOODS_RECEIPT'
+  | 'GOODS_ISSUE'
+  | 'TRANSFER'
+  | 'RETURN'
+  | 'PHYSICAL_COUNT'
+  | 'ADJUSTMENT_REQUEST'
+  | 'CRITICAL_SPARES_REVIEW'
+  | 'MATERIAL_CREATED';
+
+export type InventoryOperationStatus =
+  | 'POSTED'
+  | 'IN_PROGRESS'
+  | 'REVIEW_REQUIRED'
+  | 'RECOUNT_REQUIRED'
+  | 'RECONCILED'
+  | 'PENDING_APPROVAL'
+  | 'APPROVED'
+  | 'REJECTED';
+
+export interface InventoryOperationRecord {
+  id: string;
+  reference: string;
+  type: InventoryOperationType | string;
+  status: InventoryOperationStatus | string;
+  sku: string | null;
+  description: string | null;
+  quantity: number | null;
+  uom: string | null;
+  facilityId: string | null;
+  facilityName: string | null;
+  destinationFacilityId: string | null;
+  destinationFacilityName: string | null;
+  actorId: string;
+  approverId: string | null;
+  reason: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StocktakeLine {
+  id: string;
+  stockId: string;
+  sku: string;
+  description: string;
+  facilityId: string;
+  facilityName: string;
+  binLocation: string | null;
+  snapshotQuantity: number;
+  countedQuantity: number | null;
+  variance: number | null;
+  lineStatus: 'PENDING' | 'COUNTED' | 'RECOUNT_REQUIRED' | 'RECOUNTED';
+  countRound: number;
+}
+
+export interface StocktakeSummary {
+  id: string;
+  reference: string;
+  status: InventoryOperationStatus | string;
+  facilityId: string | null;
+  facilityName: string | null;
+  lineCount: number;
+  capturedCount: number;
+  varianceCount: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StocktakeDetail extends StocktakeSummary {
+  reason: string;
+  lines: StocktakeLine[];
+}
+
+export interface InventoryCapabilities {
+  canCreate: boolean;
+  canUpdate: boolean;
+  canApprove: boolean;
+  canReview: boolean;
+}
+
+export interface InventorySearchResultItem {
+  id: string;
+  kind: 'material' | 'location' | 'purchase-order' | 'supplier' | 'work-order' | 'movement';
+  label: string;
+  subLabel: string;
+  status: string | null;
+  fields: Array<{ label: string; value: string }>;
+}
+
+export interface InventorySearchResponse {
+  items: InventorySearchResultItem[];
+  sources: Record<string, DataStatus>;
 }
 
 export interface MovementEvent {
@@ -176,6 +285,12 @@ export interface InventoryOverview {
     quantity: number;
     valueKes: number | null;
     health: HealthBand;
+  }>;
+  categoryBreakdown: Array<{
+    category: string;
+    positions: number;
+    quantity: number;
+    valueKes: number | null;
   }>;
   warehouses: WarehouseSummary[];
   recentActivity: MovementEvent[];

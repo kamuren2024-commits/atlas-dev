@@ -19,7 +19,8 @@ export interface OverviewKpis {
 export interface InventoryOverview {
   kpis: OverviewKpis;
   topMaterialsByValue: Array<{ sku: string; description: string; quantity: number; valueKes: number | null; health: HealthBand }>;
-  warehouses: Array<{ id: string; code: string; name: string; city: string | null; itemsCount: number; stockPercentage: number | null; alert: boolean; sourceTable: string }>;
+  categoryBreakdown: Array<{ category: string; positions: number; quantity: number; valueKes: number | null }>;
+  warehouses: Array<{ id: string; code: string; name: string; city: string | null; itemsCount: number; stockPercentage: number | null; alert: boolean | null; sourceTable: string }>;
   recentActivity: Array<{ id: string; eventType: string; severity: string; source: string | null; message: string; createdAt: string }>;
   network: {
     nodes: Array<{ id: string; kind: string; label: string; sublabel: string; count: number; status: DataStatus }>;
@@ -66,6 +67,49 @@ export interface ProjectRequirement {
 
 export type LoadState = 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized' | 'forbidden';
 
+export interface InventoryFacility {
+  id: string; code: string; name: string; city: string | null;
+  facilityType: string | null; operationalStatus: string | null;
+  latitude: number | null; longitude: number | null;
+  currentStock: number | null; capacity: number | null;
+}
+
+export type InventoryOperationType = 'GOODS_RECEIPT' | 'GOODS_ISSUE' | 'TRANSFER' | 'RETURN' | 'PHYSICAL_COUNT' | 'ADJUSTMENT_REQUEST' | 'CRITICAL_SPARES_REVIEW' | 'MATERIAL_CREATED';
+export type InventoryOperationStatus = 'POSTED' | 'IN_PROGRESS' | 'REVIEW_REQUIRED' | 'RECOUNT_REQUIRED' | 'RECONCILED' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+
+export interface InventoryOperation {
+  id: string; reference: string; type: InventoryOperationType | string; status: InventoryOperationStatus | string;
+  sku: string | null; description: string | null; quantity: number | null; uom: string | null;
+  facilityId: string | null; facilityName: string | null; destinationFacilityId: string | null;
+  destinationFacilityName: string | null; actorId: string; approverId: string | null;
+  reason: string; createdAt: string; updatedAt: string;
+}
+
+export interface StocktakeLine {
+  id: string; stockId: string; sku: string; description: string; facilityId: string; facilityName: string;
+  binLocation: string | null; snapshotQuantity: number; countedQuantity: number | null; variance: number | null;
+  lineStatus: 'PENDING' | 'COUNTED' | 'RECOUNT_REQUIRED' | 'RECOUNTED'; countRound: number;
+}
+
+export interface StocktakeSummary {
+  id: string; reference: string; status: InventoryOperationStatus | string; facilityId: string | null;
+  facilityName: string | null; lineCount: number; capturedCount: number; varianceCount: number;
+  createdBy: string; createdAt: string; updatedAt: string;
+}
+
+export interface StocktakeDetail extends StocktakeSummary { reason: string; lines: StocktakeLine[]; }
+export interface InventoryCapabilities { canCreate: boolean; canUpdate: boolean; canApprove: boolean; canReview: boolean; }
+export interface InventorySearchResult {
+  id: string; kind: 'material' | 'location' | 'purchase-order' | 'supplier' | 'work-order' | 'movement';
+  label: string; subLabel: string; status: string | null; fields: Array<{ label: string; value: string }>;
+}
+export interface InventorySearchResponse { items: InventorySearchResult[]; sources: Record<string, DataStatus>; }
+export interface AddMaterialInput { sku: string; name: string; category: string; uom: string; unitCostKes?: number | null; hazmat?: boolean; idempotencyKey: string; }
+export interface RecordMovementInput {
+  type: 'GOODS_RECEIPT' | 'GOODS_ISSUE' | 'TRANSFER' | 'RETURN'; sku: string; quantity: number;
+  facilityId: string; destinationFacilityId?: string; reason: string; idempotencyKey: string;
+}
+
 export class InventoryApiError extends Error {
   status: number;
   code: string;
@@ -86,13 +130,13 @@ async function handle<T>(res: Response): Promise<{ data: T; dataStatus: DataStat
   return { data: body.data as T, dataStatus: (body.dataStatus as DataStatus) || 'LIVE' };
 }
 
-export function fetchOverview(signal: AbortSignal): Promise<{ data: InventoryOverview; dataStatus: DataStatus }> {
-  return fetch('/api/inventory/overview', { signal }).then(handle<InventoryOverview>);
+export function fetchOverview(signal?: AbortSignal): Promise<{ data: InventoryOverview; dataStatus: DataStatus }> {
+  return fetch('/api/inventory/overview', signal ? { signal } : undefined).then(handle<InventoryOverview>);
 }
 
 export interface PositionQuery { q?: string; facilityId?: string; health?: string; }
 
-export function fetchPositions(query: PositionQuery, signal: AbortSignal): Promise<{ data: { positions: InventoryPosition[]; total: number }; dataStatus: DataStatus }> {
+export function fetchPositions(query: PositionQuery, signal?: AbortSignal): Promise<{ data: { positions: InventoryPosition[]; total: number }; dataStatus: DataStatus }> {
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
   if (query.facilityId) params.set('facilityId', query.facilityId);
@@ -108,10 +152,99 @@ export function formatKes(v: number | null): string {
   return `KES ${Math.round(v).toLocaleString('en-KE')}`;
 }
 
-export function fetchMaterialDetail(sku: string, signal: AbortSignal): Promise<{ data: MaterialDetail; dataStatus: DataStatus }> {
+export function fetchMaterialDetail(sku: string, signal?: AbortSignal): Promise<{ data: MaterialDetail; dataStatus: DataStatus }> {
   return fetch(`/api/inventory/materials/${encodeURIComponent(sku)}`, { signal }).then((res) => handle<MaterialDetail>(res));
 }
 
-export function fetchProjects(signal: AbortSignal): Promise<{ data: { projects: ProjectRequirement[] }; dataStatus: DataStatus }> {
-  return fetch('/api/inventory/projects', { signal }).then((res) => handle<{ projects: ProjectRequirement[] }>(res));
+export function fetchProjects(signal?: AbortSignal): Promise<{ data: { projects: ProjectRequirement[] }; dataStatus: DataStatus }> {
+  return fetch('/api/inventory/projects', signal ? { signal } : undefined).then((res) => handle<{ projects: ProjectRequirement[] }>(res));
+}
+
+async function postJson<T>(path: string, input: Record<string, unknown>): Promise<{ data: T; dataStatus: DataStatus }> {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': String(input.idempotencyKey || crypto.randomUUID()),
+    },
+    body: JSON.stringify(input),
+  });
+  return handle<T>(response);
+}
+
+export function fetchFacilities(signal?: AbortSignal) {
+  return fetch('/api/inventory/facilities', signal ? { signal } : undefined)
+    .then((res) => handle<{ facilities: InventoryFacility[] }>(res));
+}
+
+export function fetchCapabilities(signal?: AbortSignal) {
+  return fetch('/api/inventory/capabilities', signal ? { signal } : undefined)
+    .then((res) => handle<InventoryCapabilities>(res));
+}
+
+export function fetchInventoryMovements(limit = 12, signal?: AbortSignal) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return fetch(`/api/inventory/movements?${params}`, signal ? { signal } : undefined)
+    .then((res) => handle<{ movements: InventoryOperation[]; events: InventoryOverview['recentActivity']; dataStatus: DataStatus }>(res));
+}
+
+export function fetchStocktakes(limit = 8, signal?: AbortSignal) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return fetch(`/api/inventory/stocktakes?${params}`, signal ? { signal } : undefined)
+    .then((res) => handle<{ stocktakes: StocktakeSummary[] }>(res));
+}
+
+export function fetchStocktake(id: string, signal?: AbortSignal) {
+  return fetch(`/api/inventory/stocktakes/${encodeURIComponent(id)}`, signal ? { signal } : undefined)
+    .then((res) => handle<{ stocktake: StocktakeDetail }>(res));
+}
+
+export function searchInventory(query: string, signal?: AbortSignal) {
+  const params = new URLSearchParams({ q: query });
+  return fetch(`/api/inventory/search?${params}`, signal ? { signal } : undefined)
+    .then((res) => handle<InventorySearchResponse>(res));
+}
+
+export function addMaterial(input: AddMaterialInput) {
+  return postJson<{ operation: InventoryOperation }>(`/api/inventory/materials`, input as unknown as Record<string, unknown>);
+}
+
+export function recordInventoryMovement(input: RecordMovementInput) {
+  return postJson<{ operation: InventoryOperation; replayed: boolean }>(`/api/inventory/movements`, input as unknown as Record<string, unknown>);
+}
+
+export function startStocktake(input: { facilityId?: string; reason: string; idempotencyKey: string }) {
+  return postJson<{ stocktake: StocktakeSummary }>(`/api/inventory/stocktakes`, input);
+}
+
+export function captureStocktakeCount(id: string, input: { lineId: string; countedQuantity: number; idempotencyKey: string }) {
+  return postJson<{ line: StocktakeLine }>(`/api/inventory/stocktakes/${encodeURIComponent(id)}/counts`, input);
+}
+
+export function submitStocktake(id: string, input: { reason: string; idempotencyKey: string }) {
+  return postJson<{ stocktake: StocktakeSummary }>(`/api/inventory/stocktakes/${encodeURIComponent(id)}/submit`, input);
+}
+
+export function requestStocktakeRecount(id: string, input: { reason: string; idempotencyKey: string }) {
+  return postJson<{ stocktake: StocktakeSummary }>(`/api/inventory/stocktakes/${encodeURIComponent(id)}/recount`, input);
+}
+
+export function reconcileStocktake(id: string, input: { reason: string; idempotencyKey: string }) {
+  return postJson<{ stocktake: StocktakeSummary }>(`/api/inventory/stocktakes/${encodeURIComponent(id)}/reconcile`, input);
+}
+
+export function requestInventoryAdjustment(input: { sku: string; facilityId: string; targetQuantity: number; reason: string; idempotencyKey: string }) {
+  return postJson<{ operation: InventoryOperation }>(`/api/inventory/adjustments`, input);
+}
+
+export function reviewCriticalSpare(input: { sku: string; classification: 'CRITICAL' | 'STANDARD' | 'UNVERIFIED'; rationale: string; idempotencyKey: string }) {
+  return postJson<{ operation: InventoryOperation }>(`/api/inventory/reviews/critical-spares`, input);
+}
+
+export function approveInventoryOperation(id: string, input: { reason: string; idempotencyKey: string }) {
+  return postJson<{ operation: InventoryOperation }>(`/api/inventory/operations/${encodeURIComponent(id)}/approve`, input);
+}
+
+export function rejectInventoryOperation(id: string, input: { reason: string; idempotencyKey: string }) {
+  return postJson<{ operation: InventoryOperation }>(`/api/inventory/operations/${encodeURIComponent(id)}/reject`, input);
 }

@@ -141,7 +141,7 @@ export class InventoryService {
           latitude: w.latitude ?? null, longitude: w.longitude ?? null,
           itemsCount: Number(w.items_count) || 0,
           stockPercentage: w.stock_percentage ?? null,
-          alert: w.stock_alert_flag === 1,
+          alert: w.stock_alert_flag === 1 ? true : w.stock_alert_flag === 0 ? false : null,
           sourceTable: 'logistics_warehouse' as const,
         }));
       } catch { dataStatus = 'PARTIAL'; }
@@ -159,7 +159,7 @@ export class InventoryService {
           latitude: w.latitude ?? null, longitude: w.longitude ?? null,
           itemsCount: Number(w.current_stock) || 0,
           stockPercentage: w.capacity ? Math.round((Number(w.current_stock) / Number(w.capacity)) * 100) : null,
-          alert: false,
+          alert: null,
           sourceTable: 'logistics_facility' as const,
         }));
       } catch { dataStatus = 'PARTIAL'; }
@@ -232,6 +232,16 @@ export class InventoryService {
     const topMaterialsByValue = [...bySku.values()]
       .sort((a, b) => (b.valueKes || 0) - (a.valueKes || 0))
       .slice(0, 5);
+    const byCategory = new Map<string, { category: string; positions: number; quantity: number; valueKes: number | null }>();
+    for (const position of positions) {
+      const category = position.materialGroup || 'UNCLASSIFIED';
+      const current = byCategory.get(category) || { category, positions: 0, quantity: 0, valueKes: null };
+      current.positions += 1;
+      current.quantity += position.available;
+      if (position.positionValueKes !== null) current.valueKes = (current.valueKes ?? 0) + position.positionValueKes;
+      byCategory.set(category, current);
+    }
+    const categoryBreakdown = [...byCategory.values()].sort((a, b) => b.positions - a.positions);
 
     // Network derived from real counts only. Projects come from the real
     // logistics_project_requirement set (no SKU linkage exists there, so no
@@ -268,6 +278,7 @@ export class InventoryService {
         healthyCount, lowCount, criticalCount, unverifiedCount,
       },
       topMaterialsByValue,
+      categoryBreakdown,
       warehouses,
       recentActivity,
       network: { nodes, edges },

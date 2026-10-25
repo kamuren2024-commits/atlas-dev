@@ -16,6 +16,7 @@ import { EvaluationOSDomainMigration } from './migration-013-evaluation-os-domai
 import { LogisticsGovernanceMigration } from './migration-014-logistics-governance';
 import { EngineeringKernelMigration } from './migration-015-engineering-kernel';
 import { ProjectScheduleMigration } from './migration-016-project-schedule';
+import { InventoryOperationsMigration } from './migration-017-inventory-operations';
 import { isEvaluationOsProductionMode, ProductionModeError } from '../core/config/production-mode';
 
 export type DatabaseLifecycleState =
@@ -509,6 +510,9 @@ export class DatabaseCore {
 
     // Phase 16 — Shared project schedule milestones and Atlas command ledger
     await ProjectScheduleMigration.apply(this);
+
+    // Phase 17 — Tenant-scoped inventory operations, counts, and approvals
+    await InventoryOperationsMigration.apply(this);
 
     return migrationsCount;
   }
