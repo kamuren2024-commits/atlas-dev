@@ -30,6 +30,7 @@ export interface InventoryOverview {
   sap: { state: string; note: string };
   ai: { state: string; note: string };
   dataStatus: DataStatus;
+  provenance: Array<{ source: string; table: string; status: DataStatus }>;
   generatedAt: string;
 }
 
@@ -72,6 +73,24 @@ export interface InventoryFacility {
   facilityType: string | null; operationalStatus: string | null;
   latitude: number | null; longitude: number | null;
   currentStock: number | null; capacity: number | null;
+}
+
+export interface TwinReferenceAsset {
+  asset_id: string;
+  asset_type: string;
+  name: string;
+  substation_id?: string | null;
+  voltage_level?: string | null;
+  rated_voltage_kv?: number | null;
+  region?: string | null;
+  operational_status?: string | null;
+  source_system?: string | null;
+}
+
+export interface TwinReferenceCatalog {
+  assets: TwinReferenceAsset[];
+  dataProvenance: 'REFERENCE_DATA';
+  dataStatus: DataStatus;
 }
 
 export type InventoryOperationType = 'GOODS_RECEIPT' | 'GOODS_ISSUE' | 'TRANSFER' | 'RETURN' | 'PHYSICAL_COUNT' | 'ADJUSTMENT_REQUEST' | 'CRITICAL_SPARES_REVIEW' | 'MATERIAL_CREATED';
@@ -177,6 +196,16 @@ export function fetchFacilities(signal?: AbortSignal) {
     .then((res) => handle<{ facilities: InventoryFacility[] }>(res));
 }
 
+export async function fetchTwinReferenceCatalog(signal?: AbortSignal): Promise<TwinReferenceCatalog> {
+  const response = await fetch('/api/twin/assets', signal ? { signal } : undefined);
+  if (!response.ok) throw new InventoryApiError(response.status, 'TWIN_CATALOG_UNAVAILABLE', 'Reference asset catalog is unavailable.');
+  const body = await response.json().catch(() => null);
+  if (body?.data_provenance !== 'REFERENCE_DATA' || !Array.isArray(body.assets)) {
+    throw new InventoryApiError(502, 'TWIN_CATALOG_INVALID', 'Asset catalog did not return a recognized provenance contract.');
+  }
+  return { assets: body.assets as TwinReferenceAsset[], dataProvenance: 'REFERENCE_DATA', dataStatus: 'PARTIAL' };
+}
+
 export function fetchCapabilities(signal?: AbortSignal) {
   return fetch('/api/inventory/capabilities', signal ? { signal } : undefined)
     .then((res) => handle<InventoryCapabilities>(res));
@@ -185,7 +214,12 @@ export function fetchCapabilities(signal?: AbortSignal) {
 export function fetchInventoryMovements(limit = 12, signal?: AbortSignal) {
   const params = new URLSearchParams({ limit: String(limit) });
   return fetch(`/api/inventory/movements?${params}`, signal ? { signal } : undefined)
-    .then((res) => handle<{ movements: InventoryOperation[]; events: InventoryOverview['recentActivity']; dataStatus: DataStatus }>(res));
+    .then((res) => handle<{ movements: InventoryOperation[]; events: InventoryOverview['recentActivity'] }>(res));
+}
+
+export function fetchApprovals(signal?: AbortSignal) {
+  return fetch('/api/inventory/approvals', signal ? { signal } : undefined)
+    .then((res) => handle<{ approvals: InventoryOperation[] }>(res));
 }
 
 export function fetchStocktakes(limit = 8, signal?: AbortSignal) {

@@ -3,22 +3,26 @@
 // Data-driven SVG network (no cartoon imagery). Unwired areas show
 // explicit CONTRACT PENDING — never fake controls.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import useSWR from 'swr';
 import {
-  Boxes, Truck, Warehouse as WarehouseIcon, FolderKanban, ShieldCheck, Search,
+  Boxes, Truck, FolderKanban, ShieldCheck, Search,
   AlertTriangle, CheckCircle2, RefreshCw, ChevronRight, X, WifiOff, Lock,
 } from 'lucide-react';
 import {
-  fetchMaterialDetail, fetchOverview, fetchPositions, fetchProjects,
+  fetchMaterialDetail, fetchOverview, fetchPositions, fetchProjects, searchInventory,
   formatKes,
-  type DataStatus, type HealthBand, type InventoryOverview, type InventoryPosition, type LoadState,
+  type DataStatus, type HealthBand, type InventoryOverview, type InventoryPosition, type InventorySearchResult, type LoadState,
   type MaterialDetail, type ProjectRequirement,
   InventoryApiError,
 } from './api';
+import InventoryDigitalTwin3D from './InventoryDigitalTwin3D';
+import InventoryOperationsWorkspace, { type InventoryWorkflowTab } from './InventoryOperationsWorkspace';
 
 const NAV = [
   { id: 'overview', label: 'Overview', wired: true },
   { id: 'materials', label: 'Materials & Inventory', wired: true },
+  { id: 'operations', label: 'Operations & Counts', wired: true },
   { id: 'pos', label: 'Purchase Orders', wired: false },
   { id: 'suppliers', label: 'Suppliers', wired: false },
   { id: 'warehouses', label: 'Warehouses & Storage', wired: true },
@@ -31,6 +35,14 @@ const NAV = [
 ] as const;
 
 type NavId = (typeof NAV)[number]['id'];
+
+function deriveLoadState(isLoading: boolean, error: unknown, hasData: boolean, isEmpty = false): LoadState {
+  if (error instanceof InventoryApiError && error.status === 401) return 'unauthorized';
+  if (error instanceof InventoryApiError && error.status === 403) return 'forbidden';
+  if (isLoading && !hasData) return 'loading';
+  if (error || !hasData) return 'error';
+  return isEmpty ? 'empty' : 'ready';
+}
 
 function healthColor(h: HealthBand): string {
   if (h === 'HEALTHY') return '#34d399';
@@ -208,112 +220,79 @@ function deliveryColor(status: string): string {
 
 export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot: (prompt: string) => void }) {
   const [nav, setNav] = useState<NavId>('overview');
-  const [overview, setOverview] = useState<InventoryOverview | null>(null);
-  const [overviewStatus, setOverviewStatus] = useState<DataStatus>('LIVE');
-  const [state, setState] = useState<LoadState>('loading');
-  const [error, setError] = useState('');
-  const [positions, setPositions] = useState<InventoryPosition[]>([]);
-  const [posState, setPosState] = useState<LoadState>('loading');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [selectedSearchResult, setSelectedSearchResult] = useState<InventorySearchResult | null>(null);
   const [facilityFilter, setFacilityFilter] = useState('ALL');
   const [healthFilter, setHealthFilter] = useState('ALL');
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<InventoryPosition | null>(null);
   const [detailSku, setDetailSku] = useState<string | null>(null);
-  const [detail, setDetail] = useState<MaterialDetail | null>(null);
-  const [detailState, setDetailState] = useState<LoadState>('loading');
-  const [projects, setProjects] = useState<ProjectRequirement[]>([]);
-  const [projectsState, setProjectsState] = useState<LoadState>('loading');
-  const abortRef = useRef<AbortController | null>(null);
+  const [workflowTab, setWorkflowTab] = useState<InventoryWorkflowTab>('movement');
+  const [categoryMetric, setCategoryMetric] = useState<'positions' | 'quantity' | 'valueKes'>('positions');
 
-  const loadOverview = useCallback(async () => {
-    abortRef.current?.abort();
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    setState('loading');
-    setError('');
-    try {
-      const res = await fetchOverview(ctrl.signal);
-      setOverview(res.data);
-      setOverviewStatus(res.dataStatus);
-      setState(res.data.kpis.totalPositions === 0 ? 'empty' : 'ready');
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') return;
-      if (e instanceof InventoryApiError) {
-        if (e.status === 401) { setState('unauthorized'); setError(e.message); return; }
-        if (e.status === 403) { setState('forbidden'); setError(e.message); return; }
-      }
-      setState('error');
-      setError(e instanceof Error ? e.message : 'Failed to load inventory overview.');
-    }
-  }, []);
-
-  useEffect(() => { void loadOverview(); return () => abortRef.current?.abort(); }, [loadOverview]);
+  const overviewResult = useSWR('inventory-overview', () => fetchOverview(), { revalidateOnFocus: false, shouldRetryOnError: false });
+  const overview = overviewResult.data?.data || null;
+  const state = deriveLoadState(overviewResult.isLoading, overviewResult.error, Boolean(overview), overview?.kpis.totalPositions === 0);
+  const error = overviewResult.error instanceof Error ? overviewResult.error.message : 'Failed to load inventory overview.';
+  const overviewStatus: DataStatus = overviewResult.error && overview ? 'STALE' : overviewResult.data?.dataStatus || 'UNAVAILABLE';
+  const loadOverview = () => { void overviewResult.mutate(); };
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(t);
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => window.clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => {
-    if (nav !== 'materials' && nav !== 'warehouses') return;
-    const ctrl = new AbortController();
-    setPosState('loading');
-    fetchPositions({ q: debouncedSearch || undefined, facilityId: facilityFilter !== 'ALL' ? facilityFilter : undefined, health: healthFilter !== 'ALL' ? healthFilter : undefined }, ctrl.signal)
-      .then((res) => { setPositions(res.data.positions); setPosState(res.data.positions.length ? 'ready' : 'empty'); })
-      .catch((e) => {
-        if ((e as Error).name === 'AbortError') return;
-        if (e instanceof InventoryApiError && e.status === 401) { setPosState('unauthorized'); return; }
-        if (e instanceof InventoryApiError && e.status === 403) { setPosState('forbidden'); return; }
-        setPosState('error');
-      });
-    return () => ctrl.abort();
-  }, [nav, debouncedSearch, facilityFilter, healthFilter]);
-
-  // Project requirements load once the overview is ready (also feeds the projects tab).
-  useEffect(() => {
-    if (!overview) return;
-    const ctrl = new AbortController();
-    setProjectsState('loading');
-    fetchProjects(ctrl.signal)
-      .then((res) => { setProjects(res.data.projects); setProjectsState(res.data.projects.length ? 'ready' : 'empty'); })
-      .catch((e) => {
-        if ((e as Error).name === 'AbortError') return;
-        if (e instanceof InventoryApiError && e.status === 401) { setProjectsState('unauthorized'); return; }
-        if (e instanceof InventoryApiError && e.status === 403) { setProjectsState('forbidden'); return; }
-        setProjectsState('error');
-      });
-    return () => ctrl.abort();
-  }, [overview]);
-
-  // Canonical material detail loads on selection (row click / top-material click).
-  useEffect(() => {
-    if (!detailSku) { setDetail(null); return; }
-    const ctrl = new AbortController();
-    setDetailState('loading');
-    fetchMaterialDetail(detailSku, ctrl.signal)
-      .then((res) => { setDetail(res.data); setDetailState('ready'); })
-      .catch((e) => {
-        if ((e as Error).name === 'AbortError') return;
-        if (e instanceof InventoryApiError && e.status === 404) { setDetailState('empty'); return; }
-        if (e instanceof InventoryApiError && e.status === 401) { setDetailState('unauthorized'); return; }
-        if (e instanceof InventoryApiError && e.status === 403) { setDetailState('forbidden'); return; }
-        setDetailState('error');
-      });
-    return () => ctrl.abort();
-  }, [detailSku]);
-
-  const facilities = useMemo(
-    () => overview?.warehouses || [],
-    [overview],
+  const positionsEnabled = nav === 'materials' || nav === 'warehouses';
+  const positionResult = useSWR(
+    positionsEnabled ? ['inventory-positions', debouncedSearch, facilityFilter, healthFilter] as const : null,
+    ([, query, facility, health]) => fetchPositions({
+      q: query || undefined,
+      facilityId: facility !== 'ALL' ? facility : undefined,
+      health: health !== 'ALL' ? health : undefined,
+    }),
+    { revalidateOnFocus: false, shouldRetryOnError: false },
   );
+  const positions = positionResult.data?.data.positions || [];
+  const posState = deriveLoadState(positionResult.isLoading, positionResult.error, Boolean(positionResult.data), positions.length === 0);
 
-  const filteredByNode = useMemo(() => {
-    if (!selectedNode) return positions;
-    if (selectedNode === 'warehouses') return positions;
-    return positions;
-  }, [positions, selectedNode]);
+  const projectsResult = useSWR(overview ? 'inventory-projects' : null, () => fetchProjects(), { revalidateOnFocus: false, shouldRetryOnError: false });
+  const projects = projectsResult.data?.data.projects || [];
+  const projectsState = deriveLoadState(projectsResult.isLoading, projectsResult.error, Boolean(projectsResult.data), projects.length === 0);
+
+  const detailResult = useSWR(detailSku ? ['inventory-material', detailSku] as const : null,
+    ([, sku]) => fetchMaterialDetail(sku), { revalidateOnFocus: false, shouldRetryOnError: false });
+  const detail = detailResult.data?.data || null;
+  const detailState = detailSku ? deriveLoadState(detailResult.isLoading, detailResult.error, Boolean(detail), false) : 'empty';
+
+  const globalSearchKey = debouncedSearch.length >= 2 ? ['inventory-global-search', debouncedSearch] as const : null;
+  const globalSearchResult = useSWR(globalSearchKey, ([, query]) => searchInventory(query), { revalidateOnFocus: false, shouldRetryOnError: false });
+  const globalSearchItems = globalSearchResult.data?.data.items || [];
+  const facilities = useMemo(() => overview?.warehouses || [], [overview]);
+  const openSearchResult = (result: InventorySearchResult) => {
+    setSearchFocused(false);
+    setSearch('');
+    if (result.kind === 'material') {
+      const sku = result.fields.find((field) => field.label === 'SKU')?.value;
+      if (sku) {
+        setDetailSku(sku);
+        setNav('materials');
+        setSelectedSearchResult(null);
+        return;
+      }
+    }
+    if (result.kind === 'location') {
+      setFacilityFilter(result.id);
+      setNav('warehouses');
+      setSelectedSearchResult(null);
+      return;
+    }
+    if (result.kind === 'movement') {
+      setWorkflowTab('audit');
+      setNav('operations');
+    }
+    setSelectedSearchResult(result);
+  };
 
   if (state === 'loading') {
     return (
@@ -358,8 +337,8 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
         <div className="flex gap-1 overflow-x-auto p-2 lg:flex-col lg:overflow-visible">
           <p className="hidden px-2 pb-1 pt-2 text-[9px] font-mono uppercase tracking-widest text-slate-500 lg:block">Command Center</p>
           {NAV.map((n) => (
-            <button key={n.id} onClick={() => setNav(n.id)}
-              className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition-colors ${nav === n.id ? 'bg-cyan-950/40 text-cyan-300' : 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-100'}`}>
+            <button key={n.id} onClick={() => { if (n.id === 'transit') setWorkflowTab('audit'); setNav(n.id); }} disabled={!n.wired} title={!n.wired ? `${n.label} is not connected to a verified workflow in this sprint.` : undefined}
+              className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${nav === n.id ? 'bg-cyan-950/40 text-cyan-300' : 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-100'}`}>
               <span className="truncate">{n.label}</span>
               {!n.wired && <span className="ml-auto hidden rounded border border-amber-500/30 px-1 text-[8px] font-mono text-amber-400 lg:inline">PENDING</span>}
             </button>
@@ -374,18 +353,37 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
 
       {/* Main stage */}
       <div className="min-w-0 flex-1 overflow-y-auto">
-        {/* Hero */}
-        <header className="flex flex-wrap items-center gap-3 border-b border-slate-800/70 px-4 py-3 lg:px-6">
-          <div className="min-w-0">
-            <p className="text-[9px] font-mono uppercase tracking-widest text-cyan-400">Salience Atlas · Ketraco</p>
-            <h1 className="truncate text-base font-bold text-white lg:text-lg">INVENTORY INTELLIGENCE OS</h1>
-            <p className="text-[11px] text-slate-400">AI-Powered · Real-Time · End-to-End · KETRACO</p>
-          </div>
-          <div className="relative ml-auto w-full max-w-xs">
-            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search inventory, PO, asset, location…" aria-label="Search inventory"
-              className="w-full rounded-lg border border-slate-700 bg-slate-900/60 py-1.5 pl-8 pr-3 text-xs text-white placeholder-slate-500 focus:border-cyan-500/60 focus:outline-none" />
+        <header className="relative isolate overflow-visible border-b border-cyan-500/15 bg-[#05070D] px-4 py-5 lg:px-6" style={{ backgroundImage: "linear-gradient(90deg, rgba(4,8,16,.97) 0%, rgba(4,8,16,.84) 46%, rgba(4,8,16,.30) 100%), url('/images/inventory-hero-grid.png')", backgroundPosition: 'center right', backgroundSize: 'cover' }}>
+          <div className="relative flex flex-wrap items-end gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-mono uppercase tracking-[0.24em] text-cyan-300">KETRACO · Inventory Management</p>
+              <h1 className="mt-1 text-xl font-bold tracking-wide text-white lg:text-2xl">INVENTORY INTELLIGENCE</h1>
+              <p className="mt-1 max-w-xl text-[11px] text-slate-300">Stock, material movement, and count controls backed by the tenant ledger.</p>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[9px] font-mono text-slate-400">
+                <span>DATA <span className="text-cyan-200">{overviewStatus}</span></span>
+                <span>SAP <span className="text-slate-200">{overview.sap.state}</span></span>
+                <span>AI <span className="text-slate-200">{overview.ai.state}</span></span>
+                <span>UPDATED <span className="text-slate-200">{formatActivityTime(overview.generatedAt)}</span></span>
+              </div>
+            </div>
+            <div className="relative z-10 w-full max-w-md xl:ml-auto">
+              <label htmlFor="inventory-global-search" className="mb-1 block text-[9px] font-mono uppercase tracking-wider text-slate-300">Search authorized inventory records</label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-2.5 size-3.5 text-slate-500" />
+                <input id="inventory-global-search" value={search} onChange={(event) => setSearch(event.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
+                  placeholder="Material, PO, supplier, work order, location…" aria-label="Search inventory records" aria-expanded={searchFocused && debouncedSearch.length >= 2} aria-controls="inventory-search-results" autoComplete="off"
+                  className="w-full rounded-lg border border-cyan-500/25 bg-[#07101d]/90 py-2 pl-9 pr-9 text-xs text-white placeholder-slate-500 focus:border-cyan-400/70 focus:outline-none focus:ring-2 focus:ring-cyan-400/10" />
+                {search && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setSearch(''); setSearchFocused(false); }} className="absolute right-2.5 top-2 rounded p-0.5 text-slate-500 hover:text-white" aria-label="Clear inventory search"><X className="size-3.5" /></button>}
+              </div>
+              {searchFocused && debouncedSearch.length >= 2 && (
+                <div id="inventory-search-results" role="listbox" aria-label="Inventory search results" className="absolute inset-x-0 top-full z-20 mt-2 max-h-72 overflow-auto rounded-xl border border-cyan-500/20 bg-[#07101d] p-1 shadow-2xl">
+                  {globalSearchResult.isLoading && <p className="px-3 py-3 text-[10px] font-mono text-cyan-200">Searching authorized source records…</p>}
+                  {globalSearchResult.error && <p className="px-3 py-3 text-[10px] text-rose-200">Search failed. Retry or check your inventory permissions.</p>}
+                  {!globalSearchResult.isLoading && !globalSearchResult.error && globalSearchItems.length === 0 && <p className="px-3 py-3 text-[10px] text-slate-400">No matching records found in configured sources.</p>}
+                  {globalSearchItems.map((result) => <button key={`${result.kind}-${result.id}`} type="button" role="option" aria-selected={false} onMouseDown={(event) => event.preventDefault()} onClick={() => openSearchResult(result)} className="flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left hover:bg-cyan-500/10"><span className="mt-1 size-1.5 shrink-0 rounded-full bg-cyan-300" /><span className="min-w-0"><span className="block truncate text-[10px] font-medium text-slate-100">{result.label}</span><span className="block truncate text-[9px] font-mono text-slate-500">{result.kind.replaceAll('-', ' ')} · {result.subLabel}</span></span><span className="ml-auto shrink-0 font-mono text-[8px] text-slate-500">{result.status || 'NO STATUS'}</span></button>)}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -396,156 +394,81 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
         )}
 
         {/* KPI strip */}
-        <section aria-label="Inventory KPIs" className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 lg:px-6 xl:grid-cols-7">
+        <section aria-label="Inventory KPIs" className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 lg:px-6 xl:grid-cols-5">
           {[
-            { label: 'Total Inventory Value', value: formatKes(k.totalInventoryValueKes), sub: `${k.totalMaterials} SKUs` },
-            { label: 'Total Positions', value: String(k.totalPositions), sub: 'stock rows (facility × SKU)' },
-            { label: 'On Order (POs)', value: String(k.openPurchaseOrders), sub: 'open purchase / transfer' },
-            { label: 'In Transit', value: String(k.inTransitMovements), sub: 'movements IN_TRANSIT' },
-            { label: 'Warehouses', value: String(k.warehouses), sub: 'locations' },
-            { label: 'Projects', value: k.projectsActive === null ? '—' : String(k.projectsActive), sub: k.projectsActive === null ? 'CONTRACT PENDING' : 'active projects' },
-            { label: 'Stock Health', value: k.stockHealthPct === null ? '—' : `${k.stockHealthPct}%`, sub: k.stockHealthPct === null ? 'insufficient evidence' : 'healthy / classified' },
-          ].map((t) => (
-            <div key={t.label} className="rounded-xl border border-cyan-500/10 bg-[#0a1224]/80 p-3">
-              <p className="text-[9px] font-mono uppercase tracking-wider text-slate-400">{t.label}</p>
-              <p className="mt-0.5 truncate text-base font-bold text-white">{t.value}</p>
-              <p className="truncate text-[10px] text-slate-500">{t.sub}</p>
+            { label: 'Inventory Value', value: formatKes(k.totalInventoryValueKes), sub: k.totalInventoryValueKes === null ? 'unit cost coverage unavailable' : 'on-hand value from stock ledger' },
+            { label: 'Materials', value: String(k.totalMaterials), sub: 'distinct tenant SKUs' },
+            { label: 'Stock Positions', value: String(k.totalPositions), sub: 'facility × material rows' },
+            { label: 'Open Purchase Orders', value: String(k.openPurchaseOrders), sub: 'configured procurement records' },
+            { label: 'In Transit', value: String(k.inTransitMovements), sub: 'movement records in transit' },
+          ].map((tile) => (
+            <div key={tile.label} className="rounded-xl border border-cyan-500/15 bg-[#091321]/90 p-3 shadow-[0_8px_28px_rgba(0,0,0,0.16)]">
+              <p className="text-[9px] font-mono uppercase tracking-wider text-slate-400">{tile.label}</p>
+              <p className="mt-1 truncate text-base font-bold text-white lg:text-lg">{tile.value}</p>
+              <p className="truncate text-[9px] text-slate-500">{tile.sub}</p>
             </div>
           ))}
         </section>
 
+        {selectedSearchResult && (
+          <section className="mx-3 mt-3 rounded-xl border border-cyan-500/20 bg-[#091321] p-3 lg:mx-6" role="dialog" aria-label="Inventory search record detail">
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[9px] font-mono uppercase tracking-wider text-cyan-300">{selectedSearchResult.kind.replaceAll('-', ' ')} · source record</p><h2 className="mt-1 truncate text-xs font-semibold text-white">{selectedSearchResult.label}</h2><p className="mt-0.5 text-[10px] text-slate-400">{selectedSearchResult.subLabel}</p></div><button type="button" onClick={() => setSelectedSearchResult(null)} className="rounded p-1 text-slate-400 hover:text-white" aria-label="Close search record detail"><X className="size-4" /></button></div>
+            <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">{selectedSearchResult.fields.map((field) => <div key={`${field.label}-${field.value}`} className="rounded-lg border border-slate-800 bg-[#07101d] px-2 py-1.5"><dt className="text-[8px] font-mono uppercase text-slate-500">{field.label}</dt><dd className="mt-0.5 break-words text-[10px] text-slate-200">{field.value}</dd></div>)}</dl>
+            <p className="mt-2 text-[9px] text-slate-500">Only fields returned by the authorized search source are shown. A richer detail endpoint is not registered for this record type.</p>
+          </section>
+        )}
+
         {nav === 'overview' && (
-          <div className="grid grid-cols-1 gap-3 p-3 lg:px-6 xl:grid-cols-3">
-            {/* Network hero */}
-            <section className="rounded-2xl border border-cyan-500/10 bg-[#0a1224]/80 p-4 xl:col-span-2" aria-label="Supply chain network">
-              <div className="mb-1 flex items-center justify-between">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-white">Supply Chain Network</h2>
-                {selectedNode && (
-                  <button onClick={() => setSelectedNode(null)} className="inline-flex items-center gap-1 text-[10px] font-mono text-slate-400 hover:text-white">
-                    <X className="h-3 w-3" /> CLEAR SELECTION
-                  </button>
-                )}
-              </div>
-              <p className="mb-3 text-[11px] text-slate-400">From Suppliers to Assets — End-to-End Visibility</p>
-              <SupplyNetworkGraph overview={overview} selected={selectedNode} onSelect={setSelectedNode} />
-              {/* Warehouse twin summary (data-driven occupancy) */}
-              <div className="mt-4 border-t border-slate-800/70 pt-3">
-                <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-300">Warehouse Digital Twin — occupancy (live)</h3>
-                {facilities.length === 0 ? (
-                  <p className="text-[11px] text-slate-500">UNAVAILABLE — no warehouse source returned rows.</p>
-                ) : (
-                  <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {facilities.slice(0, 4).map((w) => (
-                      <li key={w.id}>
-                        <button onClick={() => { setSelectedMaterial(null); setNav('warehouses'); setFacilityFilter(w.id); }}
-                          className="w-full rounded-lg border border-slate-800 bg-slate-900/40 p-2.5 text-left hover:border-cyan-500/40">
-                          <span className="flex items-center justify-between text-[11px] font-bold text-white">
-                            <span className="truncate">{w.name}</span>
-                            {w.alert && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />}
-                          </span>
-                          <span className="mt-1 block h-1.5 overflow-hidden rounded bg-slate-800">
-                            <span className="block h-full rounded bg-cyan-400" style={{ width: `${Math.min(100, w.stockPercentage ?? 0)}%` }} />
-                          </span>
-                          <span className="mt-1 block text-[10px] font-mono text-slate-400">
-                            {w.stockPercentage === null ? 'occupancy n/a' : `${w.stockPercentage}%`} · {w.itemsCount.toLocaleString()} units · {w.city || '—'}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </section>
+          <div className="grid grid-cols-1 gap-3 p-3 lg:px-6 xl:grid-cols-12">
+            <div className="min-w-0 xl:col-span-8 xl:row-span-2"><InventoryDigitalTwin3D /></div>
 
-            {/* Right rail */}
-            <div className="space-y-3">
-              <section className="rounded-2xl border border-cyan-500/10 bg-[#0a1224]/80 p-4" aria-label="Inventory health">
-                <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-white">Inventory Health</h2>
-                {k.healthyCount + k.lowCount + k.criticalCount === 0 ? (
-                  <p className="text-[11px] text-slate-500">UNVERIFIED — no classified positions. Consumption and lead-time inputs required before forecasting stockout.</p>
-                ) : (
-                  <Donut healthy={k.healthyCount} low={k.lowCount} critical={k.criticalCount} total={k.healthyCount + k.lowCount + k.criticalCount} />
-                )}
-                {k.unverifiedCount > 0 && <p className="mt-2 text-[10px] font-mono text-slate-500">{k.unverifiedCount} positions UNVERIFIED (insufficient evidence).</p>}
+            <div className="flex min-w-0 flex-col gap-3 xl:col-span-4 xl:row-span-2">
+              <section className="rounded-2xl border border-cyan-500/15 bg-[#091321]/90 p-4" aria-label="Inventory health">
+                <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-xs font-bold uppercase tracking-wider text-white">Inventory health</h2><StatusDot status={overviewStatus} /></div>
+                {k.healthyCount + k.lowCount + k.criticalCount === 0 ? <p className="text-[10px] leading-relaxed text-slate-500">UNVERIFIED — no classified positions. Consumption and lead-time inputs are required before stockout claims.</p> : <Donut healthy={k.healthyCount} low={k.lowCount} critical={k.criticalCount} total={k.healthyCount + k.lowCount + k.criticalCount} />}
+                {k.unverifiedCount > 0 && <p className="mt-2 text-[9px] font-mono text-slate-500">{k.unverifiedCount} positions remain unverified.</p>}
               </section>
 
-              <section className="rounded-2xl border border-cyan-500/10 bg-[#0a1224]/80 p-4" aria-label="Top materials by value">
-                <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-white">Top Materials by Value</h2>
-                {overview.topMaterialsByValue.length === 0 ? (
-                  <p className="text-[11px] text-slate-500">UNAVAILABLE — no valued positions (unit costs absent).</p>
-                ) : (
-                  <ol className="space-y-1.5">
-                    {overview.topMaterialsByValue.map((m, i) => (
-                      <li key={m.sku}>
-                        <button onClick={() => { setDetailSku(m.sku); setNav('materials'); }}
-                          className="flex w-full items-center gap-2 rounded-lg px-1 py-0.5 text-left text-[11px] hover:bg-cyan-500/5" title="Open material intelligence">
-                          <span className="w-4 shrink-0 font-mono text-slate-500">{i + 1}</span>
-                          <span className="min-w-0 flex-1 truncate text-slate-200">{m.description}</span>
-                          <span className="shrink-0 font-mono text-slate-400">{formatKes(m.valueKes)}</span>
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: healthColor(m.health) }} title={m.health} />
-                        </button>
-                      </li>
-                    ))}
-                  </ol>
-                )}
+              <section className="rounded-2xl border border-cyan-500/15 bg-[#091321]/90 p-4" aria-label="Inventory category distribution">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-xs font-bold uppercase tracking-wider text-white">Category distribution</h2><p className="mt-1 text-[9px] font-mono text-slate-500">From tenant stock positions</p></div><div role="group" aria-label="Category chart metric" className="flex gap-1">{(['positions', 'quantity', 'valueKes'] as const).map((metric) => <button key={metric} type="button" aria-pressed={categoryMetric === metric} onClick={() => setCategoryMetric(metric)} className={`rounded border px-2 py-1 text-[8px] font-mono ${categoryMetric === metric ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-200' : 'border-slate-700 text-slate-500 hover:text-slate-200'}`}>{metric === 'positions' ? 'ROWS' : metric === 'quantity' ? 'UNITS' : 'VALUE'}</button>)}</div></div>
+                {overview.categoryBreakdown.length === 0 ? <p className="py-3 text-[10px] text-slate-500">No category rows are available.</p> : <ul className="flex flex-col gap-2">{overview.categoryBreakdown.slice(0, 6).map((category) => {
+                  const value = categoryMetric === 'valueKes' ? category.valueKes : category[categoryMetric];
+                  const maxValue = Math.max(1, ...overview.categoryBreakdown.map((item) => categoryMetric === 'valueKes' ? item.valueKes || 0 : item[categoryMetric]));
+                  const width = value === null ? 0 : Math.min(100, Math.max(0, (value / maxValue) * 100));
+                  return <li key={category.category}><div className="mb-1 flex items-center justify-between gap-2 text-[9px]"><span className="truncate text-slate-300">{category.category}</span><span className="shrink-0 font-mono text-slate-400">{value === null ? 'UNVALUED' : categoryMetric === 'valueKes' ? formatKes(value) : value.toLocaleString()}</span></div><div className="h-1.5 overflow-hidden rounded bg-slate-800"><div className="h-full rounded bg-cyan-400/80 transition-[width]" style={{ width: `${width}%` }} /></div></li>;
+                })}</ul>}
               </section>
 
-              <section className="rounded-2xl border border-amber-500/20 bg-[#0a1224]/80 p-4" aria-label="AI insights">
-                <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-white">AI Insights</h2>
-                <p className="text-[11px] text-slate-400">CONTRACT PENDING — replenishment and vision recommenders land in Slices 8–9. No fabricated confidence is shown.</p>
-                <button onClick={() => onAskCopilot('Summarise current inventory exposure from verified Atlas evidence only.')}
-                  className="mt-2 w-full rounded-lg border border-cyan-500/40 px-3 py-2 text-[11px] font-mono text-cyan-300 hover:bg-cyan-500/10">
-                  ASK ATLAS COPILOT (LIVE GATEWAY)
-                </button>
-              </section>
-
-              <section className="rounded-2xl border border-cyan-500/10 bg-[#0a1224]/80 p-4" aria-label="Recent activity">
-                <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-white">Recent Activity</h2>
-                {overview.recentActivity.length === 0 ? (
-                  <p className="text-[11px] text-slate-500">UNAVAILABLE — no logistics events for this tenant.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {overview.recentActivity.slice(0, 5).map((e) => (
-                      <li key={e.id} className="flex items-start gap-2 text-[11px]">
-                        {e.severity === 'CRITICAL' || e.severity === 'WARNING'
-                          ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
-                          : <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />}
-                        <span className="min-w-0"><span className="block truncate text-slate-200">{e.message}</span>
-                          <span className="font-mono text-[10px] text-slate-500">{e.eventType} · {formatActivityTime(e.createdAt)}</span></span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+              <section className="rounded-2xl border border-slate-800 bg-[#091321]/90 p-4" aria-label="Recent inventory activity">
+                <div className="mb-2 flex items-center justify-between"><h2 className="text-xs font-bold uppercase tracking-wider text-white">Recent activity</h2><button type="button" onClick={() => { setWorkflowTab('audit'); setNav('operations'); }} className="text-[9px] font-mono text-cyan-300 hover:underline">OPEN LEDGER</button></div>
+                {overview.recentActivity.length === 0 ? <p className="text-[10px] text-slate-500">No logistics event records are available for this tenant.</p> : <ul className="flex flex-col gap-2">{overview.recentActivity.slice(0, 4).map((event) => <li key={event.id} className="flex items-start gap-2 text-[10px]">{event.severity === 'CRITICAL' || event.severity === 'WARNING' ? <AlertTriangle className="mt-0.5 size-3 shrink-0 text-amber-300" /> : <CheckCircle2 className="mt-0.5 size-3 shrink-0 text-emerald-300" />}<span className="min-w-0"><span className="block truncate text-slate-200">{event.message}</span><span className="font-mono text-[9px] text-slate-500">{event.eventType} · {formatActivityTime(event.createdAt)}</span></span></li>)}</ul>}
               </section>
             </div>
-            {projectsState === 'ready' && projects.length > 0 && (
-              <section className="px-3 pb-3 lg:px-6" aria-label="Tracked project requirements">
-                <div className="rounded-2xl border border-cyan-500/10 bg-[#0a1224]/80 p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <h2 className="text-xs font-bold uppercase tracking-wider text-white">Projects &amp; Deployment — tracked requirements</h2>
-                    <button onClick={() => setNav('projects')} className="font-mono text-[10px] text-cyan-400 hover:underline">View all</button>
-                  </div>
-                  <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    {projects.slice(0, 3).map((p) => (
-                      <li key={p.id} className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2">
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: deliveryColor(p.deliveryStatus) }} title={p.deliveryStatus} />
-                        <span className="min-w-0 flex-1 truncate text-[11px] text-slate-200">{p.projectName} <span className="text-slate-500">· {p.description.slice(0, 60)}</span></span>
-                        <span className="shrink-0 font-mono text-[10px]" style={{ color: deliveryColor(p.deliveryStatus) }}>{p.deliveryStatus}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
-            )}
+
+            <section className="rounded-2xl border border-amber-500/20 bg-[#091321]/90 p-4 xl:col-span-4" aria-label="AI inventory insights">
+              <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-xs font-bold uppercase tracking-wider text-white">AI recommendations</h2><span className="rounded border border-amber-500/20 px-2 py-1 text-[8px] font-mono text-amber-200">{overview.ai.state}</span></div>
+              <p className="text-[10px] leading-relaxed text-slate-400">{overview.ai.note} Recommendations are not generated from missing telemetry or assumed lead times.</p>
+              <button type="button" onClick={() => onAskCopilot('Analyze the current tenant inventory using verified stock-position and material records only. Cite source records, state missing inputs, and do not infer telemetry or execute stock changes.')}
+                className="mt-3 w-full rounded-lg border border-cyan-500/40 px-3 py-2 text-[10px] font-mono text-cyan-200 hover:bg-cyan-500/10">ASK ATLAS COPILOT WITH VERIFIED INVENTORY CONTEXT</button>
+            </section>
+
+            <section className="rounded-2xl border border-cyan-500/15 bg-[#091321]/90 p-4 xl:col-span-4" aria-label="Top materials by value">
+              <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-xs font-bold uppercase tracking-wider text-white">Top materials by value</h2><button type="button" onClick={() => setNav('materials')} className="text-[9px] font-mono text-cyan-300 hover:underline">ALL MATERIALS</button></div>
+              {overview.topMaterialsByValue.length === 0 ? <p className="py-3 text-[10px] text-slate-500">No valued positions are available; unit-cost coverage is absent.</p> : <ol className="flex flex-col divide-y divide-slate-800/70">{overview.topMaterialsByValue.slice(0, 5).map((material, index) => <li key={material.sku}><button type="button" onClick={() => { setDetailSku(material.sku); setNav('materials'); }} className="flex w-full items-center gap-2 py-2 text-left hover:bg-cyan-500/5"><span className="w-4 shrink-0 font-mono text-[9px] text-slate-500">{index + 1}</span><span className="min-w-0 flex-1"><span className="block truncate text-[10px] text-slate-200">{material.description}</span><span className="font-mono text-[9px] text-slate-500">{material.sku} · {material.health}</span></span><span className="shrink-0 font-mono text-[10px] text-slate-300">{formatKes(material.valueKes)}</span><span className="size-2 shrink-0 rounded-full" style={{ background: healthColor(material.health) }} title={material.health} /></button></li>)}</ol>}
+            </section>
+
+            <div className="min-w-0 xl:col-span-4"><InventoryOperationsWorkspace compact activeTab={workflowTab} onTabChange={setWorkflowTab} onNavigate={(tab) => { setWorkflowTab(tab); setNav('operations'); }} onOpenMaterial={(sku) => { setDetailSku(sku); setNav('materials'); }} onRefresh={() => overviewResult.mutate()} /></div>
+
+            {projectsState === 'ready' && projects.length > 0 && <section className="rounded-2xl border border-cyan-500/15 bg-[#091321]/90 p-4 xl:col-span-12" aria-label="Tracked project requirements"><div className="mb-2 flex items-center justify-between"><h2 className="text-xs font-bold uppercase tracking-wider text-white">Projects &amp; deployment requirements</h2><button type="button" onClick={() => setNav('projects')} className="font-mono text-[9px] text-cyan-300 hover:underline">VIEW ALL</button></div><ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">{projects.slice(0, 3).map((project) => <li key={project.id} className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2"><span className="size-2 shrink-0 rounded-full" style={{ background: deliveryColor(project.deliveryStatus) }} title={project.deliveryStatus} /><span className="min-w-0 flex-1 truncate text-[10px] text-slate-200">{project.projectName} <span className="text-slate-500">· {project.description.slice(0, 60)}</span></span><span className="shrink-0 font-mono text-[9px]" style={{ color: deliveryColor(project.deliveryStatus) }}>{project.deliveryStatus}</span></li>)}</ul></section>}
           </div>
         )}
 
-        {(nav === 'materials' || nav === 'warehouses' || nav === 'transit') && (
+        {(nav === 'materials' || nav === 'warehouses') && (
           <section className="p-3 lg:px-6" aria-label="Inventory positions">
             <div className="rounded-2xl border border-cyan-500/10 bg-[#0a1224]/80 p-4">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-white">
-                  {nav === 'materials' ? 'Materials & Inventory Positions' : nav === 'warehouses' ? 'Warehouses & Storage' : 'Transit & Logistics'}
+                  {nav === 'materials' ? 'Materials & Inventory Positions' : 'Warehouses & Storage'}
                 </h2>
                 <span className="text-[10px] font-mono text-slate-500">canonical ledger · Atlas persistence</span>
                 <div className="ml-auto flex flex-wrap gap-2">
@@ -579,7 +502,7 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
                       </tr>
                     </thead>
                     <tbody>
-                      {(selectedNode ? filteredByNode : positions).slice(0, 60).map((p) => (
+                      {positions.slice(0, 60).map((p) => (
                         <tr key={`${p.sku}-${p.facilityId}`}
                           onClick={() => { setSelectedMaterial(p); setDetailSku(p.sku); }}
                           className={`cursor-pointer border-b border-slate-800/50 hover:bg-cyan-500/5 ${detailSku === p.sku ? 'bg-cyan-500/5' : ''}`}>
@@ -673,6 +596,12 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
           </section>
         )}
 
+        {(nav === 'operations' || nav === 'transit') && (
+          <section className="p-3 lg:px-6" aria-label="Inventory operations and audit">
+            <InventoryOperationsWorkspace activeTab={workflowTab} onTabChange={setWorkflowTab} onNavigate={(tab) => { setWorkflowTab(tab); setNav('operations'); }} onOpenMaterial={(sku) => { setDetailSku(sku); setNav('materials'); }} onRefresh={() => Promise.all([overviewResult.mutate(), positionResult.mutate()])} />
+          </section>
+        )}
+
         {nav === 'projects' && (
           <section className="p-3 lg:px-6" aria-label="Projects and deployment">
             <div className="rounded-2xl border border-cyan-500/10 bg-[#0a1224]/80 p-4">
@@ -710,7 +639,7 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
           </section>
         )}
 
-        {!['overview', 'materials', 'warehouses', 'transit', 'projects'].includes(nav) && (
+        {!['overview', 'materials', 'warehouses', 'transit', 'projects', 'operations'].includes(nav) && (
           <section className="p-3 lg:px-6" aria-label="Pending contract">
             <div className="rounded-2xl border border-amber-500/20 bg-[#0a1224]/80 p-8 text-center">
               <Boxes className="mx-auto h-8 w-8 text-amber-400" />

@@ -24,7 +24,7 @@
     "test:graph-phase0": "vitest run backend/tests/graph-phase0.test.ts",
     "test:graph-phase0:eval": "node scripts/run-graph-phase0-eval.mjs",
     "test:agent-control-plane": "tsx backend/tests/agent-control-plane.test.ts",
-    "test:logistics-security": "node --import tsx --test backend/tests/logistics-security.integration.test.ts backend/tests/logistics-orchestrator-workflow-guard.test.ts backend/tests/logistics-source-provenance.test.ts",
+    "test:logistics-security": "node --import tsx --test backend/tests/inventory-operations.integration.test.ts backend/tests/logistics-security.integration.test.ts backend/tests/logistics-orchestrator-workflow-guard.test.ts backend/tests/logistics-source-provenance.test.ts",
     "test:architecture": "tsx backend/evaluation/legal-control-plane/phase4-control-plane.test.ts",
     "test:contracts": "tsx backend/evaluation/legal-control-plane/phase4-control-plane.test.ts",
     "eval": "tsx backend/evaluation/eval-harness.ts all",

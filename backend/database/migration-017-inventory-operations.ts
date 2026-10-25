@@ -46,6 +46,11 @@ export class InventoryOperationsMigration {
       )
     `);
 
+    const countLineColumns = await db.all<{ name: string }>('PRAGMA table_info(inventory_count_lines)');
+    if (!countLineColumns.some((column) => column.name === 'last_idempotency_key')) {
+      await db.run('ALTER TABLE inventory_count_lines ADD COLUMN last_idempotency_key TEXT');
+    }
+
     await db.run('CREATE INDEX IF NOT EXISTS idx_inventory_operations_tenant_created ON inventory_operations (tenant_id, created_at DESC)');
     await db.run('CREATE INDEX IF NOT EXISTS idx_inventory_operations_tenant_type_status ON inventory_operations (tenant_id, operation_type, status)');
     await db.run('CREATE INDEX IF NOT EXISTS idx_inventory_count_lines_operation_status ON inventory_count_lines (operation_id, line_status)');

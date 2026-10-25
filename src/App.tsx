@@ -921,7 +921,7 @@ function AppInner() {
           
           {/* Main Module Render Block inside animated presence container */}
           <div className="atlas-module-stage relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            {activeModule !== 'project' && activeModule !== 'overview' && <MinimalPageHero activeModule={activeModule} />}
+            {activeModule !== 'project' && activeModule !== 'overview' && activeModule !== 'inventory' && <MinimalPageHero activeModule={activeModule} />}
             <Suspense
               fallback={
                 <div className="flex flex-1 items-center justify-center bg-[#05070D] text-cyan-300" role="status" aria-live="polite">

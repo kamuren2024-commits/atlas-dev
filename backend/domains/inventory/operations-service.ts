@@ -506,6 +506,9 @@ export class InventoryOperationsService {
       );
       if (!row) throw new InventoryOperationError('Count line was not found.', 404, 'COUNT_LINE_NOT_FOUND');
       if (row.last_idempotency_key === key) {
+        if (Number(row.counted_quantity) !== quantity) {
+          throw new InventoryOperationError('This Idempotency-Key was already used for a different count.', 409, 'IDEMPOTENCY_KEY_CONFLICT');
+        }
         const detail = await this.getStocktake(tenantId, operationId);
         const replayedLine = detail?.lines.find((line) => line.id === lineId);
         if (replayedLine) return replayedLine;
@@ -582,15 +585,15 @@ export class InventoryOperationsService {
       const changedLines = detail.lines.filter((line) => line.variance !== null && line.variance !== 0);
       for (const line of changedLines) {
         if (line.countedQuantity === null) throw new InventoryOperationError('A counted quantity is missing.', 409, 'COUNTS_INCOMPLETE');
-        const current = await this.db.get<any>(`SELECT reserved FROM logistics_stock WHERE tenant_id = ? AND id = ?`, [tenantId, line.stockId]);
+        const current = await this.db.get<any>(`SELECT quantity, reserved FROM logistics_stock WHERE tenant_id = ? AND id = ?`, [tenantId, line.stockId]);
         if (!current) throw new InventoryOperationError('A stock row changed after the count snapshot.', 409, 'STOCK_ROW_CHANGED');
         if (line.countedQuantity < (Number(current.reserved) || 0)) throw new InventoryOperationError(`Count for ${line.sku} is below reserved stock. Resolve reservations before reconciliation.`, 409, 'COUNT_BELOW_RESERVED');
         const update = await this.db.run(
           `UPDATE logistics_stock SET quantity = ?, last_counted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-           WHERE tenant_id = ? AND id = ?`,
-          [line.countedQuantity, tenantId, line.stockId],
+           WHERE tenant_id = ? AND id = ? AND quantity = ?`,
+          [line.countedQuantity, tenantId, line.stockId, line.snapshotQuantity],
         );
-        if (update.changes !== 1) throw new InventoryOperationError('A stock row changed during reconciliation.', 409, 'STOCK_CONFLICT');
+        if (update.changes !== 1) throw new InventoryOperationError('Stock changed after the count snapshot; refresh and recount before reconciliation.', 409, 'STOCK_CONFLICT');
         await this.writeEvent(tenantId, 'INVENTORY_RECONCILIATION_LINE_POSTED', `Count variance reconciled for ${line.sku}.`, 'stock', line.stockId,
           { operationId: id, sku: line.sku, before: line.snapshotQuantity, after: line.countedQuantity, variance: line.variance, actorId, reason });
       }
@@ -698,11 +701,13 @@ export class InventoryOperationsService {
       if (raw.operation_type === 'MATERIAL_CREATED') {
         await this.db.run(`UPDATE logistics_product SET status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ? AND id = ?`, [tenantId, raw.product_id]);
       } else if (raw.operation_type === 'ADJUSTMENT_REQUEST') {
-        const stock = await this.db.get<any>(`SELECT id, reserved FROM logistics_stock WHERE tenant_id = ? AND id = ?`, [tenantId, metadata.stockId]);
+        const stock = await this.db.get<any>(`SELECT id, quantity, reserved FROM logistics_stock WHERE tenant_id = ? AND id = ?`, [tenantId, metadata.stockId]);
         if (!stock) throw new InventoryOperationError('The stock position changed or was removed; refresh before approval.', 409, 'STOCK_POSITION_CHANGED');
         const target = Number(metadata.targetQuantity);
+        const snapshotQuantity = Number(metadata.snapshotQuantity);
+        if (Number(stock.quantity) !== snapshotQuantity) throw new InventoryOperationError('Stock changed after the request; review the current balance before approving.', 409, 'STOCK_POSITION_CHANGED');
         if (!Number.isSafeInteger(target) || target < (Number(stock.reserved) || 0)) throw new InventoryOperationError('The approved quantity is invalid or lower than reserved stock.', 409, 'TARGET_BELOW_RESERVED');
-        const update = await this.db.run(`UPDATE logistics_stock SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ? AND id = ?`, [target, tenantId, stock.id]);
+        const update = await this.db.run(`UPDATE logistics_stock SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = ? AND id = ? AND quantity = ?`, [target, tenantId, stock.id, snapshotQuantity]);
         if (update.changes !== 1) throw new InventoryOperationError('Stock changed during approval.', 409, 'STOCK_CONFLICT');
         const before = Number(metadata.snapshotQuantity) || 0;
         await this.db.run(
