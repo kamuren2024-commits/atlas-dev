@@ -4,7 +4,7 @@ import React, { lazy, Suspense } from 'react';
 
 const InventoryIntelligenceOS = lazy(() => import('./inventory/InventoryIntelligenceOS'));
 
-export default function InventoryHub({ onAskCopilot }: { onAskCopilot: (prompt: string) => void }) {
+export default function InventoryHub() {
   return (
     <Suspense
       fallback={
@@ -14,7 +14,7 @@ export default function InventoryHub({ onAskCopilot }: { onAskCopilot: (prompt: 
         </div>
       }
     >
-      <InventoryIntelligenceOS onAskCopilot={onAskCopilot} />
+      <InventoryIntelligenceOS />
     </Suspense>
   );
 }

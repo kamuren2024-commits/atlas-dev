@@ -23,30 +23,30 @@ export class AuthorizationService {
       'finance_source:view', 'finance_budget:view', 'finance_commitment:view',
       'finance_invoice:view', 'finance_payment:view', 'finance_project:view',
       'finance_quality:view', 'finance_lineage:view',
-      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel', 'logistics:admin'
+      'logistics:read', 'inventory:read', 'inventory:create', 'inventory:update', 'inventory:approve', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel', 'logistics:admin'
     ],
     'LOGISTICS_OPERATOR': [
-      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update'
+      'logistics:read', 'inventory:read', 'inventory:create', 'inventory:update', 'logistics:create', 'logistics:update'
     ],
     'LOGISTICS_DISPATCHER': [
-      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
+      'logistics:read', 'inventory:read', 'inventory:create', 'inventory:update', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
     ],
     'LOGISTICS_ADMIN': [
-      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel', 'logistics:admin'
+      'logistics:read', 'inventory:read', 'inventory:create', 'inventory:update', 'inventory:approve', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel', 'logistics:admin'
     ],
     'System Administrator': ['*'],
     'Executive': ['logistics:read', 'inventory:read'],
     'Logistics Manager': [
-      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
+      'logistics:read', 'inventory:read', 'inventory:create', 'inventory:update', 'inventory:approve', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
     ],
-    'Fleet Manager': ['logistics:read', 'inventory:read', 'logistics:create', 'logistics:update'],
+    'Fleet Manager': ['logistics:read', 'inventory:read', 'inventory:create', 'inventory:update', 'logistics:create', 'logistics:update'],
     'Dispatcher': [
-      'logistics:read', 'inventory:read', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
+      'logistics:read', 'inventory:read', 'inventory:create', 'inventory:update', 'logistics:create', 'logistics:update', 'logistics:dispatch', 'logistics:cancel'
     ],
     'Driver': ['logistics:read', 'inventory:read'],
-    'Engineer': ['logistics:read', 'inventory:read', 'logistics:update'],
+    'Engineer': ['logistics:read', 'inventory:read', 'inventory:update', 'logistics:update'],
     'Project Manager': ['project:read', 'project:update', 'logistics:read', 'inventory:read'],
-    'Maintenance Manager': ['logistics:read', 'inventory:read', 'logistics:create', 'logistics:update'],
+    'Maintenance Manager': ['logistics:read', 'inventory:read', 'inventory:create', 'inventory:update', 'logistics:create', 'logistics:update'],
     'Finance Officer': ['logistics:read', 'inventory:read'],
     'Procurement Officer': ['logistics:read', 'inventory:read'],
     'Security Officer': ['logistics:read', 'inventory:read'],

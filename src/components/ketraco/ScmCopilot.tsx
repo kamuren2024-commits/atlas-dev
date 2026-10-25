@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 interface ScmCopilotProps {
+  showLauncher?: boolean;
   onRefreshTelemetry?: () => void;
   overridePrompt?: string | null;
   clearOverridePrompt?: () => void;
@@ -21,7 +22,7 @@ interface ReasoningStep {
 
 type UIState = 'collapsed' | 'drawer' | 'workspace';
 
-export default function ScmCopilot({ onRefreshTelemetry, overridePrompt, clearOverridePrompt }: ScmCopilotProps) {
+export default function ScmCopilot({ showLauncher = true, onRefreshTelemetry, overridePrompt, clearOverridePrompt }: ScmCopilotProps) {
   const [uiState, setUiState] = useState<UIState>('collapsed');
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
@@ -54,6 +55,10 @@ export default function ScmCopilot({ onRefreshTelemetry, overridePrompt, clearOv
       if (clearOverridePrompt) clearOverridePrompt();
     }
   }, [overridePrompt]);
+
+  useEffect(() => {
+    if (!showLauncher) setUiState('collapsed');
+  }, [showLauncher]);
 
   const handleOrchestrate = async (queryToRun: string) => {
     const q = queryToRun || prompt;
@@ -152,7 +157,7 @@ export default function ScmCopilot({ onRefreshTelemetry, overridePrompt, clearOv
   return (
     <>
       {/* 1. FLOATING ACTION TRIGGER TRIGGER - State 1 */}
-      {uiState === 'collapsed' && (
+      {uiState === 'collapsed' && showLauncher && (
         <motion.div
           layoutId="scm-assistant-trigger"
           initial={{ scale: 0.85, opacity: 0 }}

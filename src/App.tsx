@@ -1023,7 +1023,7 @@ function AppInner() {
                   transition={{ duration: 0.15 }}
                   className="flex-1 flex flex-col overflow-hidden"
                 >
-                  <InventoryHub onAskCopilot={handleTriggerCopilot} />
+                  <InventoryHub />
                 </motion.div>
               )}
 
@@ -1256,7 +1256,8 @@ function AppInner() {
 
           {/* SCM AUTONOMOUS COPILOT SIDE DRAWER - Omnipresent companion */}
           <Suspense fallback={null}>
-            <ScmCopilot 
+            <ScmCopilot
+              showLauncher={activeModule !== 'inventory'}
               onRefreshTelemetry={fetchTelemetry}
               overridePrompt={copilotOverridePrompt}
               clearOverridePrompt={() => setCopilotOverridePrompt(null)}
@@ -1274,7 +1275,7 @@ function AppInner() {
       }} />
 
       {/* Executive Demo Mode floating trigger */}
-      {!demoMode && (
+      {!demoMode && activeModule !== 'inventory' && (
         <button
           onClick={() => setDemoMode(true)}
           className="fixed bottom-14 right-4 z-40 flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0B1220]/90 border border-cyan-500/25 text-cyan-300 text-[10px] font-mono font-bold tracking-wider uppercase hover:border-cyan-400/40 hover:bg-cyan-500/10 transition-all cursor-pointer shadow-xl"
@@ -1287,7 +1288,7 @@ function AppInner() {
 
       {/* Executive Demo Mode overlay */}
       <AnimatePresence>
-        {demoMode && (
+        {demoMode && activeModule !== 'inventory' && (
           <Suspense fallback={null}>
             <ExecutiveDemoMode
               scenes={DEMO_SCENES}

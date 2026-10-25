@@ -24,11 +24,12 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, '.'),
     },
+    dedupe: ['react', 'react-dom', 'three'],
   },
   optimizeDeps: {
     force: true,
     entries: ['./src/main.tsx'],
-    include: ['react', 'react-dom/client', 'motion/react', 'lucide-react'],
+    include: ['react', 'react-dom/client', 'motion/react', 'lucide-react', 'swr', 'three', 'three/examples/jsm/controls/OrbitControls.js'],
   },
   build: {
     sourcemap: true,

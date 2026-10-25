@@ -25,12 +25,28 @@ test('DEV_ADMIN requires explicit development and receives scoped permissions', 
     assert.equal(valid.valid, true);
     assert.equal(valid.user?.id, DEV_ADMIN_ID);
     assert.equal(valid.user?.tenantId, 'dev-sandbox');
+    assert.equal(valid.user?.accessLevel, 'LEVEL 10');
     assert.deepEqual(valid.user?.permissions, DEV_ADMIN_PERMISSIONS);
-
+    assert.equal(
+      AuthorizationService.checkPermission(valid.user!, 'read', 'inventory', { tenantId: 'dev-sandbox' }).isAuthorized,
+      true
+    );
+    assert.equal(AuthorizationService.checkPermission(valid.user!, 'create', 'inventory', { tenantId: 'dev-sandbox' }).isAuthorized, true);
+    assert.equal(AuthorizationService.checkPermission(valid.user!, 'update', 'inventory', { tenantId: 'dev-sandbox' }).isAuthorized, true);
+    assert.equal(AuthorizationService.checkPermission(valid.user!, 'approve', 'inventory', { tenantId: 'dev-sandbox' }).isAuthorized, true);
     assert.equal(
       AuthorizationService.checkPermission(valid.user!, 'debug', 'development').isAuthorized,
       true
     );
+
+    const operator = { id: 'operator-1', role: 'LOGISTICS_OPERATOR', accessLevel: 'LEVEL 04', clearance: 'Standard', tenantId: 'dev-sandbox' };
+    const logisticsAdmin = { id: 'logistics-admin-1', role: 'LOGISTICS_ADMIN', accessLevel: 'LEVEL 05', clearance: 'Standard', tenantId: 'dev-sandbox' };
+    const auditor = { id: 'auditor-1', role: 'Auditor', accessLevel: 'LEVEL 02', clearance: 'Standard', tenantId: 'dev-sandbox' };
+    assert.equal(AuthorizationService.checkPermission(operator, 'create', 'inventory', { tenantId: 'dev-sandbox' }).isAuthorized, true);
+    assert.equal(AuthorizationService.checkPermission(operator, 'approve', 'inventory', { tenantId: 'dev-sandbox' }).isAuthorized, false);
+    assert.equal(AuthorizationService.checkPermission(logisticsAdmin, 'approve', 'inventory', { tenantId: 'dev-sandbox' }).isAuthorized, true);
+    assert.equal(AuthorizationService.checkPermission(auditor, 'read', 'inventory', { tenantId: 'dev-sandbox' }).isAuthorized, true);
+    assert.equal(AuthorizationService.checkPermission(auditor, 'create', 'inventory', { tenantId: 'dev-sandbox' }).isAuthorized, false);
     assert.equal(
       AuthorizationService.checkPermission(valid.user!, 'read', 'project', { tenantId: 'other-tenant' }).isAuthorized,
       false

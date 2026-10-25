@@ -631,11 +631,13 @@ export class InventoryOperationsService {
       const product = await this.getProduct(tenantId, sku);
       if (!product) throw new InventoryOperationError('Material SKU was not found in this tenant.', 404, 'MATERIAL_NOT_FOUND');
       await this.requireFacility(tenantId, facilityId);
-      const stock = await this.db.get<any>(
-        `SELECT id, quantity, reserved FROM logistics_stock WHERE tenant_id = ? AND product_id = ? AND facility_id = ? ORDER BY quantity DESC LIMIT 1`,
+      const stocks = await this.db.all<any>(
+        `SELECT id, quantity, reserved FROM logistics_stock WHERE tenant_id = ? AND product_id = ? AND facility_id = ? ORDER BY id ASC`,
         [tenantId, product.id, facilityId],
       );
-      if (!stock) throw new InventoryOperationError('No stock position exists for this material at the selected facility.', 404, 'STOCK_POSITION_NOT_FOUND');
+      if (stocks.length === 0) throw new InventoryOperationError('No stock position exists for this material at the selected facility.', 404, 'STOCK_POSITION_NOT_FOUND');
+      if (stocks.length > 1) throw new InventoryOperationError('This material occupies multiple bins at the facility; a bin-specific adjustment is required.', 409, 'MULTIPLE_STOCK_POSITIONS');
+      const stock = stocks[0];
       const currentQuantity = Number(stock.quantity) || 0;
       if (targetQuantity === currentQuantity) throw new InventoryOperationError('The requested quantity matches the current on-hand balance.', 409, 'NO_ADJUSTMENT_REQUIRED');
       if (targetQuantity < (Number(stock.reserved) || 0)) throw new InventoryOperationError('The target quantity cannot be lower than reserved stock.', 409, 'TARGET_BELOW_RESERVED');

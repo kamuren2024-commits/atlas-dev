@@ -13,7 +13,6 @@ type SceneContext = {
   renderer: THREE.WebGLRenderer;
   controls: OrbitControls;
   markerRoot: THREE.Group;
-  frameId: number;
 };
 
 const TYPE_COLORS: Record<string, number> = {
@@ -265,11 +264,16 @@ export default function InventoryDigitalTwin3D() {
     let context: SceneContext | null = null;
     let observer: ResizeObserver | null = null;
     let clickStart: { x: number; y: number } | null = null;
+    let frameId = 0;
+    let sceneForCleanup: THREE.Scene | null = null;
+    let rendererForCleanup: THREE.WebGLRenderer | null = null;
+    let controlsForCleanup: OrbitControls | null = null;
 
     try {
       const width = Math.max(1, mount.clientWidth);
       const height = Math.max(1, mount.clientHeight);
       const scene = new THREE.Scene();
+      sceneForCleanup = scene;
       scene.background = new THREE.Color(0x07111d);
       scene.fog = new THREE.Fog(0x07111d, 62, 112);
 
@@ -278,6 +282,7 @@ export default function InventoryDigitalTwin3D() {
       camera.lookAt(0, 4.5, 0);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'low-power' });
+      rendererForCleanup = renderer;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       renderer.setSize(width, height);
       renderer.shadowMap.enabled = false;
@@ -300,6 +305,7 @@ export default function InventoryDigitalTwin3D() {
       scene.add(markerRoot);
 
       const controls = new OrbitControls(camera, renderer.domElement);
+      controlsForCleanup = controls;
       controls.target.set(0, 4.5, 0);
       controls.enableDamping = true;
       controls.dampingFactor = 0.075;
@@ -308,7 +314,6 @@ export default function InventoryDigitalTwin3D() {
       controls.maxPolarAngle = Math.PI * 0.48;
       controls.screenSpacePanning = true;
 
-      let frameId = 0;
       const animate = () => {
         frameId = window.requestAnimationFrame(animate);
         controls.update();
@@ -347,7 +352,7 @@ export default function InventoryDigitalTwin3D() {
       renderer.domElement.addEventListener('pointerdown', onPointerDown);
       renderer.domElement.addEventListener('pointerup', onPointerUp);
 
-      context = { scene, camera, renderer, controls, markerRoot, frameId };
+      context = { scene, camera, renderer, controls, markerRoot };
       sceneRef.current = context;
       setSceneStatus('ready');
       setSceneError('');
@@ -365,12 +370,16 @@ export default function InventoryDigitalTwin3D() {
         markerPositionsRef.current.clear();
       };
     } catch {
-      if (context) {
-        window.cancelAnimationFrame(context.frameId);
-        context.controls.dispose();
-        disposeObject(context.scene);
-        context.renderer.dispose();
+      window.cancelAnimationFrame(frameId);
+      observer?.disconnect();
+      controlsForCleanup?.dispose();
+      if (sceneForCleanup) disposeObject(sceneForCleanup);
+      if (rendererForCleanup) {
+        rendererForCleanup.dispose();
+        rendererForCleanup.domElement.remove();
       }
+      sceneRef.current = null;
+      markerPositionsRef.current.clear();
       setSceneStatus('unavailable');
       setSceneError('WebGL could not initialize in this browser. The reference asset list remains available below.');
       return () => {
@@ -474,19 +483,11 @@ export default function InventoryDigitalTwin3D() {
             <span className="ml-auto text-[9px] font-mono text-slate-500">{filteredAssets.length} reference markers</span>
           </div>
 
-          {sceneStatus === 'loading' && (
-            <div className="flex items-center justify-center gap-2 bg-[#07101d] text-xs font-mono text-cyan-200" style={{ height: 'clamp(18rem, 38vw, 30rem)' }} role="status">
-              <LoaderCircle className="size-4 animate-spin" /> Building interactive scene…
-            </div>
-          )}
-          {sceneStatus === 'ready' && <div ref={mountRef} className="w-full bg-[#07101d]" style={{ height: 'clamp(18rem, 38vw, 30rem)' }} />}
-          {sceneStatus === 'unavailable' && (
-            <div className="flex flex-col items-center justify-center gap-3 bg-[#07101d] px-6 text-center" style={{ height: 'clamp(18rem, 38vw, 30rem)' }} role="status">
-              <AlertTriangle className="size-5 text-amber-300" />
-              <p className="max-w-md text-xs text-slate-300">{sceneError}</p>
-              <p className="text-[10px] font-mono text-slate-500">No live position, health, or telemetry is inferred from the schematic.</p>
-            </div>
-          )}
+          <div className="relative bg-[#07101d]" aria-busy={sceneStatus === 'loading'}>
+            <div ref={mountRef} className="w-full bg-[#07101d]" style={{ height: 'clamp(18rem, 38vw, 30rem)' }} />
+            {sceneStatus === 'loading' && <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 bg-[#07101d]/90 text-xs font-mono text-cyan-200" role="status"><LoaderCircle className="size-4 animate-spin" /> Building interactive scene…</div>}
+            {sceneStatus === 'unavailable' && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#07101d] px-6 text-center" role="status"><AlertTriangle className="size-5 text-amber-300" /><p className="max-w-md text-xs text-slate-300">{sceneError}</p><p className="text-[10px] font-mono text-slate-500">No live position, health, or telemetry is inferred from the schematic.</p></div>}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-800/80 px-3 py-2">
             <span className="mr-1 text-[9px] font-mono text-slate-500">DRAG ORBIT · RIGHT DRAG PAN · WHEEL ZOOM</span>

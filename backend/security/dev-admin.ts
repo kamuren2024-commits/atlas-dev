@@ -43,7 +43,7 @@ export const DEV_ADMIN_PERMISSIONS = [
   'finance_invoice:view', 'finance_payment:view', 'finance_project:view',
   'finance_quality:view', 'finance_lineage:view',
   'logistics:read', 'logistics:create', 'logistics:update',
-  'inventory:read'
+  'inventory:read', 'inventory:create', 'inventory:update', 'inventory:approve'
 ];
 
 export class DevAdminService {
@@ -131,7 +131,7 @@ export class DevAdminService {
       name: 'Development Administrator',
       role: 'Administrator',
       roles: ['Administrator'],
-      accessLevel: 'Level 10 (Full Access)',
+      accessLevel: 'LEVEL 10',
       clearance: 'Top Secret',
       tenantId: process.env.DEV_ADMIN_TENANT_ID?.trim() || 'ketraco',
       permissions: [...DEV_ADMIN_PERMISSIONS],

@@ -7,13 +7,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import {
   Boxes, Truck, FolderKanban, ShieldCheck, Search,
-  AlertTriangle, CheckCircle2, RefreshCw, ChevronRight, X, WifiOff, Lock,
+  AlertTriangle, CheckCircle2, RefreshCw, X, WifiOff, Lock,
 } from 'lucide-react';
 import {
   fetchMaterialDetail, fetchOverview, fetchPositions, fetchProjects, searchInventory,
   formatKes,
-  type DataStatus, type HealthBand, type InventoryOverview, type InventoryPosition, type InventorySearchResult, type LoadState,
-  type MaterialDetail, type ProjectRequirement,
+  type DataStatus, type HealthBand, type InventoryOverview, type InventorySearchResult, type LoadState,
+  type MaterialDetail,
   InventoryApiError,
 } from './api';
 import InventoryDigitalTwin3D from './InventoryDigitalTwin3D';
@@ -218,7 +218,7 @@ function deliveryColor(status: string): string {
   return '#64748b';
 }
 
-export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot: (prompt: string) => void }) {
+export default function InventoryIntelligenceOS() {
   const [nav, setNav] = useState<NavId>('overview');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -226,7 +226,6 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
   const [selectedSearchResult, setSelectedSearchResult] = useState<InventorySearchResult | null>(null);
   const [facilityFilter, setFacilityFilter] = useState('ALL');
   const [healthFilter, setHealthFilter] = useState('ALL');
-  const [selectedMaterial, setSelectedMaterial] = useState<InventoryPosition | null>(null);
   const [detailSku, setDetailSku] = useState<string | null>(null);
   const [workflowTab, setWorkflowTab] = useState<InventoryWorkflowTab>('movement');
   const [categoryMetric, setCategoryMetric] = useState<'positions' | 'quantity' | 'valueKes'>('positions');
@@ -371,7 +370,7 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-2.5 size-3.5 text-slate-500" />
                 <input id="inventory-global-search" value={search} onChange={(event) => setSearch(event.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
-                  placeholder="Material, PO, supplier, work order, location…" aria-label="Search inventory records" aria-expanded={searchFocused && debouncedSearch.length >= 2} aria-controls="inventory-search-results" autoComplete="off"
+                  placeholder="Material, PO, supplier, work order, location…" aria-label="Search inventory records" maxLength={100} aria-expanded={searchFocused && debouncedSearch.length >= 2} aria-controls="inventory-search-results" autoComplete="off"
                   className="w-full rounded-lg border border-cyan-500/25 bg-[#07101d]/90 py-2 pl-9 pr-9 text-xs text-white placeholder-slate-500 focus:border-cyan-400/70 focus:outline-none focus:ring-2 focus:ring-cyan-400/10" />
                 {search && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setSearch(''); setSearchFocused(false); }} className="absolute right-2.5 top-2 rounded p-0.5 text-slate-500 hover:text-white" aria-label="Clear inventory search"><X className="size-3.5" /></button>}
               </div>
@@ -448,8 +447,8 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
             <section className="rounded-2xl border border-amber-500/20 bg-[#091321]/90 p-4 xl:col-span-4" aria-label="AI inventory insights">
               <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-xs font-bold uppercase tracking-wider text-white">AI recommendations</h2><span className="rounded border border-amber-500/20 px-2 py-1 text-[8px] font-mono text-amber-200">{overview.ai.state}</span></div>
               <p className="text-[10px] leading-relaxed text-slate-400">{overview.ai.note} Recommendations are not generated from missing telemetry or assumed lead times.</p>
-              <button type="button" onClick={() => onAskCopilot('Analyze the current tenant inventory using verified stock-position and material records only. Cite source records, state missing inputs, and do not infer telemetry or execute stock changes.')}
-                className="mt-3 w-full rounded-lg border border-cyan-500/40 px-3 py-2 text-[10px] font-mono text-cyan-200 hover:bg-cyan-500/10">ASK ATLAS COPILOT WITH VERIFIED INVENTORY CONTEXT</button>
+              <button type="button" disabled aria-disabled="true" title={overview.ai.note}
+                className="mt-3 w-full cursor-not-allowed rounded-lg border border-slate-700 px-3 py-2 text-[10px] font-mono text-slate-500 opacity-70">Inventory AI unavailable — contract pending</button>
             </section>
 
             <section className="rounded-2xl border border-cyan-500/15 bg-[#091321]/90 p-4 xl:col-span-4" aria-label="Top materials by value">
@@ -503,9 +502,10 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
                     </thead>
                     <tbody>
                       {positions.slice(0, 60).map((p) => (
-                        <tr key={`${p.sku}-${p.facilityId}`}
-                          onClick={() => { setSelectedMaterial(p); setDetailSku(p.sku); }}
-                          className={`cursor-pointer border-b border-slate-800/50 hover:bg-cyan-500/5 ${detailSku === p.sku ? 'bg-cyan-500/5' : ''}`}>
+                        <tr key={`${p.sku}-${p.facilityId}`} tabIndex={0}
+                          onClick={() => setDetailSku(p.sku)}
+                          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetailSku(p.sku); } }}
+                          className={`cursor-pointer border-b border-slate-800/50 hover:bg-cyan-500/5 focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-400 ${detailSku === p.sku ? 'bg-cyan-500/5' : ''}`}>
                           <td className="px-2 py-2 font-mono text-cyan-300">{p.sku}</td>
                           <td className="max-w-[260px] truncate px-2 py-2 text-slate-200">{p.description}</td>
                           <td className="px-2 py-2 text-slate-400">{p.facilityName}</td>
@@ -528,7 +528,7 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
                       {detail?.material.description || detailSku}
                       <span className="font-mono font-normal text-slate-400"> · {detailSku}{detail ? ` · ${detail.material.materialGroup} · ${detail.material.uom}` : ''}</span>
                     </p>
-                    <button onClick={() => { setDetailSku(null); setSelectedMaterial(null); }} className="text-slate-400 hover:text-white" aria-label="Close material intelligence"><X className="h-4 w-4" /></button>
+                    <button onClick={() => setDetailSku(null)} className="text-slate-400 hover:text-white" aria-label="Close material intelligence"><X className="h-4 w-4" /></button>
                   </div>
                   {detailState === 'loading' && <p className="py-4 text-center font-mono text-xs text-cyan-300">Loading canonical material record…</p>}
                   {detailState === 'empty' && <p className="py-4 text-center text-xs text-slate-400">No material with this SKU in the tenant ledger.</p>}
@@ -584,9 +584,9 @@ export default function InventoryIntelligenceOS({ onAskCopilot }: { onAskCopilot
                           )}
                         </div>
                       </div>
-                      <button onClick={() => onAskCopilot(`Explain stock exposure for ${detail.material.sku} (ATP ${detail.atp.availableToPromise} ${detail.material.uom}) using verified Atlas evidence only.`)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-cyan-500/40 px-3 py-1.5 font-mono text-[11px] text-cyan-300 hover:bg-cyan-500/10">
-                        ASK COPILOT <ChevronRight className="h-3 w-3" />
+                      <button type="button" disabled aria-disabled="true" title={overview?.ai.note || 'Inventory AI is not connected.'}
+                        className="inline-flex cursor-not-allowed items-center gap-1 rounded-lg border border-slate-700 px-3 py-1.5 font-mono text-[11px] text-slate-500 opacity-70">
+                        AI unavailable
                       </button>
                     </div>
                   )}
